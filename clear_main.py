@@ -194,7 +194,7 @@ async def leave_table(request: Request, table_id: str):
     try:
         headers = {"Authorization": f"Bearer {user.get('token')}"}        
         leave_response = requests.post(target_url, json={"user_id": user.get("user_id")}, headers=headers, timeout=2)
-        print(f"Игрок {user.get("name")} встал из-за стола {table_id}") # заменить table_id на table_name
+        print(f"Игрок {user.get('name')} встал из-за стола {table_id}") # заменить table_id на table_name
         if leave_response.status_code == 200:
             print("Успешно вышли")
         else:
