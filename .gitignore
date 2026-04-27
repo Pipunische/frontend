@@ -1,6 +1,5 @@
 # Python
 __pycache__/
-*.pyc
 *.pyo
 *.pyd
 .Python
@@ -19,3 +18,9 @@ pip-wheel-metadata/
 
 # Temp files
 *.tmp
+
+*.pyc
+
+.cursor/
+
+.DS_Store

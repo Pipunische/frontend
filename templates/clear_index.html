@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Игра — Стол #{{ table_id[:8] }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='css/poker_table.css') }}">
+    <style>
+    </style>
+  </head>
+
+  <body>
+    <div class="poker-room">
+
+      <!-- поменять переменную для имени стола -->
+      <h1 class="table-title">{{ table_name }}</h1> 
+      <!-- ИГРОВОЙ СТОЛ -->
+      <div class="poker-table">
+
+        <div class="table-pot">{{ game.pot }} 💰</div>
+        <div class="dealer-button">D</div>
+        <div class="deck-pile">
+          <img src="/static/card_back.png" alt="Deck">
+        </div>  
+
+        <div class="community-cards">
+          {% for card in game.community_cards %}
+            {% set card_index = loop.index %} 
+            {% set is_static = false %}
+
+            {% if card_index <= 3 and game.state in ['TURN', 'RIVER', 'SHOWDOWN'] %}
+                {% set is_static = true %}
+            {% endif %}
+          
+            {# Терн статичен, если мы УЖЕ на Ривере или Вскрытии #}
+            {% if card_index == 4 and game.state in ['RIVER', 'SHOWDOWN'] %}
+                {% set is_static = true %}
+            {% endif %}
+          
+            {# Ривер статичен только на Вскрытии #}
+            {% if card_index == 5 and game.state == 'SHOWDOWN' %}
+                {% set is_static = true %}
+            {% endif %}
+      
+              <img src="/static/{{ card }}.png" 
+                  id="card-{{ loop.index }}"
+                   class="poker-card {{ 'card-static' if is_static else '' }}">
+          {% endfor %}
+        </div>
+
+          <!-- ГЕНЕРАЦИЯ 9 МЕСТ ДЛЯ ОППОНЕНТОВ (Цикл Jinja2) -->
+        {% for i in range(9) %}
+        
+            {# 1. Проверяем, сидит ли тут кто-то #}
+            {% set has_player = (others|length > i and others[i]) %}
+
+            {# 2. Достаем статус (маленькими буквами) или пишем 'empty' #}
+            {% set p_status = others[i].status|lower if has_player else 'empty' %}
+
+            <!-- 3. Подставляем статус в класс! -->
+            <div class="player-seat pos-{{ i + 1 }} status-{{ p_status }}">
+                
+                {% if has_player %}
+                  {# ВЫВОДИМ СТАВКУ ИГРОКА #}
+                  {% if others[i].round_contribution and others[i].round_contribution > 0 %}
+                      <div class="player-bet">
+                          <div class="chip-icon"></div>
+                          {{ others[i].round_contribution }}
+                      </div>
+                  {% endif %}
+                    <!-- Если игрок на этом месте есть -->
+                    <div class="opponent-hand">
+                        {% for card in others[i].cards %}
+                            {% set opp_static = (game.state != 'PRE_FLOP' and game.state != 'WAITING_FOR_PLAYERS') %}
+                            <img src="/static/{{ card }}.png" class="hand-card {{ 'card-static' if opp_static else '' }}">
+                        {% endfor %}
+                    </div>
+
+                    {% if others[i].is_dealer %}
+                        <div class="dealer-button">D</div>
+                    {% endif %}
+
+                    {# ЕСЛИ СЕЙЧАС ЕГО ХОД - ДОБАВЛЯЕМ КЛАСС АКТИВНОСТИ #}
+                    <span class="player-name {{ 'active-turn' if others[i].is_active_turn else '' }}">
+                        {{ others[i].name }}
+                    </span>
+                    <span class="player-chips">{{ others[i].chips }} 💰</span>
+
+                {% else %}
+                    <span class="empty-seat-text">Свободно</span>
+                {% endif %}
+
+            </div>
+        {% endfor %}
+
+              <!-- ТВОЕ МЕСТО (Hero Seat) -->
+              <!-- ТВОЕ МЕСТО (Hero Seat) -->
+        <div
+          class="player-seat pos-hero status-{{ my_player.status|lower if my_player else 'empty' }}"
+          style="border: 4px solid #2ecc71; box-shadow: 0 0 15px rgba(46, 204, 113, 0.5);"
+        >
+          
+          {# 1. ФИШКА ДИЛЕРА #}
+          {% if my_player and my_player.is_dealer %}
+              <div class="dealer-button" style="top: -15px; right: -15px;">D</div>
+          {% endif %}
+
+          {# 2. ТВОЯ СТАВКА НА СТОЛЕ (ФИШКИ) #}
+          {% if my_player and my_player.round_contribution > 0 %}
+              <div class="player-bet">
+                  <div class="chip-icon"></div>
+                  {{ my_player.round_contribution }}
+              </div>
+          {% endif %}
+
+          {# 3. ТВОИ КАРТЫ #}
+          <div class="my-hand">
+            {% if my_cards %}
+              {% for card in my_cards %}
+                {% set hand_static = (game.state != 'PRE_FLOP' and game.state != 'WAITING_FOR_PLAYERS') %}
+                <img src="/static/{{ card }}.png" 
+                     class="hand-card {{ 'card-static' if hand_static else '' }}">
+              {% endfor %}
+            {% endif %}
+          </div>
+
+          {# 4. НИКНЕЙМ С НЕОНОМ #}
+          <span class="player-name {{ 'active-turn' if my_player and my_player.is_active_turn else '' }}">
+              {{ user.name }}
+          </span>
+
+          {# 5. ТВОИ ЧИПСЫ #}
+          <span class="player-chips">
+            {{ my_player.chips if my_player else user.chips }} 💰
+          </span>
+
+          <span class="player-chips" style="color: #f1c40f; font-size: 12px; opacity: 0.8;">
+            Кошелек: {{ user.wallet_balance }} 🪙
+        </span>
+
+        </div> <!-- Конец Hero Seat -->
+      </div>
+    
+
+              <!-- Конец стола -->
+
+              <!-- ПАНЕЛЬ УПРАВЛЕНИЯ -->
+      
+      <div class="action-panel">
+        <button class="btn btn-fold" onclick="sendPokerAction('FOLD')">FOLD</button>
+
+        {% if my_player %}
+            <!-- Достаем сумму доплаты, которую посчитала Java -->
+            {% set to_call = my_player.amount_to_call %}
+
+            <!-- ЛОГИКА CHECK vs CALL -->
+            {% if to_call == 0 %}
+                <!-- Если доплачивать не нужно, доступен CHECK -->
+                <button class="btn btn-call" style="background-color: #2ecc71;" onclick="sendPokerAction('CHECK')">CHECK</button>
+                <button class="btn" style="background-color: #555; cursor: not-allowed;" disabled>CALL</button>
+            {% else %}
+                <!-- Если нужно доплатить, CHECK заблокирован, доступен CALL с суммой -->
+                <button class="btn" style="background-color: #555; cursor: not-allowed;" disabled>CHECK</button>
+                <button class="btn btn-call" onclick="sendPokerAction('CALL')">CALL ({{ to_call }})</button>
+            {% endif %}
+
+            <!-- ЛОГИКА RAISE -->
+            <div class="raise-group">
+                <!-- Динамическое значение инпута: мин. ставка = to_call, дефолт = to_call * 2 -->
+                <input 
+                  type="number" 
+                  id="raise-amount" 
+                  value="{{ (to_call * 2) if to_call > 0 else 100 }}" 
+                  step="50" 
+                  min="{{ to_call if to_call > 0 else 50 }}" 
+                />
+                <button class="btn btn-raise-action" onclick="sendPokerAction('RAISE')">RAISE</button>
+            </div>
+
+            <!-- ЛОГИКА ALL-IN -->
+            <button class="btn btn-raise" style="background-color: #a01919; color: white; border-radius: 10px; margin-left: 10px;" 
+                    onclick="sendPokerAction('ALL_IN')">
+                ALL-IN ({{ my_player.chips }})  
+            </button>
+        {% endif %}
+      </div>
+
+      <!-- СЛУЖЕБНАЯ НАВИГАЦИЯ (В левом нижнем углу) -->
+
+            <!-- выход со стола  -->
+      <div class="system-panel">
+              <!-- Убираем класс .btn-fold и стиль, даем свой класс -->
+        <button class="btn-leave-table" onclick="leaveCurrentTable()">
+            Встать из-за стола
+        </button>
+      </div>
+
+              <!-- Окно докупки (Modal) -->
+        <div id="rebuy-modal" class="modal-overlay">
+          <div class="rebuy-box">
+              <h2>⚠️ Недостаточно фишек </h2>
+              <p>У вас меньше {{ game.big_blind }} фишек. <br> Докупитесь, чтобы остаться!</p>
+              <input type="number" id="rebuy-amount" class="rebuy-input">
+              <button class="btn-play" onclick="sendRebuy()" style="width: 100%; border: none;">ДОКУПИТЬ</button>
+              <button class="btn-leave-table style="margin-top: 10px; width: 100%;" onclick="leaveCurrentTable()">
+                ВЫЙТИ
+              </button>
+          </div>
+        </div>
+
+
+    <script>
+    
+      // Объект-кэш для звуков, чтобы не загружать их каждый раз заново
+  const audioCache = {
+      bet: new Audio('/static/sounds/chip_bet.mp3'),
+      card: new Audio('/static/sounds/card_slide.mp3'),
+      fold: new Audio('/static/sounds/fold.mp3')
+  };
+
+  function playSound(effect) { 
+      const sound = audioCache[effect];
+      if (sound) {
+          sound.currentTime = 0; // Сбрасываем звук на начало (если быстро кликать)
+          sound.play().catch(e => console.log("Звук заблокирован до клика"));
+      }
+  }
+
+      async function sendPokerAction(actionType) {
+        const tableId = window.location.pathname.split("/").pop();
+        let betAmount = 0;
+
+        // ПРАВИЛЬНЫЙ ID: raise-amount
+        if (actionType === "RAISE") {
+          const input = document.getElementById("raise-amount");
+          betAmount = input ? parseInt(input.value) : 0;
+        }
+
+        if (actionType === "RAISE" || actionType === "ALL_IN" || actionType === "CALL") {
+          playSound('bet');
+        }
+
+        if (actionType === "FOLD") {
+          playSound('fold');
+        }
+
+
+        try {
+          const response = await fetch(`/table/${tableId}/action`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              user_id: "{{ user.user_id }}",
+              name: "{{ user.name }}",
+              type: actionType,
+              amount: betAmount,
+            }),
+          });
+
+          const result = await response.json();
+
+          if (result.redirect) {
+              window.location.href = result.redirect;
+              return;
+          }          
+
+          if (response.ok && !result.error) {
+            console.log("Успех!", result);
+            location.reload();
+          } else {
+            alert(
+              "Ошибка: " +
+                (result.detail || result.error || "Владос отклонил действие"),
+            );
+          }
+        } catch (err) {
+          alert("Нет связи с сервером Питона!");
+        }
+      }
+
+      // Функция управления состоянием анимаций и ЗВУКОМ РАЗДАЧИ
+      function freezeOldAnimations() {
+        const currentState = "{{ game.state }}";
+        const tableId = "{{ table_id }}";
+
+        const storageKey = `poker_${tableId}_state`;
+        const lastSeenState = localStorage.getItem(storageKey);
+
+        if (currentState === lastSeenState) {
+          // Стейт старый -> Замораживаем карты, звук не нужен
+          document.querySelectorAll(".poker-card, .hand-card").forEach((card) => {
+            card.classList.add("card-static");
+          });
+        } else {
+          // Стейт НОВЫЙ -> Будет анимация!
+          
+          // Проверяем, что это не пустота (игра идет)
+          if (currentState !== "WAITING_FOR_PLAYERS") {
+             // Делаем звук "ВЖИК"
+             // Задержка 200мс (0.2s) - чтобы звук совпал с началом полета первой карты
+             setTimeout(() => { playSound('card'); }, 200);
+          }
+
+          // Записываем новый стейт в память
+          localStorage.setItem(storageKey, currentState);
+        }
+      }
+
+      async function leaveCurrentTable(){
+
+        const tableId = window.location.pathname.split("/").pop();
+        const response = await fetch(`/table/${tableId}/leave`, {method: "POST" });
+        const result = await response.json();
+
+        if (result.redirect){
+          window.location.href = result.redirect
+        }
+      }
+
+      function checkRebuy() {
+          const playerStatus = "{{ my_player.status if my_player else '' }}".trim().toUpperCase();
+          const required = parseInt("{{ game.big_blind }}");
+          const myChips = parseInt("{{ my_player.chips if my_player else 0 }}");
+          const wallet = parseInt("{{ user.wallet_balance }}");
+          const needed = required - myChips;
+
+          if (playerStatus === "SITTING_OUT" && wallet >= needed) {
+              const modal = document.getElementById('rebuy-modal');
+              const input = document.getElementById('rebuy-amount');
+              modal.style.display = 'flex';
+              input.value = needed; 
+              input.min = needed;
+              input.max = wallet;
+          }
+      }
+
+      async function sendRebuy() {
+          const amount = document.getElementById('rebuy-amount').value;
+          const tableId = window.location.pathname.split("/").pop();
+          
+          // Твой fetch запрос к Питону на /rebuy...
+          const formData = new FormData();
+          formData.append('amount', amount);
+
+          const response = await fetch(`/table/${tableId}/rebuy`, {
+              method: 'POST',
+              body: formData
+          });
+          
+          if (response.ok){
+            location.reload();
+          } else {
+            const result = await response.json();
+            alert("Ошибка покупки: " + (result.error || "Бэкенд отказал"));
+          }
+      }
+
+      
+
+// Запускаем при загрузке
+window.addEventListener('DOMContentLoaded', () => {
+  freezeOldAnimations();
+  checkRebuy();
+});
+
+      // Авто-обновление каждые 5 секунд
+      setTimeout(() => {
+        location.reload();
+      }, 5000);
+    </script>
+  </body>
+</html>

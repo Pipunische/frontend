@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Лобби Казино — Выбор стола</title>
+    <style>
+        /* Базовые настройки страницы */
+        body {
+            background-color: #1a1a1a;
+            color: #ecf0f1;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            margin: 0;
+            padding: 40px;
+            text-align: center;
+        }
+
+        h1 {
+            margin-bottom: 40px;
+            color: #f1c40f;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        /* РОДИТЕЛЬ: СЕТКА (GRID) */
+        .lobby-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 30px;
+            max-width: 1200px;
+            margin: 0 auto;
+            text-align: left;
+        }
+
+        /* КАРТОЧКА СТОЛА */
+        .table-card {
+            background: #2c3e50;
+            border: 2px solid #3498db;
+            border-radius: 15px;
+            padding: 25px;
+            transition: 0.3s;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.4);
+        }
+
+        .table-card:hover {
+            transform: translateY(-10px);
+            border-color: #f1c40f;
+            box-shadow: 0 15px 30px rgba(241, 196, 15, 0.2);
+        }
+
+        .table-name {
+            color: #26b86a;
+            font-size: 20px;
+            margin-bottom: 10px;
+            word-break: break-all;
+        }
+
+        .blinds {
+            font-size: 32px;
+            font-weight: bold;
+            margin: 15px 0;
+            color: #fff;
+        }
+
+        .buy-in {
+            font-size: 16px;
+            color: #bdc3c7;
+            margin-bottom: 20px;
+        }
+
+        .players-count {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 8px 10px;
+            border-radius: 20px;
+            display: inline-block;
+            margin-bottom: 20px;
+        }
+
+        /* КНОПКА И СТАТУСЫ */
+        .btn-play {
+            background-color: #27ae60;
+            color: white;
+            padding: 12px;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: bold;
+            transition: 0.2s;
+            text-align: center;
+        }
+
+        .btn-play:hover {
+            background-color: #2ecc71;
+        }
+
+        .status-full {
+            color: #e74c3c;
+            font-weight: bold;
+            padding: 12px;
+            text-align: center;
+            border: 1px solid #e74c3c;
+            border-radius: 8px;
+        }
+
+        .back-link {
+            display: inline-block;
+            margin-top: 50px;
+            color: #95a5a6;
+            text-decoration: none;
+        }
+
+        .back-link:hover {
+            color: #f1c40f;
+        }
+
+        /* БОЛЬШИЕ ТАБЛИЧКИ ОШИБОК (растягиваем на всю сетку) */
+        .alert-banner {
+            grid-column: 1 / -1;
+            padding: 40px;
+            border-radius: 15px;
+            text-align: center;
+        }
+
+        .chip-icon {
+            display: inline-block;
+            width: 1.2em; /* Масштабируется вместе с размером шрифта! */
+            height: 1.2em;
+            background-image: url("/static/poker_chip.png"); /* Путь к твоему файлу */
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            vertical-align: middle; /* Центровка по линии текста */
+            margin-top: -2px; /* Микро-корректировка высоты */
+            margin-left: 4px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div style="position: absolute; top: 20px; right: 40px; text-align: right;">
+        <span style="color: #2ecc71; font-weight: bold;">🤵‍♂️ {{ user.name }}</span> 
+        <span class="player-chips" style="color: #f1c40f; font-size: 14px;">
+            <span class="chip-icon"></span> {{ user.wallet_balance }}</span>
+        </span>
+        <br>
+        <a href="/logout" style="color: #e74c3c; text-decoration: none; font-size: 14px; font-weight: bold;">🚪 Выйти</a>
+    </div>
+
+    <h1>🃏 Выберите игровой стол</h1>
+
+        {% if error == 'join_failed' %}
+        <div style="background: #e74c3c; color: white; padding: 15px; border-radius: 10px; margin-bottom: 20px;">
+            ⚠️ Не удалось сесть за стол. Возможно, места закончились или недостаточно средств.
+        </div>
+        {% endif %}
+
+    <div class="lobby-grid">
+
+        <!-- СЦЕНАРИЙ 1: ВЛАДОС УПАЛ -->
+        {% if is_down %}
+        <div class="alert-banner" style="border: 2px dashed #e74c3c; background: rgba(231, 76, 60, 0.1);">
+            <h2 style="color: #e74c3c;">🚧 КАЗИНО НА ТЕХОБСЛУЖИВАНИИ 🚧</h2>
+            <p style="color: #bdc3c7; font-size: 18px;">Наши крупье ушли пересчитывать фишки. Вернитесь через пару
+                минут!</p>
+            <button onclick="location.reload()" class="btn-play"
+                style="background: #e74c3c; margin-top: 15px; border: none; cursor: pointer;">ОБНОВИТЬ</button>
+        </div>
+
+        <!-- СЦЕНАРИЙ 2: ВЛАДОС ЖИВ, НО СТОЛОВ НЕТ -->
+        {% elif not tables %}
+        <div class="alert-banner" style="border: 2px solid #f1c40f; background: rgba(241, 196, 15, 0.1);">
+            <h2 style="color: #f1c40f;">СВОБОДНЫХ СТОЛОВ ПОКА НЕТ</h2>
+            <p style="color: #bdc3c7; font-size: 18px;">Администратор еще не открыл новые столы. Подождите немного!</p>
+            <button onclick="location.reload()" class="btn-play"
+                style="background: #f1c40f; color: black; margin-top: 15px; border: none; cursor: pointer;">ПРОВЕРИТЬ
+                СНОВА</button>
+        </div>
+
+                    <!-- СЦЕНАРИЙ 3: ВСЁ ОТЛИЧНО, РИСУЕМ СТОЛЫ -->
+                <!-- СЦЕНАРИЙ 3: ВСЁ ОТЛИЧНО, РИСУЕМ СТОЛЫ -->
+        {% else %}
+        {% for table in tables %}
+        <div class="table-card">
+            <h3 style="margin: 5px 0; color: #fff;">{{ table.table_name }}</h3>
+            <div class="blinds">💵 {{ table.blinds or '0/0' }}</div>
+    
+            <div style="font-size: 14px; color: #bdc3c7; margin-bottom: 15px;">
+                Мин. вход: <strong>{{ table.min_buy_in or 0 }} 💰</strong>
+            </div>
+
+            <div class="players-count">
+                🤵‍♂️ Игроки: <strong>{{ table.current_players or 0 }} / {{ table.max_players or 9 }}</strong>
+            </div>
+
+            {% if table.current_players and table.max_players and table.current_players >= table.max_players %}
+                <div class="status-full">МЕСТ НЕТ</div>
+            {% elif user.wallet_balance < table.min_buy_in %}
+                <div class="status-full" style="border-color: #f39c12; color: #f39c12;">Недостаточно фишек</div>
+            {% else %}
+                <!-- БЛОК ПОСАДКИ (Аккордеон) -->
+                <div class="buy-in-section">
+                    <label style="font-size: 12px; color: #95a5a6;">Сумма для игры:</label>
+                    <div style="display: flex; gap: 10px; margin-top: 5px;">
+                        <!-- ИНПУТ ДЛЯ ВЫБОРА ФИШЕК -->
+                        <input type="number" id="buyin-{{ table.table_id }}" 
+                            value="{{ table.min_buy_in }}" 
+                            min="{{ table.min_buy_in }}" 
+                            max="{{ user.wallet_balance }}"
+                            step="10"
+                            style="width: 100px; padding: 10px; border-radius: 8px; border: 1px solid #3498db; background: #222; color: #fff; font-weight: bold;">
+                
+                        <!-- КНОПКА ОТПРАВКИ -->
+                        <button onclick="joinTableWithBuyIn('{{ table.table_id }}')" class="btn-play" style="flex-grow: 1; border: none;">
+                            ВХОД 🔥
+                        </button>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+        {% endif %}
+
+    </div>
+
+    <br>
+    <a href="/" class="back-link">← Вернуться на главную</a>
+
+</body>
+
+<script>
+    function joinTableWithBuyIn(tableId) {
+        const input = document.getElementById(`buyin-${tableId}`);
+        if (!input) {
+            alert("Не удалось найти поле суммы входа.");
+            return;
+        }
+
+        const buyIn = parseInt(input.value, 10);
+        const minBuyIn = parseInt(input.min, 10) || 0;
+        const maxBuyIn = parseInt(input.max, 10) || Number.MAX_SAFE_INTEGER;
+
+        if (Number.isNaN(buyIn)) {
+            alert("Введите корректную сумму входа.");
+            return;
+        }
+
+        if (buyIn < minBuyIn) {
+            alert(`Минимальная сумма входа: ${minBuyIn}`);
+            return;
+        }
+
+        if (buyIn > maxBuyIn) {
+            alert(`Недостаточно средств. Максимум: ${maxBuyIn}`);
+            return;
+        }
+
+        window.location.href = `/table/${tableId}?buy_in=${buyIn}`;
+    }
+</script>
+
+</html>

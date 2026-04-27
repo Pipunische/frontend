@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <title>PokerClub — Главная</title>
+    <style>
+        body {
+            background: radial-gradient(circle, #1a2a3a 0%, #0d141b 100%);
+            color: white;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* ЛОГОТИП И НАЗВАНИЕ */
+        .logo-container {
+            text-align: center;
+            margin-bottom: 50px;
+        }
+
+        .main-title {
+            font-size: 80px;
+            font-weight: 900;
+            margin: 0;
+            background: linear-gradient(to bottom, #f1c40f 20%, #f39c12 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 10px 20px rgba(0, 0, 0, 0.5);
+            letter-spacing: 5px;
+        }
+
+        .subtitle {
+            font-size: 18px;
+            color: #bdc3c7;
+            letter-spacing: 10px;
+            text-transform: uppercase;
+        }
+
+        /* КНОПКИ МЕНЮ */
+        .menu-container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            width: 300px;
+        }
+
+        .menu-btn {
+            background: transparent;
+            border: 2px solid #f1c40f;
+            color: #f1c40f;
+            padding: 15px 30px;
+            font-size: 20px;
+            font-weight: bold;
+            text-decoration: none;
+            text-align: center;
+            border-radius: 50px;
+            transition: 0.3s;
+            text-transform: uppercase;
+        }
+
+        .menu-btn:hover {
+            background: #f1c40f;
+            color: #1a1a1a;
+            box-shadow: 0 0 30px rgba(241, 196, 15, 0.4);
+            transform: scale(1.05);
+        }
+
+        .menu-btn.primary {
+            background: #f1c40f;
+            color: #1a1a1a;
+        }
+
+        .menu-btn.primary:hover {
+            background: #f39c12;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="logo-container">
+        <!-- ВОТ СТРОЧКА НИЖЕ, ГДЕ МЕНЯТЬ НАЗВАНИЕ (Строка 69) -->
+        <h1 class="main-title">{{ club_name }}</h1>
+        <p>Автор: {{ creator_name }}</p>
+        <div class="subtitle">Online Casino</div>
+    </div>
+
+    <div class="menu-container">
+        <!-- Основная кнопка входа в Лобби -->
+        <a href="/lobby" class="menu-btn primary">Войти в игру</a>
+
+        <!-- Заглушки для будущего функционала -->
+        <a href="#" class="menu-btn">Профиль</a>
+        <a href="#" class="menu-btn">Настройки</a>
+        <a href="#" onclick="window.close()" class="menu-btn">Выход</a>
+    </div>
+
+    <p style="margin-top: 50px; color: #555; font-size: 12px;">© 2026 Все права защищены</p>
+
+</body>
+
+</html>
