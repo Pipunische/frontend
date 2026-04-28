@@ -326,6 +326,7 @@ def page_table(request: Request, table_id: str, buy_in: int = 0):
         "user": MY_USER,
         "my_cards": my_cards,
         "community_cards": community_cards,
+        "java_host": JAVA_HOST
     }
     return templates.TemplateResponse(name="clear_index.html", context=context, request=request)
 

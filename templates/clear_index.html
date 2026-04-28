@@ -57,7 +57,8 @@
             {% set p_status = others[i].status|lower if has_player else 'empty' %}
 
             <!-- 3. Подставляем статус в класс! -->
-            <div class="player-seat pos-{{ i + 1 }} status-{{ p_status }}">
+            <div class="player-seat pos-{{ i + 1 }} status-{{ p_status }}"
+                data-userid="{{ others[i].user_id if has_player else '' }}">
                 
                 {% if has_player %}
                   {# ВЫВОДИМ СТАВКУ ИГРОКА #}
@@ -96,8 +97,8 @@
               <!-- ТВОЕ МЕСТО (Hero Seat) -->
         <div
           class="player-seat pos-hero status-{{ my_player.status|lower if my_player else 'empty' }}"
-          style="border: 4px solid #2ecc71; box-shadow: 0 0 15px rgba(46, 204, 113, 0.5);"
-        >
+            data-userid="{{ user.user_id }}">
+          style="border: 4px solid #2ecc71; box-shadow: 0 0 15px rgba(46, 204, 113, 0.5);">
           
           {# 1. ФИШКА ДИЛЕРА #}
           {% if my_player and my_player.is_dealer %}
@@ -135,7 +136,7 @@
 
           <span class="player-chips" style="color: #f1c40f; font-size: 12px; opacity: 0.8;">
             Кошелек: {{ user.wallet_balance }} 🪙
-        </span>
+          </span>
 
         </div> <!-- Конец Hero Seat -->
       </div>
@@ -210,20 +211,20 @@
 
     <script>
     
-      // Объект-кэш для звуков, чтобы не загружать их каждый раз заново
-  const audioCache = {
-      bet: new Audio('/static/sounds/chip_bet.mp3'),
-      card: new Audio('/static/sounds/card_slide.mp3'),
-      fold: new Audio('/static/sounds/fold.mp3')
-  };
+          // Объект-кэш для звуков, чтобы не загружать их каждый раз заново
+      const audioCache = {
+          bet: new Audio('/static/sounds/chip_bet.mp3'),
+          card: new Audio('/static/sounds/card_slide.mp3'),
+          fold: new Audio('/static/sounds/fold.mp3')
+      };
 
-  function playSound(effect) { 
-      const sound = audioCache[effect];
-      if (sound) {
-          sound.currentTime = 0; // Сбрасываем звук на начало (если быстро кликать)
-          sound.play().catch(e => console.log("Звук заблокирован до клика"));
+      function playSound(effect) { 
+          const sound = audioCache[effect];
+          if (sound) {
+              sound.currentTime = 0; // Сбрасываем звук на начало (если быстро кликать)
+              sound.play().catch(e => console.log("Звук заблокирован до клика"));
+          }
       }
-  }
 
       async function sendPokerAction(actionType) {
         const tableId = window.location.pathname.split("/").pop();
@@ -356,16 +357,124 @@
 
       
 
-// Запускаем при загрузке
-window.addEventListener('DOMContentLoaded', () => {
-  freezeOldAnimations();
-  checkRebuy();
-});
+      // Запускаем при загрузке
+      window.addEventListener('DOMContentLoaded', () => {
+        freezeOldAnimations();
+        checkRebuy();
+      });
 
-      // Авто-обновление каждые 5 секунд
-      setTimeout(() => {
-        location.reload();
-      }, 5000);
+
+        // 1. Достаем tableId один раз для всего скрипта
+        const tableId = window.location.pathname.split("/").pop();
+    
+        // 2. Берем IP Владоса из Питона (никакого хардкода!)
+        const wsUrl = "http://{{ java_host }}:8080/ws-poker"; 
+    
+        let socket = new SockJS(wsUrl);
+        let stompClient = Stomp.over(socket);
+
+        // Отключаем лишний спам в консоль
+        stompClient.debug = null;
+
+        stompClient.connect({}, function (frame) {
+            console.log('🔗 WebSocket Подключен: ' + frame);
+
+            // 3. ПОДПИСКА НА СТОЛ
+            stompClient.subscribe('/topic/table/' + tableId, function (message) {
+                const eventData = JSON.parse(message.body);
+                console.log("⚡ ПРИЛЕТЕЛ ИВЕНТ ОТ ВЛАДОСА:", eventData.event_type, eventData);
+
+                if (eventData.event_type === 'TABLE_UPDATE') {
+                    // Обновляем банк
+                    document.getElementById(`pot-value`).innerText = eventData.pot;
+                    // Переписовываем карты
+                    redrawCommunityCards(eventData)
+                } else if (eventData.event_type === 'PLAYER_ACTION') {
+                    // Анимация фишек, обновление банка
+                    document.getElementById('pot-value').innerText = eventData.total_pot
+                    updatePlayerBalance(eventData);
+                    animateChip(eventData)
+                } else if (eventdata.event_type === 'PLAYER_STATUS') {
+                  console.log("Изменение состава игроков. Обновляем страницу...");
+                  location.reload();
+                }
+            });
+        }, function(error) {
+            console.error("❌ Ошибка WebSocket (Владос упал?):", error);
+        });
+
+
+        function updatePlayerBalance(eventData) {
+          // Ищем игрока по user_id
+          const userId = eventData.player_state.user_id;
+          const playerSeat = document.querySelector(`.player-seat[data-userid="${userId}"]`);
+          document.getElementById('pot-value').innerText = eventData.total_pot;
+
+          if (playerSeat) {
+            const chipsElement = playerSeat.querySelector('.player-chips');
+            if (chipsElement) {
+              chipsElement.innerText = eventData.player_state.chips + " 🪙"
+            }
+
+            if (eventData.player_state.status === "FOLDED") {
+              playerSeat.classList.add("status-folded");
+            }
+          }
+        }
+
+
+        function redrawCommunityCards(eventData) {
+          const cardsConteiner = document.querySelector(".community-cards")
+          if (!cardsConteiner) return;
+          // Удаляем старые карты
+          cardsConteiner.innerHTML = '';
+          // Забираем новые карты
+          const cards = eventData.community_cards || [];
+          if (cards.length > 0) {
+            // Если есть карты - рисуем
+            cards.forEach(card => {
+              // Теги
+              const img = document.createElement('img');
+              const cardName = card.toUpperCase();
+              img.src = `/static/${cardName}.png`;
+              img.className = `poker-card`;
+              img.alt = cardName;
+
+              cardsConteiner.appendChild(img)
+            });
+          } else {
+            for (let i = 0; i < 3; i++) {
+              const emptySlot = document.createElement('div');
+              emptySlot.style.cssText = 'width: 70px; height: 100px; border: 2px dashed rgba(255,255,255,0.2); border-radius: 6px; margin: 0 5px;';
+              cardsConteiner.appendChild(emptySlot)
+            }
+          }
+          console.log("Карты на столе обновлены")
+        }
+
+
+        function animateChip(eventData) {
+          // Ищем игрока после user_id от Владоса
+          const playerSeat = document.querySelector(`.player-seat[data-userid="${eventData.player_state.user_id}"]`)
+          if (!playerSeat) {
+            console.warn("Игрок для анимации ставки не найден", eventData);
+            return
+          }
+          // Удаляем старую ставку
+          const oldBet = playerSeat.querySelector(`.player-bet`);
+          if (oldBet) {
+            oldBet.remove();
+          }
+          // Создаем новую ставку если игрок не сделал FOLD
+          if (eventData.player_state.round_contribution > 0) {
+            const newBet = document.createElement('div');
+            newBet.className = 'player-bet';
+            // Вставляем иконку фишки и сумму
+            newBet.innerHTML = `<div class="chip-icon"></div>${eventData.player_state.round_contribution}`;
+            playerSeat.appendChild(newBet);
+            playSound('bet')
+          }
+        } 
     </script>
   </body>
 </html>
