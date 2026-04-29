@@ -6,6 +6,8 @@
     <link rel="stylesheet" href="{{ url_for('static', path='css/poker_table.css') }}">
     <style>
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
   </head>
 
   <body>
@@ -16,8 +18,9 @@
       <!-- ИГРОВОЙ СТОЛ -->
       <div class="poker-table">
 
-        <div class="table-pot">{{ game.pot }} 💰</div>
-        <div class="dealer-button">D</div>
+        <div class="table-pot">
+          <span id="pot-value">{{ game.pot }}</span> 💰
+        </div>
         <div class="deck-pile">
           <img src="/static/card_back.png" alt="Deck">
         </div>  
@@ -47,62 +50,64 @@
           {% endfor %}
         </div>
 
-          <!-- ГЕНЕРАЦИЯ 9 МЕСТ ДЛЯ ОППОНЕНТОВ (Цикл Jinja2) -->
-        {% for i in range(9) %}
+            <!-- ГЕНЕРАЦИЯ 9 МЕСТ ДЛЯ ОППОНЕНТОВ -->
+      <!-- ВНИМАНИЕ: Используем новый список ordered_others от Питона! -->
+      {% for i in range(9) %}
+    
+          {% set p = ordered_others[i] %}
+          {% set has_player = p is not none %}
+          {% set p_status = p.status|lower if has_player else 'empty' %}
+
+          <!-- Рассаживаем на pos-1, pos-2... -->
+          <div class="player-seat pos-{{ i + 1 }} status-{{ p_status }}"
+              data-seatindex="{{ p.seat_index if has_player else -1 }}"
+              data-userid="{{ p.user_id if has_player else '' }}">
         
-            {# 1. Проверяем, сидит ли тут кто-то #}
-            {% set has_player = (others|length > i and others[i]) %}
-
-            {# 2. Достаем статус (маленькими буквами) или пишем 'empty' #}
-            {% set p_status = others[i].status|lower if has_player else 'empty' %}
-
-            <!-- 3. Подставляем статус в класс! -->
-            <div class="player-seat pos-{{ i + 1 }} status-{{ p_status }}"
-                data-userid="{{ others[i].user_id if has_player else '' }}">
-                
-                {% if has_player %}
-                  {# ВЫВОДИМ СТАВКУ ИГРОКА #}
-                  {% if others[i].round_contribution and others[i].round_contribution > 0 %}
-                      <div class="player-bet">
-                          <div class="chip-icon"></div>
-                          {{ others[i].round_contribution }}
-                      </div>
-                  {% endif %}
-                    <!-- Если игрок на этом месте есть -->
-                    <div class="opponent-hand">
-                        {% for card in others[i].cards %}
-                            {% set opp_static = (game.state != 'PRE_FLOP' and game.state != 'WAITING_FOR_PLAYERS') %}
-                            <img src="/static/{{ card }}.png" class="hand-card {{ 'card-static' if opp_static else '' }}">
-                        {% endfor %}
+              {% if has_player %}
+                  <!-- ВЫВОДИМ СТАВКУ -->
+                {% if p.round_contribution and p.round_contribution > 0 %}
+                    <div class="player-bet">
+                      <div class="chip-icon"></div>
+                      {{ p.round_contribution }}
                     </div>
-
-                    {% if others[i].is_dealer %}
-                        <div class="dealer-button">D</div>
-                    {% endif %}
-
-                    {# ЕСЛИ СЕЙЧАС ЕГО ХОД - ДОБАВЛЯЕМ КЛАСС АКТИВНОСТИ #}
-                    <span class="player-name {{ 'active-turn' if others[i].is_active_turn else '' }}">
-                        {{ others[i].name }}
-                    </span>
-                    <span class="player-chips">{{ others[i].chips }} 💰</span>
-
-                {% else %}
-                    <span class="empty-seat-text">Свободно</span>
                 {% endif %}
 
-            </div>
-        {% endfor %}
+                 <!-- КАРТЫ ПРОТИВНИКА -->
+                <div class="opponent-hand">
+                    {% for card in p.cards %}
+                        {% set opp_static = (game.state != 'PRE_FLOP' and game.state != 'WAITING_FOR_PLAYERS') %}
+                        <img src="/static/{{ card }}.png" class="hand-card {{ 'card-static' if opp_static else '' }}">
+                    {% endfor %}
+                </div>
+
+                <!-- ДИЛЕР -->
+                {% if p.is_dealer %}
+                    <div class="dealer-button">D</div>
+                {% endif %}
+
+                <!-- ИМЯ И ФИШКИ -->
+                <span class="player-name {{ 'active-turn' if p.is_active_turn else '' }}">
+                    {{ p.name }}
+                </span>
+                <span class="player-chips">{{ p.chips }} 💰</span>
+
+              {% else %}
+                <span class="empty-seat-text">Свободно</span>
+              {% endif %}
+
+          </div>
+      {% endfor %}
 
               <!-- ТВОЕ МЕСТО (Hero Seat) -->
               <!-- ТВОЕ МЕСТО (Hero Seat) -->
-        <div
+      <div
           class="player-seat pos-hero status-{{ my_player.status|lower if my_player else 'empty' }}"
-            data-userid="{{ user.user_id }}">
-          style="border: 4px solid #2ecc71; box-shadow: 0 0 15px rgba(46, 204, 113, 0.5);">
+          data-userid="{{ user.user_id }}"
+          data-seatindex="{{ my_player.seat_index if my_player else -1 }}">
           
           {# 1. ФИШКА ДИЛЕРА #}
           {% if my_player and my_player.is_dealer %}
-              <div class="dealer-button" style="top: -15px; right: -15px;">D</div>
+              <div class="dealer-button" style="top: 25px; right: 45px;">D</div>
           {% endif %}
 
           {# 2. ТВОЯ СТАВКА НА СТОЛЕ (ФИШКИ) #}
@@ -364,47 +369,64 @@
       });
 
 
-        // 1. Достаем tableId один раз для всего скрипта
-        const tableId = window.location.pathname.split("/").pop();
-    
-        // 2. Берем IP Владоса из Питона (никакого хардкода!)
-        const wsUrl = "http://{{ java_host }}:8080/ws-poker"; 
-    
-        let socket = new SockJS(wsUrl);
-        let stompClient = Stomp.over(socket);
+      
+      function updateActiveTurn(activeSeatIndex) {
+          // 1. Убираем неон со всех имен
+          document.querySelectorAll('.player-name').forEach(el => el.classList.remove('active-turn'));
 
-        // Отключаем лишний спам в консоль
-        stompClient.debug = null;
+          // 2. Ищем стул, у которого data-seatindex совпадает с тем, что прислал Владос
+          const activeSeat = document.querySelector(`.player-seat[data-seatindex="${activeSeatIndex}"]`);
 
-        stompClient.connect({}, function (frame) {
-            console.log('🔗 WebSocket Подключен: ' + frame);
+          if (activeSeat) {
+              // 3. Находим внутри этого стула имя и зажигаем неон!
+              const nameElement = activeSeat.querySelector('.player-name');
+              if (nameElement) {
+                  nameElement.classList.add('active-turn');
+              }
+              console.log(`✨ Сейчас ход игрока на стуле №${activeSeatIndex}`);
+          }
+      }
+      
+      
+      // Функция, которая физически рисует карты в твоих руках (pos-hero)
+      function renderMyCards(cards) {
+          const myHandDiv = document.querySelector('.pos-hero .my-hand');
+          if (!myHandDiv) return;
 
-            // 3. ПОДПИСКА НА СТОЛ
-            stompClient.subscribe('/topic/table/' + tableId, function (message) {
-                const eventData = JSON.parse(message.body);
-                console.log("⚡ ПРИЛЕТЕЛ ИВЕНТ ОТ ВЛАДОСА:", eventData.event_type, eventData);
+          myHandDiv.innerHTML = ''; // Сметаем старые карты
+          cards.forEach(card => {
+              const img = document.createElement('img');
+              const cardName = card.toUpperCase();
+              img.src = `/static/${cardName}.png`;
+              img.className = 'hand-card'; // Твой CSS с анимацией!
+              myHandDiv.appendChild(img);
+          });
+          console.log("✅ Карты отрисованы в руках Hero!");
+      }
 
-                if (eventData.event_type === 'TABLE_UPDATE') {
-                    // Обновляем банк
-                    document.getElementById(`pot-value`).innerText = eventData.pot;
-                    // Переписовываем карты
-                    redrawCommunityCards(eventData)
-                } else if (eventData.event_type === 'PLAYER_ACTION') {
-                    // Анимация фишек, обновление банка
-                    document.getElementById('pot-value').innerText = eventData.total_pot
-                    updatePlayerBalance(eventData);
-                    animateChip(eventData)
-                } else if (eventdata.event_type === 'PLAYER_STATUS') {
-                  console.log("Изменение состава игроков. Обновляем страницу...");
-                  location.reload();
-                }
-            });
-        }, function(error) {
-            console.error("❌ Ошибка WebSocket (Владос упал?):", error);
-        });
+      // И поправь функцию шпиона, чтобы она брала данные ПРАВИЛЬНО
+      async function fetchMyPrivateCards() {
+          try {
+              console.log("🕵️‍♂️ Запрашиваю секретные карты у Питона...");
+              const response = await fetch(window.location.pathname, {
+                  headers: { 'Accept': 'application/json' }
+              });
+              const data = await response.json();
+        
+              // ВАЖНО: В твоем context данные лежат прямо в my_cards
+              if (data.my_cards && data.my_cards.length > 0) {
+                  console.log("🃏 Карты получены от Питона:", data.my_cards);
+                  renderMyCards(data.my_cards); // <--- ВЫЗЫВАЕМ РИСОВАЛЬЩИКА
+              } else {
+                  console.warn("⚠️ Питон прислал пустые карты. Проверь токен в запросе к Джаве!");
+              }
+          } catch (err) {
+              console.error("Ошибка шпионажа:", err);
+          }
+      }
 
-
-        function updatePlayerBalance(eventData) {
+      
+      function updatePlayerBalance(eventData) {
           // Ищем игрока по user_id
           const userId = eventData.player_state.user_id;
           const playerSeat = document.querySelector(`.player-seat[data-userid="${userId}"]`);
@@ -474,7 +496,58 @@
             playerSeat.appendChild(newBet);
             playSound('bet')
           }
-        } 
+        }
+
+
+        // 1. Достаем tableId один раз для всего скрипта
+        const tableId = window.location.pathname.split("/").pop();
+    
+        // 2. Берем IP Владоса из Питона (никакого хардкода!)
+        const wsUrl = "http://{{ java_host }}:8080/ws-poker"; 
+    
+        let socket = new SockJS(wsUrl);
+        let stompClient = Stomp.over(socket);
+
+        // Отключаем лишний спам в консоль
+        stompClient.debug = null;
+
+        stompClient.connect({}, function (frame) {
+            console.log('🔗 WebSocket Подключен: ' + frame);
+
+            // 3. ПОДПИСКА НА СТОЛ
+            stompClient.subscribe('/topic/table/' + tableId, function (message) {
+                const eventData = JSON.parse(message.body);
+                console.log("⚡ ПРИЛЕТЕЛ ИВЕНТ ОТ ВЛАДОСА:", eventData.event_type, eventData);
+
+                if (eventData.event_type === 'TABLE_UPDATE') {
+                    // Обновляем банк
+                    document.getElementById(`pot-value`).innerText = eventData.pot;
+                    // Переписовываем карты
+                    redrawCommunityCards(eventData)
+
+                    if (eventData.state === 'PRE_FLOP') {
+                      fetchMyPrivateCards(); // Твой шпион пошел на дело!
+                    }
+
+                    if (eventData.state === 'SHOWDOWN') {
+                      renderAllHoleCards(eventData.players);
+                    }
+
+                } else if (eventData.event_type === 'PLAYER_ACTION') {
+                    // Анимация фишек, обновление банка
+                    document.getElementById('pot-value').innerText = eventData.total_pot
+                    updatePlayerBalance(eventData);
+                    animateChip(eventData)
+                } else if (eventData.event_type === 'PLAYER_STATUS') {
+                  console.log("Изменение состава игроков. Обновляем страницу...");
+                  location.reload();
+                }
+            });
+        }, function(error) {
+            console.error("❌ Ошибка WebSocket (Владос упал?):", error);
+        });
+
+
     </script>
   </body>
 </html>

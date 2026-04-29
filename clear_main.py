@@ -34,9 +34,12 @@ class ActionRequest(BaseModel):
 
 @app.get("/", response_class=HTMLResponse)
 def page_home(request: Request):
+    current_user = request.session.get("user")
+
     context = {
         "club_name": "PoluPoker",
-        "creator_name": "Project-X",
+        "creator_name": "Pipunishche",
+        "user": current_user
     }
     return templates.TemplateResponse(
         request=request, name="clear_home.html", context=context
@@ -235,9 +238,10 @@ def page_table(request: Request, table_id: str, buy_in: int = 0):
     if not MY_USER:
         return RedirectResponse(url="/login", status_code=303)
 
+    headers = {"Authorization": f"Bearer {MY_USER.get('token')}"}
     base_table_url = f"{JAVA_URL}/{table_id}"
     try:
-        response = requests.get(base_table_url, timeout=3)
+        response = requests.get(base_table_url, headers=headers, timeout=3)
         if response.status_code != 200:
             return RedirectResponse(url="/lobby", status_code=303)
 
@@ -266,7 +270,7 @@ def page_table(request: Request, table_id: str, buy_in: int = 0):
                     game_state = requests.get(base_table_url, timeout=3).json()
                     return RedirectResponse(url=f"/table/{table_id}", status_code=303)
                 else:
-                    print(f"Владос не дал сесть: {join_response.code}")
+                    print(f"Владос не дал сесть: {join_response.status_code}")
                     return RedirectResponse(url="/lobby?error=join_failed", status_code=303)
             else:
                 print(f"Игрок {MY_USER.get('name')} бомж или не захотел байин")
@@ -287,21 +291,27 @@ def page_table(request: Request, table_id: str, buy_in: int = 0):
         print(f"Ошибка: {e}")
         return RedirectResponse(url=f"/lobby/{table_id}", status_code=303)
 
-    # инициализация из game_state dealer_id и current_turn_seat
+    # Логика стола
 
     dealer_idx = game_state.get("dealer_seat", -1)
     active_idx = game_state.get("current_turn_seat", -1)
-
-    my_cards = []
-    others = []
-    my_player = None
-    community_cards = game_state.get("community_cards", []) 
+    community_cards = game_state.get("community_cards", [])
     table_name = game_state.get("table_name")
-    for i, p in enumerate(game_state.get("players", [])):
-        p["is_dealer"] = (i == dealer_idx)
-        p["is_active_turn"] = (i == active_idx)
+
+    my_player = None
+    my_cards = []
+    # Временный список для остальных
+    others_raw = []
+
+    for p in game_state.get("players", []):
+        seat = p.get("seat_index", -1)
+
+        p["is_dealer"] = (seat == dealer_idx)
+        p["is_active_turn"] = (seat == active_idx)
         p["round_contribution"] = p.get("round_contribution", 0)
+
         real_cards = extract_cards(p)
+
         if str(p.get("user_id")) == str(MY_USER.get("user_id")):
             my_player = p
             my_cards = real_cards
@@ -313,13 +323,33 @@ def page_table(request: Request, table_id: str, buy_in: int = 0):
                 p["cards"] = real_cards
             else:
                 p["cards"] = ["card_back", "card_back"]
-            others.append(p)
+            others_raw.append(p)
+    
+    # Делаем рассадку
+    ordered_others = [None] * 9
+
+    if my_player:
+        hero_seat = my_player.get("seat_index", 0)
+        # Пересаживаем на новые места
+        for p in others_raw:
+            opp_seat = p.get("seat_index", 0)
+            # Формула сдвига
+            relative_pos = (opp_seat - hero_seat - 1) % 10
+            if 0 <= relative_pos < 9:
+                ordered_others[relative_pos] = p
+    else:
+        # Если зашел как зритель выводим как есть 
+        for p in others_raw:
+            seat = p.get("seat_index", 0)
+            if 0 <= seat < 9:
+                ordered_others[seat] = p
+
     
     print("Информация по игре:", game_state)
 
     context = {
         "my_player": my_player,
-        "others": others,   
+        "ordered_others": ordered_others,   
         "game": game_state,
         "table_id": table_id,
         "table_name": table_name,
@@ -328,6 +358,13 @@ def page_table(request: Request, table_id: str, buy_in: int = 0):
         "community_cards": community_cards,
         "java_host": JAVA_HOST
     }
+
+    if request.headers.get("accept") == "application/json":
+    # Создаем копию контекста для JSON, но удаляем из неё объект 'request' 
+    # (потому что JSONResponse не умеет превращать объекты FastAPI в текст)
+        json_data = {k: v for k, v in context.items() if k != "request"}
+        return JSONResponse(content=json_data)
+
     return templates.TemplateResponse(name="clear_index.html", context=context, request=request)
 
 

@@ -35,13 +35,6 @@
             letter-spacing: 5px;
         }
 
-        .subtitle {
-            font-size: 18px;
-            color: #bdc3c7;
-            letter-spacing: 10px;
-            text-transform: uppercase;
-        }
-
         /* КНОПКИ МЕНЮ */
         .menu-container {
             display: flex;
@@ -87,18 +80,21 @@
     <div class="logo-container">
         <!-- ВОТ СТРОЧКА НИЖЕ, ГДЕ МЕНЯТЬ НАЗВАНИЕ (Строка 69) -->
         <h1 class="main-title">{{ club_name }}</h1>
-        <p>Автор: {{ creator_name }}</p>
-        <div class="subtitle">Online Casino</div>
+        <p>Автор: {{ creator_name }} 🥷</p>
     </div>
 
     <div class="menu-container">
-        <!-- Основная кнопка входа в Лобби -->
-        <a href="/lobby" class="menu-btn primary">Войти в игру</a>
-
-        <!-- Заглушки для будущего функционала -->
-        <a href="#" class="menu-btn">Профиль</a>
-        <a href="#" class="menu-btn">Настройки</a>
-        <a href="#" onclick="window.close()" class="menu-btn">Выход</a>
+        {% if user %}
+            <!-- ЭТО ВИДИТ АВТОРИЗОВАННЫЙ ИГРОК -->
+            <div style="margin-bottom: 10px; color: #f1c40f;">Привет, {{ user.name }}!</div>
+            <a href="/lobby" class="menu-btn primary">В ИГРУ 🔥</a>
+            <a href="/profile" class="menu-btn">ПРОФИЛЬ</a>
+            <a href="/logout" class="menu-btn" style="border-color: #e74c3c; color: #e74c3c;">ВЫХОД</a>
+        {% else %}
+            <!-- ЭТО ВИДИТ ГОСТЬ -->
+            <a href="/login" class="menu-btn primary">ВОЙТИ</a>
+            <a href="/register" class="menu-btn">РЕГИСТРАЦИЯ</a>
+        {% endif %}
     </div>
 
     <p style="margin-top: 50px; color: #555; font-size: 12px;">© 2026 Все права защищены</p>
