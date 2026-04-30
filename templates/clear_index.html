@@ -392,6 +392,312 @@
       }
 
 
+      function renderMyCards(cards) {
+        // Проверяем изменились ли карты & превращаем массив в строку 
+        const newMyCardsString = cards.join(',');
+        if (newMyCardsString === myLastCardsString) return;
+        // Запоминаем текущий набор
+        myLastCardsString = newMyCardsString;
+        // Ищем мои руки
+        const myHandDiv = document.querySelector('.pos-hero .my-hand');
+        if (!myHandDiv) return
+        // Чистим старые
+        myHandDiv.innerHTML = '';
+        // Рисуем новые карты
+        cards.forEach(card => {
+          const img = document.createElement('img');
+          const cardName = card.toUpperCase();
+          img.src = `/static/${cardName}.png`;
+          img.className = 'hand-card';
+          img.alt = cardName;
+
+          myHandDiv.appendChild(img);
+        });
+        playSound('card');
+        console.log("Лично твои карты отрисованы")
+      }
+
+
+      async function fetchMyPrivateCards() {
+        try {
+          console.log("Запрашиваем карты у Python");
+          // Стучимся на адресс стола - просим JSON
+          const response = await fetch(window.location.pathname, {
+            headers: { 'Accept': 'application/json' }
+          });
+          const data = await response.json();
+          // Достаем мои карты из my_cards
+          const cards = data.my_cards;
+          if (cards && cards.length > 0) {
+            console.log("Карты получены", cards);
+            renderMyCards(cards);
+          } else {
+            console.log("Карты либо еще не раздали, либо не получилось получить.");
+
+          }
+        } catch (err) {
+          console.log("Полный провал миссии получения карт.");
+        }
+      }
+
+
+      function updatePlayerBalance(eventData) {
+        // Java присылает total_pot в каждом PLAYER_ACTION
+        const potElement = document.getElementById('pot-value');
+        if (potElement) {
+          potElement.innerText = eventData.total_pot;
+        }
+        // Ищем стул игрока по id
+        const userId = eventData.player_state.user_id;
+        const playerSeat = document.querySelector(`.player-seat[data-userid="${userId}"]`);
+        if (playerSeat) {
+          // Обновляем фишки конкретного игрока
+          const chipsElement = playerSeat.querySelector('.player-chips');
+          if (chipsElement) {
+            // Берем новое количество фишек
+            chipsElement.innerText = eventData.player_state.chips + " 🪙";
+          }
+          // Если статус FOLDED
+          if (eventData.player_state.status === "FOLDED") {
+            playerSeat.classList.add("status-folded");
+          }
+        }
+      }
+
+
+      function redrawCommunityCards(eventData) {
+        // Достаем массив карт из ивента
+        const cards = eventData.community_cards || [];
+        // Превращаем в строку для сравнения 
+        const newCardsString = cards.join(',');
+        if (newCardsString === lastCardsString) return;
+
+        lastCardsString = newCardsString;
+        // Обновление экрана
+        const container = document.querySelector(".community-cards");
+        if (!conteiner) return;
+
+        container.innerHTML = '';
+
+        if (cards.length > 0) {
+          // Если получили карты
+          cards.forEach(card => {
+            const img = document.createElement('img');
+            const cardName = card.toUpperCase();
+            img.src = `/static/${cardName}.png`;
+            img.className = 'poker-card';
+            img.alt = cardName;
+            container.appendChild(img);
+          });
+          playSound('card');
+        } else {
+          // Если карт нет - рисуем пунктир
+          for (let i = 0; i < 3; i++) {
+            const emptySlot = document.createElement('div');
+            emptySlot.style.cssText = 'width: 70px; height: 100px; border: 2px dashed rgba(255,255,255,0.2); border-radius: 6px; margin: 0 5px;';
+            conteiner.appendChild(emptySlot);
+          }
+        }
+        console.log("Общие карты на столе обновлены.");
+      }
+
+
+      function animateChip(eventData) {
+        // Ищем игрока по id - используем user_id из вложенного player_state
+        const userId = eventData.player_state.user_id;
+        const playerSeat = document.querySelector(`.player-seat[data-userid="${userId}"]`);
+
+        if (!playerSeat) {
+          console.warn("Стул не найден для id:", userId);
+          return;
+        }
+        // Если на стуле уже лежат фишки - удаляем их
+        const oldBet = playerSeat.querySelector('.player-bet');
+        if (oldBet) {
+          oldBet.remove();
+        }
+        // Создание новой фишки - если ставка > 0
+        if (eventData.player_state.round_contribution > 0) {
+          const newBet = document.createElement('div');
+          newBet.className = 'player-bet';
+          // Вставляем иконку и сумму
+          newBet.innerHTML = `
+            <div class="chip-icon"></div>
+            ${eventData.player_state.round_contribution}
+          `;
+          playerSeat.appendChild(newBet);
+          playSound('bet');
+        }
+      }
+
+
+      function renderAllHoleCards(players) {
+        console.log("Вскрываю карты всех участников.");
+
+        players.forEach(player => {
+          // Ищем ступ по id
+          const playerSeat = document.querySelector(`.player-seat[data-userid="${player.user_id}"]`);
+          if (playerSeat) {
+            // Ищем контейнер для карт
+            const handContainer = playerSeat.querySelector('.my-hand') || playerSeat.querySelector('.opponent-hand');
+
+            if (handContainer && player.cards && player.cards.length > 0) {
+              // Чистим что было в руках
+              handContainer.innerHTML = '';
+              // Ставим карты от Владоса
+              player.cards.forEach(card => {
+                const img = document.createElement('img');
+                const cardName = card.toUpperCase();
+                img.src = `/static/${cardName}.png`;
+                img.className = 'hand-card card-static';
+                img.alt = cardName;
+                handContainer.appendChild(img);
+              });
+            }
+          }
+        });
+        playSound('card');
+      }
+
+
+      function renderOpponentCards(players) {
+        // Вызывается при каждом table_update
+        players.forEach(p => {
+          if (p.user_id === "{{ user.user_id }}") return;
+          // Ищем стул оппонентов
+          const seat = document.querySelector(`.player-seat[data-userid="${p.user_id}"]`);
+          if (!seat) return;
+          // Ищем контейнер для его карт
+          const handContainer = seat.querySelector('.opponent-hand');
+          if (!handContainer) return;
+          // Рисуем рубашки или стираем их
+          if (p.status !== 'FOLDED' && p.status !== 'SITTING_OUT') {
+            // Рисуем рубашки только если руки пустые
+            if (handContainer.children.length === 0) {
+              handContainer.innerHTML = `
+                <img src="/static/card_back.png" class="hand-card" alt="back">
+                <img src="/static/card_back.png" class="hand-card" alt="back">
+              `;
+            }
+          } else if (p.status === 'FOLDED' || p.status === 'SITTING_OUT') {
+            // Если сбросил карты или сидит - чистим
+            handConteiner.innerHTML = '';
+          }
+        });
+      }
+
+
+      // === ГЛАВНЫЙ СЕТЕВОЙ ЦЕНТР (ДИРИЖЕР) ===
+
+      function connectWebSocket() {
+          // Инициализируем соединение
+          let socket = new SockJS(wsUrl);
+          stompClient = Stomp.over(socket);
+    
+          // Отключаем мусор в консоли (чтобы видеть только наши логи)
+          stompClient.debug = null;
+
+          // Пытаемся подключиться
+          stompClient.connect({}, function (frame) {
+              console.log('🔗 WebSocket Подключен! Связь с Владосом установлена.');
+
+              // ПОДПИСКА НА СТОЛ: Слушаем всё, что происходит в этой "комнате"
+              stompClient.subscribe('/topic/table/' + tableId, function (message) {
+            
+                  // Вскрываем пакет от Владоса
+                  const eventData = JSON.parse(message.body);
+                  console.log("⚡ ИВЕНТ:", eventData.event_type, eventData);
+
+                  // МАРШРУТИЗАТОР ИВЕНТОВ (SWITCH)
+                  switch (eventData.event_type) {
+
+                      // ---------------------------------------------------
+                      // 1. ПОЛНОЕ ОБНОВЛЕНИЕ СТОЛА (Начало/конец раздачи, смена фаз)
+                      // ---------------------------------------------------
+                      case 'TABLE_UPDATE':
+                          // Обновляем общие цифры
+                          document.getElementById('pot-value').innerText = eventData.pot;
+                    
+                          // Обновляем визуал (вызываем нашу армию функций)
+                          redrawCommunityCards(eventData);
+                          renderOpponentCards(eventData.players);
+                          updateActiveTurn(eventData.current_turn_seat);
+                    
+                          // Проверяем, не обанкротились ли мы
+                          checkRebuy();
+
+                          // Логика фаз игры:
+                          if (eventData.state === 'PRE_FLOP') {
+                              // Начало раздачи! Шпион идет за твоими картами
+                              fetchMyPrivateCards(); 
+                          }
+                          if (eventData.state === 'SHOWDOWN') {
+                              // Конец раздачи! Срываем маски
+                              renderAllHoleCards(eventData.players);
+                          }
+                          break;
+
+                      // ---------------------------------------------------
+                      // 2. МИКРО-СОБЫТИЕ (Кто-то сделал ставку)
+                      // ---------------------------------------------------
+                      case 'PLAYER_ACTION':
+                          // Обновляем банк (тут он называется total_pot по контракту Владоса)
+                          document.getElementById('pot-value').innerText = eventData.total_pot;
+                    
+                          // Точечные обновления без перерисовки всего стола
+                          updatePlayerBalance(eventData);
+                          animateChip(eventData);
+                    
+                          // Скорее всего, ход перешел дальше, поэтому обновляем неон
+                          // (Владос должен присылать новый current_turn_seat в этом ивенте!)
+                          if (eventData.current_turn_seat !== undefined) {
+                              updateActiveTurn(eventData.current_turn_seat);
+                          }
+                          break;
+
+                      // ---------------------------------------------------
+                      // 3. СТАТУС ИГРОКА (Кто-то сел за стол или вышел)
+                      // ---------------------------------------------------
+                      case 'PLAYER_STATUS':
+                          console.log("🔄 Изменение состава игроков. Обновляем страницу...");
+                          // Это единственное место, где мы разрешаем reload(), 
+                          // чтобы Jinja2 в Питоне заново пересчитал посадочные места
+                          location.reload(); 
+                          break;
+
+                      // ---------------------------------------------------
+                      default:
+                          console.warn("⚠️ Неизвестный тип ивента от Владоса:", eventData.event_type);
+                  }
+              });
+
+          }, function(error) {
+              // ЕСЛИ СВЯЗЬ ПОРВАЛАСЬ (Владос закрыл крышку ноута)
+              console.error("❌ Ошибка WebSocket (Связь оборвана):", error);
+        
+              // Пытаемся переподключиться через 5 секунд (Авто-реконнект)
+              setTimeout(connectWebSocket, 5000);
+          });
+      }
+
+
+      window.addEventListener('DOMContentLoaded', () => {
+        console.log("Интерфейс загружен. Все запускаем...");
+        // Не банкрот ли мы еще до старта
+        checkRebuy();
+
+        // Подкключаемся к серверу Владоса
+        connectWebSocket;
+
+        // 3. (Опционально) Если игра УЖЕ идет при нашем входе - сразу просим свои карты
+        const currentState = "{{ game.state }}";
+        if (currentState === 'PRE_FLOP' || currentState === 'FLOP' || currentState === 'TURN' || currentState === 'RIVER') {
+          console.log("🎲 Игра уже идет. Запрашиваю свои карты...");
+          fetchMyPrivateCards();
+        }
+      });
+
+      
     </script>
   </body>
 </html>
