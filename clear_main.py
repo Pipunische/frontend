@@ -185,21 +185,25 @@ def registration_process(request: Request, nickname: str = Form(...), login: str
 
 
 @app.post("/table/{table_id}/leave")
-async def leave_table(request: Request, table_id: str):
+async def leave_table(request: Request, table_id: str, user_id: str = Form(None)):
 
     user = request.session.get("user")
-    if not user:
-        return RedirectResponse(url="/login", status_code=303)
-        
+
+    action_user_id = user.get("user_id") if user else user_id
+
+    if not action_user_id:
+        print("Неизвестный игрок пытается выйти.")
+        return RedirectResponse(url="/login", status_code=303)   
     
     target_url= f"{JAVA_URL}/{table_id}/leave"
 
     try:
-        headers = {"Authorization": f"Bearer {user.get('token')}"}        
-        leave_response = requests.post(target_url, json={"user_id": user.get("user_id")}, headers=headers, timeout=2)
-        print(f"Игрок {user.get('name')} встал из-за стола {table_id}") # заменить table_id на table_name
+        payload = {"user_id": action_user_id}
+        headers = {"Authorization": f"Bearer {user.get('token')}"} if user else {}          
+        leave_response = requests.post(target_url, json=payload, headers=headers, timeout=2)
+        print(f"Игрок {action_user_id} встал из-за стола {table_id}") 
         if leave_response.status_code == 200:
-            print("Успешно вышли")
+            print("Успешно вышел")
         else:
             print(f"Непонятная ошибка, status_code {leave_response.status_code}")        
     except Exception as e:

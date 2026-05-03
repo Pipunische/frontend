@@ -698,6 +698,22 @@
       });
 
       
+      window.addEventListener('beforeunload', function (e) {
+        // Проверяем сидит ли игрок за столом
+        if (!tableId) return;
+        console.log("Действие игрока на выход из игры");
+
+        const beaconUrl = `/table/${tableId}/leave`;
+        const formData = new FormData();
+        formData.append('user_id', "{{ user.user_id }}");
+
+        const success = navigator.sendBeacon(beaconUrl, formData);
+
+        if (!success) {
+          console.log("Не удалось совершить запрос на выход из игры");
+        }
+      })
+
     </script>
-  </body>
+  </body> 
 </html>

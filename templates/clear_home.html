@@ -78,20 +78,17 @@
 <body>
 
     <div class="logo-container">
-        <!-- ВОТ СТРОЧКА НИЖЕ, ГДЕ МЕНЯТЬ НАЗВАНИЕ (Строка 69) -->
         <h1 class="main-title">{{ club_name }}</h1>
         <p>Автор: {{ creator_name }} 🥷</p>
     </div>
 
     <div class="menu-container">
         {% if user %}
-            <!-- ЭТО ВИДИТ АВТОРИЗОВАННЫЙ ИГРОК -->
             <div style="margin-bottom: 10px; color: #f1c40f;">Привет, {{ user.name }}!</div>
             <a href="/lobby" class="menu-btn primary">В ИГРУ 🔥</a>
             <a href="/profile" class="menu-btn">ПРОФИЛЬ</a>
             <a href="/logout" class="menu-btn" style="border-color: #e74c3c; color: #e74c3c;">ВЫХОД</a>
         {% else %}
-            <!-- ЭТО ВИДИТ ГОСТЬ -->
             <a href="/login" class="menu-btn primary">ВОЙТИ</a>
             <a href="/register" class="menu-btn">РЕГИСТРАЦИЯ</a>
         {% endif %}
