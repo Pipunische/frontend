@@ -4,6 +4,8 @@
 <head>
     <meta charset="UTF-8">
     <title>Лобби Казино — Выбор стола</title>
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
     <style>
         /* Базовые настройки страницы */
         body {
@@ -183,6 +185,7 @@
         {% else %}
         {% for table in tables %}
         <div class="table-card">
+
             <h3 style="margin: 5px 0; color: #fff;">{{ table.table_name }}</h3>
             <div class="blinds">💵 {{ table.blinds or '0/0' }}</div>
     
@@ -191,7 +194,7 @@
             </div>
 
             <div class="players-count">
-                🤵‍♂️ Игроки: <strong>{{ table.current_players or 0 }} / {{ table.max_players or 9 }}</strong>
+                🤵‍♂️ Игроки: <strong id="count-{{ table.table_id }}">{{ table.current_players or 0 }} / {{ table.max_players or 10 }}</strong>
             </div>
 
             {% if table.current_players and table.max_players and table.current_players >= table.max_players %}
@@ -200,7 +203,7 @@
                 <div class="status-full" style="border-color: #f39c12; color: #f39c12;">Недостаточно фишек</div>
             {% else %}
                 <!-- БЛОК ПОСАДКИ (Аккордеон) -->
-                <div class="buy-in-section">
+                <div class="buy-in-section" id="buy-section-{{ table.table_id }}">
                     <label style="font-size: 12px; color: #95a5a6;">Сумма для игры:</label>
                     <div style="display: flex; gap: 10px; margin-top: 5px;">
                         <!-- ИНПУТ ДЛЯ ВЫБОРА ФИШЕК -->
@@ -229,22 +232,25 @@
 
 </body>
 
+
 <script>
+
+    const userToken = "{{ user.token if user else '' }}";
+
     function joinTableWithBuyIn(tableId) {
         const input = document.getElementById(`buyin-${tableId}`);
         if (!input) {
-            alert("Не удалось найти поле суммы входа.");
-            return;
+           return alert("Не удалось найти поле суммы входа.");
         }
 
-        const buyIn = parseInt(input.value, 10);
+        const rawValue = Number(input.value);
+        if (isNaN(rawValue) || input.value.trim() === "") {
+            return alert("Введите корректную сумму входа (только цифры).");
+        }
+
+        const buyIn = Math.floor(rawValue);
         const minBuyIn = parseInt(input.min, 10) || 0;
         const maxBuyIn = parseInt(input.max, 10) || Number.MAX_SAFE_INTEGER;
-
-        if (Number.isNaN(buyIn)) {
-            alert("Введите корректную сумму входа.");
-            return;
-        }
 
         if (buyIn < minBuyIn) {
             alert(`Минимальная сумма входа: ${minBuyIn}`);
@@ -258,6 +264,66 @@
 
         window.location.href = `/table/${tableId}?buy_in=${buyIn}`;
     }
+
+    const wsUrl = "http://{{ java_host }}:8080/ws-poker";
+    
+    function connectLobbySocket() {
+        let socket = new SockJS(wsUrl);
+        let stompClient = Stomp.over(socket);
+        stompClient.debug = null;
+
+        const connectHeaders = {
+            'Authorization': 'Bearer ' + userToken
+        };
+
+        stompClient.connect(connectHeaders, function (frame) {
+            console.log('🔗 Лобби подключено к сети Владоса!');
+
+            // ПОДПИСКА НА ОБЩИЙ КАНАЛ КАЗИНО
+            stompClient.subscribe('/topic/lobby', function (message) {
+                const data = JSON.parse(message.body);
+                console.log("📢 Новости Лобби:", data);
+
+                if (data.event_type === 'LOBBY_UPDATE') {
+                    // Ищем счетчик игроков для этого стола на экране
+                    const countEl = document.getElementById(`count-${data.table_id}`);
+                    if (countEl) {
+
+                        countEl.innerText = `${data.current_players} / ${data.max_players}`;
+                        countEl.style.color = '#2ecc71';
+                        setTimeout(() => { countEl.style.color = 'white'; }, 1000);
+
+                        const buySection = document.getElementById(`buy-section-${data.table_id}`);
+                        const tableCard = countEl.closest('.table-card');
+
+                        if (data.current_players >= data.max_players) {
+                            if (buySection) buySection.style.display = 'none';
+
+                            if (!tableCard.querySelector('.status-full-dynamic')) {
+                                const badge = document.createElement('div');
+                                badge.className = 'status-full status-full-dynamic';
+                                badge.innerText = 'МЕСТ НЕТ';
+                                tableCard.appendChild(badge);
+                            }
+                        } else {
+                            // Если ктото вышел - возвращаем инпут
+                            if (buySection) buySection.style.display = 'block';
+                            const badge = tableCard.querySelector('.status-full-dynamic');
+                            if (badge) badge.remove();
+                        }
+                    }
+                }
+            });
+        }, function(error) {
+            console.error("Ошибка связи лобби:", error);
+            setTimeout(connectLobbySocket, 5000);
+        });
+    }
+
+    // Запускаем при загрузке
+    document.addEventListener('DOMContentLoaded', connectLobbySocket);
+
+
 </script>
 
 </html>

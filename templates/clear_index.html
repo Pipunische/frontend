@@ -207,7 +207,7 @@
               <p>У вас меньше {{ game.big_blind }} фишек. <br> Докупитесь, чтобы остаться!</p>
               <input type="number" id="rebuy-amount" class="rebuy-input">
               <button class="btn-play" onclick="sendRebuy()" style="width: 100%; border: none;">ДОКУПИТЬ</button>
-              <button class="btn-leave-table style="margin-top: 10px; width: 100%;" onclick="leaveCurrentTable()">
+              <button class="btn-leave-table" style="margin-top: 10px; width: 100%;" onclick="leaveCurrentTable()">
                 ВЫЙТИ
               </button>
           </div>
@@ -218,11 +218,13 @@
 
       // Идентификация
       const tableId = window.location.pathname.split("/").pop();
+      const userToken = "{{ user.token }}";
 
       // Сетевые настройки
       const javaHost = "{{ java_host }}";
-      const wsUrl = `http://${javaHost}:8000/ws-poker`;
+      const wsUrl = `http://${javaHost}:8080/ws-poker`;
       let stompClient = null;
+      let isIntentionalReload = false;
 
       // Память состояний - кэш
       let lastCardsString = "";
@@ -247,6 +249,23 @@
           sound.play().catch(e => {
             console.log("Звук заблокирован: нужно кликнуть по странице", e);
           });
+        }
+      }
+
+
+      // Функция сбрасывает все визуальные эффекты и ставит актуальный статус
+      function refreshSeatStatus(playerSeat, status) {
+        // Удаляем все возможные "плохие" статусы
+        playerSeat.classList.remove('status-sitting_out', 'status-folded', 'status-waiting', 'status-empty');
+    
+        // Добавляем текущий статус от Владоса
+        const lowerStatus = status.toLowerCase();
+        playerSeat.classList.add(`status-${lowerStatus}`);
+    
+        // Если статус НЕ "вне игры" — возвращаем яркость!
+        if (status !== 'FOLDED' && status !== 'SITTING_OUT' && status !== 'WAITING') {
+            playerSeat.style.opacity = "1";
+            playerSeat.style.filter = "none";
         }
       }
 
@@ -297,25 +316,30 @@
 
 
       async function leaveCurrentTable() {
-        if (!confirm("Вы уверены, что хотите выйти?")) return;
+        if (!confirm("Вы уверены")) return;
+
+        const formData = new FormData();
+
+        if (stompClient && stompClient.connected) {
+          console.log("🛑 Отключаю WebSocket перед выходом...");
+          stompClient.disconnect(() => { console.log("Сокет закрыт успешно"); });
+        }
+
+
+        formData.append('user_id', "{{ user.user_id }}");
 
         try {
           // Шлем в Python
           const response = await fetch(`/table/${tableId}/leave`, {
-            method: "POST"
+            method: "POST",
+            body: formData
           });
 
           const result = await response.json();
           // Перемещаемся в lobby
-          if (result.redirect) {
-            window.location.href = result.redirect;
-          } else {
-            // Если что-то не так - уходим принудительно
-            window.location.href = "/lobby";
-          }
+          window.location.href = result.redirect || "/lobby";
+
         } catch (err) {
-          console.error("Ошибка при выходе:", err);
-          // Даже если упала сеть возвращаем в lobby
           window.location.href = "/lobby";
         }
       }
@@ -325,17 +349,17 @@
         // Узнаем статус игрока, для избежания ошибок используем trim() & toUpperCase
         const PlayerStatus = "{{ my_player.status if my_player else '' }}".trim().toUpperCase(); // чуть позже будет использован для условия показа модалки
         // Узнаем сколько у нас фишек - либо берем из WebSocket либо fakedata из Python
-        const myChips = window.lastKnownChips !== null
+        const chips = window.lastKnownChips !== null
           ? window.lastKnownChips
           : parseInt("{{ my_player.chips if my_player else 0 }}");
         // Узнаем размер bigBlind
         const bigBlind = parseInt("{{ game.big_blind }}");
         // Если фишек меньше чем bigBlind
-        if (my_chips < bigBlind) {
+        if (chips < bigBlind) {
           console.log("Открытие окна докупки...");
           const modal = document.getElementById('rebuy-modal');
           if (modal) {
-            madal.style.display = 'flex'; 
+            modal.style.display = 'flex'; 
           }
         }
       }
@@ -351,7 +375,7 @@
 
         try {
           console.log("Запрос на докупку ${amount} фишек");
-          const response = await fetch(`/table/${table_id}/rebuy`, {
+          const response = await fetch(`/table/${tableId}/rebuy`, {
             method: 'POST',
             body: formData
           });
@@ -475,7 +499,7 @@
         lastCardsString = newCardsString;
         // Обновление экрана
         const container = document.querySelector(".community-cards");
-        if (!conteiner) return;
+        if (!container) return;
 
         container.innerHTML = '';
 
@@ -495,7 +519,7 @@
           for (let i = 0; i < 3; i++) {
             const emptySlot = document.createElement('div');
             emptySlot.style.cssText = 'width: 70px; height: 100px; border: 2px dashed rgba(255,255,255,0.2); border-radius: 6px; margin: 0 5px;';
-            conteiner.appendChild(emptySlot);
+            container.appendChild(emptySlot);
           }
         }
         console.log("Общие карты на столе обновлены.");
@@ -581,7 +605,71 @@
             }
           } else if (p.status === 'FOLDED' || p.status === 'SITTING_OUT') {
             // Если сбросил карты или сидит - чистим
-            handConteiner.innerHTML = '';
+            handContainer.innerHTML = '';
+          }
+        });
+      }
+
+
+      function updateAllPlayers(playersList) {
+        console.log("👥 Пересчитываем игроков за столом...");
+
+        for (let i = 1; i <= 9; i++) {
+          const seat = document.querySelector(`.pos-${i}`);
+          if (seat) {
+            seat.className = `player-seat pos-${i} status-empty`; 
+            seat.dataset.userid = '';
+            seat.innerHTML = '<span class="empty-seat-text">Свободно</span>';
+            seat.style.opacity = "1";
+            seat.style.filter = "none";
+          }
+        }
+
+        const myPlayer = playersList.find(p => p.user_id === "{{ user.user_id }}");
+        const heroSeatIdx = myPlayer ? myPlayer.seat_index : 0;
+
+        playersList.forEach(p => {
+          if (p.user_id === "{{ user.user_id }}") return;
+          const oppSeatIdx = p.seat_index;
+          const relativePos = (oppSeatIdx - heroSeatIdx - 1 + 10) % 10;
+
+          if (relativePos >= 0 && relativePos < 9) {
+            const seatElement = document.querySelector(`.pos-${relativePos + 1}`);
+            if (seatElement) {
+              seatElement.classList.remove('status-empty');
+              seatElement.dataset.userid = p.user_id;
+              seatElement.dataset.seatindex = p.seat_index;
+
+              seatElement.innerHTML = `
+                <div class="opponent-hand"></div>
+                <span class="player-name">${p.name}</span>
+                <span class="player-chips">${p.chips} 💰</span>
+              `;
+              refreshSeatStatus(seatElement, p.status);
+            }
+          }
+        });
+      }
+        
+
+      function renderStaticBets(players) {
+        document.querySelectorAll('.player-bet').forEach(bet => bet.remove());
+        players.forEach(player => {
+          if (player.round_contribution && player.round_contribution > 0) {
+            const seat = document.querySelector(`.player-seat[data-userid="${player.user_id}"]`);
+            if (seat) {
+              const betDiv = document.createElement('div');
+              betDiv.className = 'player-bet';
+              betDiv.style.animation = 'none';
+              betDiv.style.opacity = '1';
+
+              betDiv.innerHTML = `
+                <div class="chip-icon"></div>
+                ${player.round_contribution}
+              `;
+
+              seat.appendChild(betDiv);
+            }
           }
         });
       }
@@ -597,8 +685,12 @@
           // Отключаем мусор в консоли (чтобы видеть только наши логи)
           stompClient.debug = null;
 
+          const connectHeaders = {
+            'Authorization': 'Bearer ' + userToken,
+          };
+
           // Пытаемся подключиться
-          stompClient.connect({}, function (frame) {
+          stompClient.connect(connectHeaders, function (frame) {
               console.log('🔗 WebSocket Подключен! Связь с Владосом установлена.');
 
               // ПОДПИСКА НА СТОЛ: Слушаем всё, что происходит в этой "комнате"
@@ -611,19 +703,20 @@
                   // МАРШРУТИЗАТОР ИВЕНТОВ (SWITCH)
                   switch (eventData.event_type) {
 
-                      // ---------------------------------------------------
-                      // 1. ПОЛНОЕ ОБНОВЛЕНИЕ СТОЛА (Начало/конец раздачи, смена фаз)
-                      // ---------------------------------------------------
                       case 'TABLE_UPDATE':
+
                           // Обновляем общие цифры
                           document.getElementById('pot-value').innerText = eventData.pot;
-                    
-                          // Обновляем визуал (вызываем нашу армию функций)
                           redrawCommunityCards(eventData);
-                          renderOpponentCards(eventData.players);
+                          
+                          
+                          if (eventData.players) {
+                            updateAllPlayers(eventData.players);
+                            renderOpponentCards(eventData.players);
+                            renderStaticBets(eventData.players);
+                          }
+
                           updateActiveTurn(eventData.current_turn_seat);
-                    
-                          // Проверяем, не обанкротились ли мы
                           checkRebuy();
 
                           // Логика фаз игры:
@@ -637,9 +730,10 @@
                           }
                           break;
 
-                      // ---------------------------------------------------
-                      // 2. МИКРО-СОБЫТИЕ (Кто-то сделал ставку)
-                      // ---------------------------------------------------
+                        
+                        // ---------------------------------------------------
+                        // 2. МИКРО-СОБЫТИЕ (Кто-то сделал ставку)
+                        // ---------------------------------------------------
                       case 'PLAYER_ACTION':
                           // Обновляем банк (тут он называется total_pot по контракту Владоса)
                           document.getElementById('pot-value').innerText = eventData.total_pot;
@@ -659,11 +753,20 @@
                       // 3. СТАТУС ИГРОКА (Кто-то сел за стол или вышел)
                       // ---------------------------------------------------
                       case 'PLAYER_STATUS':
-                          console.log("🔄 Изменение состава игроков. Обновляем страницу...");
-                          // Это единственное место, где мы разрешаем reload(), 
-                          // чтобы Jinja2 в Питоне заново пересчитал посадочные места
-                          location.reload(); 
-                          break;
+                
+                        console.log(`🔄 Игрок ${eventData.nickname} ${eventData.status === 'JOINED' ? 'сел' : 'ушел'}. Обновляем рассадку...`); 
+                        fetch(`/table/${tableId}`, {
+                          headers: { 'Accept': 'application/json' }
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                          if (data.game && data.game.players) {
+                            updateAllPlayers(data.game.players);
+                            renderOpponentCards(data.game.players);
+                          }
+                        })
+                        .catch(err => console.error("Ошибка обновления рассадки:", err));
+                        break;
 
                       // ---------------------------------------------------
                       default:
@@ -687,7 +790,7 @@
         checkRebuy();
 
         // Подкключаемся к серверу Владоса
-        connectWebSocket;
+        connectWebSocket();
 
         // 3. (Опционально) Если игра УЖЕ идет при нашем входе - сразу просим свои карты
         const currentState = "{{ game.state }}";
@@ -697,22 +800,6 @@
         }
       });
 
-      
-      window.addEventListener('beforeunload', function (e) {
-        // Проверяем сидит ли игрок за столом
-        if (!tableId) return;
-        console.log("Действие игрока на выход из игры");
-
-        const beaconUrl = `/table/${tableId}/leave`;
-        const formData = new FormData();
-        formData.append('user_id', "{{ user.user_id }}");
-
-        const success = navigator.sendBeacon(beaconUrl, formData);
-
-        if (!success) {
-          console.log("Не удалось совершить запрос на выход из игры");
-        }
-      })
 
     </script>
   </body> 

@@ -14,7 +14,7 @@ app.add_middleware(SessionMiddleware, secret_key="alexei_pipunesco")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
-JAVA_HOST = "backend" #192.168.31.97
+JAVA_HOST = "192.168.31.97"
 JAVA_URL = f"http://{JAVA_HOST}:8080/api/tables"
 
 
@@ -66,8 +66,7 @@ def page_lobby(request: Request, error: str = None):
         print(f"Нет лобби: {e}")
         is_down = True
 
-    print("Данные о столах в лобби:", tables_data)
-    context = {"tables": tables_data, "is_server_down": is_down, "user": current_user, "error": error}
+    context = {"tables": tables_data, "is_server_down": is_down, "user": current_user, "error": error, "java_host": JAVA_HOST}
     return templates.TemplateResponse(
         request=request, name="clear_lobby.html", context=context
     )
@@ -185,7 +184,7 @@ def registration_process(request: Request, nickname: str = Form(...), login: str
 
 
 @app.post("/table/{table_id}/leave")
-async def leave_table(request: Request, table_id: str, user_id: str = Form(None)):
+def leave_table(request: Request, table_id: str, user_id: str = Form(None)):
 
     user = request.session.get("user")
 
@@ -199,8 +198,10 @@ async def leave_table(request: Request, table_id: str, user_id: str = Form(None)
 
     try:
         payload = {"user_id": action_user_id}
-        headers = {"Authorization": f"Bearer {user.get('token')}"} if user else {}          
+        headers = {"Authorization": f"Bearer {user.get('token')}"} if user else {} 
+
         leave_response = requests.post(target_url, json=payload, headers=headers, timeout=2)
+
         print(f"Игрок {action_user_id} встал из-за стола {table_id}") 
         if leave_response.status_code == 200:
             print("Успешно вышел")
@@ -250,46 +251,47 @@ def page_table(request: Request, table_id: str, buy_in: int = 0):
             return RedirectResponse(url="/lobby", status_code=303)
 
         game_state = response.json()
-            
-        my_id = str(MY_USER.get("user_id"))    
+        my_id = str(MY_USER.get("user_id"))     
+           
         current_player_id = [str(p.get("user_id")) for p in game_state.get("players", [])]
 
         if my_id not in current_player_id:
-            if buy_in > 0:
-                print(f"Игрока {MY_USER.get('name')} нет за столом, садимся")
-                print(f"игрок {MY_USER.get('name')} садится за стол с байином {buy_in}")
-                final_buy_in = buy_in if buy_in > 0 else 2000                
+
+            print(f"Игрока {MY_USER.get('name')} нет за столом, садимся")
+            min_required = game_state.get("min_buy_in", 0)
+            wallet = int(MY_USER.get("wallet_balance", 0))
+
+            if wallet >= min_required:
+
+                final_buy_in = buy_in if buy_in >= min_required else min_required
+                print(f"Игрок {MY_USER.get('name')} садится за стол с байином {final_buy_in}")
+
                 join_data = {
                     "user_id": my_id,
                     "chips": final_buy_in,
                     "token": MY_USER.get("token")
                 }    
-                print(f"📦 Содержимое MY_USER: {MY_USER}") 
         
                 headers = {"Authorization": f"Bearer {MY_USER.get('token')}"}
                 join_response = requests.post(f"{base_table_url}/join", json=join_data, headers=headers, timeout=2)
 
                 if join_response.status_code == 200:
+
                     print("Успешная посадка")
-                    game_state = requests.get(base_table_url, timeout=3).json()
-                    return RedirectResponse(url=f"/table/{table_id}", status_code=303)
+                    game_state = requests.get(base_table_url, headers=headers, timeout=3).json()
+
                 else:
+
                     print(f"Владос не дал сесть: {join_response.status_code}")
                     return RedirectResponse(url="/lobby?error=join_failed", status_code=303)
-            else:
-                print(f"Игрок {MY_USER.get('name')} бомж или не захотел байин")
-                
-                try:
-                    leave_url = f"{JAVA_URL}/{table_id}/leave"
-                    headers = {"Authorization": f"Bearer {MY_USER.get('token')}"}
-                    requests.post(leave_url, json={"user_id": my_id}, headers=headers, timeout=2)
-                except Exception as e:
-                    print(f"Не удалось дивнуть пидора {e}")
 
-                return RedirectResponse(url="/lobby?error=session_ended", status_code=303)
+            else:
+
+                print(f"Игрок {MY_USER.get('name')} бомж. Кошелек: {wallet}, Надо: {min_required}")
+                return RedirectResponse(url="/lobby?error=no_money", status_code=303)
         
         players_info = game_state.get("players", [])
-        print("игроки инфа", players_info)
+        print("Игроки:", players_info)
 
     except Exception as e:
         print(f"Ошибка: {e}")
@@ -349,7 +351,6 @@ def page_table(request: Request, table_id: str, buy_in: int = 0):
                 ordered_others[seat] = p
 
     
-    print("Информация по игре:", game_state)
 
     context = {
         "my_player": my_player,
