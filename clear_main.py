@@ -1,3 +1,4 @@
+import time
 import requests
 from fastapi import FastAPI, Request, Form
 from fastapi.templating import Jinja2Templates
@@ -9,12 +10,14 @@ from starlette.middleware.sessions import SessionMiddleware
 
 app = FastAPI()
 
+APP_VERSION = int(time.time())
+
 app.add_middleware(SessionMiddleware, secret_key="alexei_pipunesco")
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
-JAVA_HOST = "192.168.31.97"
+JAVA_HOST = "172.26.222.113"
 JAVA_URL = f"http://{JAVA_HOST}:8080/api/tables"
 
 
@@ -52,6 +55,25 @@ def page_lobby(request: Request, error: str = None):
     current_user = request.session.get("user")
     if not current_user:
         return RedirectResponse(url="/login", status_code=303)
+
+    
+    try:
+        balance_url = f"http://{JAVA_HOST}:8080/api/auth/{current_user['user_id']}/balance"
+        headers = {"Authorization": f"Bearer {current_user.get('token')}"}
+
+        balance_res = requests.get(balance_url, headers=headers, timeout=2)
+        if balance_res.status_code == 200:
+            fresh_balance = balance_res.json().get("wallet_balance")
+            if fresh_balance is not None:
+                current_user["wallet_balance"] = fresh_balance
+                request.session["user"] = current_user
+                print(f"💰 Баланс успешно гидратирован из Ядра: {fresh_balance}", flush=True)
+        else :
+            print(f"⚠️ Ядро отказало в балансе. Статус: {balance_res.status_code}", flush=True)
+
+    except Exception as e:
+        print(f"⚠️ Обрыв связи с Ядром при запросе баланса: {e}", flush=True)
+
 
     is_down = False
     tables_data = []
@@ -361,7 +383,8 @@ def page_table(request: Request, table_id: str, buy_in: int = 0):
         "user": MY_USER,
         "my_cards": my_cards,
         "community_cards": community_cards,
-        "java_host": JAVA_HOST
+        "java_host": JAVA_HOST,
+        "v": APP_VERSION
     }
 
     if request.headers.get("accept") == "application/json":
@@ -381,13 +404,24 @@ async def handle_action_(table_id: str, action: ActionRequest, request: Request)
         return {"error": "unauthorized", "redirect": "/login"} 
 
     target_url = f"{JAVA_URL}/{table_id}/action"
+    payload = action.model_dump()
+    print(f"📡 ОТПРАВКА В JAVA: URL={target_url} | JSON={payload}", flush=True)
     try:
         print(f"Шлем java по адрессу: {target_url}")
 
         headers = {"Authorization": f"Bearer {MY_USER.get('token')}"}        
         response = requests.post(target_url, json=action.model_dump(), headers=headers, timeout=5)
         if response.status_code != 200:
-            print(f"Ошибка java: {response.status_code}, {response.text}")
+
+            error_text = "Unknown error"
+            try:
+                data = response.json()
+                error_text = data.get("error", response.text)
+            except Exception:
+                error_text = response.text
+            
+            print(f"🚨 ОШИБКА JAVA ({response.status_code}): {error_text}", flush=True)
+
             return {
                 "error": f"java error {response.status_code}",
                 "detail": response.text,
