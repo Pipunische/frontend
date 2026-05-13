@@ -143,8 +143,9 @@
 
     <div style="position: absolute; top: 20px; right: 40px; text-align: right;">
         <span style="color: #2ecc71; font-weight: bold;">🤵‍♂️ {{ user.name }}</span> 
-        <span class="player-chips" style="color: #f1c40f; font-size: 14px;">
-            <span class="chip-icon"></span> {{ user.wallet_balance }}</span>
+        <span class="player-chips wallet-balance-display" style="color: #f1c40f; font-size: 14px; display: inline-block; transition:
+     all 0.3s ease;">
+            <span class="chip-icon"></span> {{ user.wallet_balance }}
         </span>
         <br>
         <a href="/logout" style="color: #e74c3c; text-decoration: none; font-size: 14px; font-weight: bold;">🚪 Выйти</a>
@@ -314,6 +315,23 @@
                     }
                 }
             });
+
+            stompClient.subscribe('/user/queue/wallet', function (message) {
+                const data = JSON.parse(message.body);
+                console.log("💰 Кошелек обновлен сервером!", data);
+                const walletElements = document.querySelectorAll('.wallet-balance-display');
+                walletElements.forEach(el => {
+                    el.innerText = `${data.new_balance} 🪙`;
+                    el.style.color = '#2ecc71';
+                    el.style.transform = 'scale(1.1)';
+                    setTimeout(() => {
+                        el.style.color = '#f1c40f';
+                        el.style.transform = 'scale(1)';
+                    }, 500);
+                });
+            });
+                
+
         }, function(error) {
             console.error("Ошибка связи лобби:", error);
             setTimeout(connectLobbySocket, 5000);

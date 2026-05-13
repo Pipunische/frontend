@@ -17,7 +17,7 @@ app.add_middleware(SessionMiddleware, secret_key="alexei_pipunesco")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
-JAVA_HOST = "172.26.222.113"
+JAVA_HOST = "192.168.0.68"
 JAVA_URL = f"http://{JAVA_HOST}:8080/api/tables"
 
 

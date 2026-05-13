@@ -3,7 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <title>Игра — Стол #{{ table_id[:8] }}</title>
-    <link rel="stylesheet" href="{{ url_for('static', path='css/poker_table.css') }}">
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/poker_table.css') }}?v={{ v }}">
     <style>
     </style>
     <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
@@ -12,6 +13,12 @@
 
   <body>
     <div class="poker-room">
+
+      <div id="poker-metadata"
+        data-players='{{ game.players | tojson | safe }}'
+        data-state="{{ game.state }}"
+        style="display: none;">
+      </div>
 
       <!-- поменять переменную для имени стола -->
       <h1 class="table-title">{{ table_name }}</h1> 
@@ -64,14 +71,6 @@
               data-userid="{{ p.user_id if has_player else '' }}">
         
               {% if has_player %}
-                  <!-- ВЫВОДИМ СТАВКУ -->
-                {% if p.round_contribution and p.round_contribution > 0 %}
-                    <div class="player-bet">
-                      <div class="chip-icon"></div>
-                      {{ p.round_contribution }}
-                    </div>
-                {% endif %}
-
                  <!-- КАРТЫ ПРОТИВНИКА -->
                 <div class="opponent-hand">
                     {% for card in p.cards %}
@@ -95,6 +94,8 @@
                 <span class="empty-seat-text">Свободно</span>
               {% endif %}
 
+              <div class="timer-track"><div class="timer-fill"></div></div>
+
           </div>
       {% endfor %}
 
@@ -108,14 +109,6 @@
           {# 1. ФИШКА ДИЛЕРА #}
           {% if my_player and my_player.is_dealer %}
               <div class="dealer-button" style="top: 25px; right: 45px;">D</div>
-          {% endif %}
-
-          {# 2. ТВОЯ СТАВКА НА СТОЛЕ (ФИШКИ) #}
-          {% if my_player and my_player.round_contribution > 0 %}
-              <div class="player-bet">
-                  <div class="chip-icon"></div>
-                  {{ my_player.round_contribution }}
-              </div>
           {% endif %}
 
           {# 3. ТВОИ КАРТЫ #}
@@ -143,6 +136,8 @@
             Кошелек: {{ user.wallet_balance }} 🪙
           </span>
 
+          <div class="timer-track"><div class="timer-fill"></div></div>
+
         </div> <!-- Конец Hero Seat -->
       </div>
     
@@ -151,43 +146,8 @@
 
               <!-- ПАНЕЛЬ УПРАВЛЕНИЯ -->
       
-      <div class="action-panel">
-        <button class="btn btn-fold" onclick="sendPokerAction('FOLD')">FOLD</button>
+      <div class="action-panel" id="dynamic-action-panel" style="display: none;">
 
-        {% if my_player %}
-            <!-- Достаем сумму доплаты, которую посчитала Java -->
-            {% set to_call = my_player.amount_to_call %}
-
-            <!-- ЛОГИКА CHECK vs CALL -->
-            {% if to_call == 0 %}
-                <!-- Если доплачивать не нужно, доступен CHECK -->
-                <button class="btn btn-call" style="background-color: #2ecc71;" onclick="sendPokerAction('CHECK')">CHECK</button>
-                <button class="btn" style="background-color: #555; cursor: not-allowed;" disabled>CALL</button>
-            {% else %}
-                <!-- Если нужно доплатить, CHECK заблокирован, доступен CALL с суммой -->
-                <button class="btn" style="background-color: #555; cursor: not-allowed;" disabled>CHECK</button>
-                <button class="btn btn-call" onclick="sendPokerAction('CALL')">CALL ({{ to_call }})</button>
-            {% endif %}
-
-            <!-- ЛОГИКА RAISE -->
-            <div class="raise-group">
-                <!-- Динамическое значение инпута: мин. ставка = to_call, дефолт = to_call * 2 -->
-                <input 
-                  type="number" 
-                  id="raise-amount" 
-                  value="{{ (to_call * 2) if to_call > 0 else 100 }}" 
-                  step="50" 
-                  min="{{ to_call if to_call > 0 else 50 }}" 
-                />
-                <button class="btn btn-raise-action" onclick="sendPokerAction('RAISE')">RAISE</button>
-            </div>
-
-            <!-- ЛОГИКА ALL-IN -->
-            <button class="btn btn-raise" style="background-color: #a01919; color: white; border-radius: 10px; margin-left: 10px;" 
-                    onclick="sendPokerAction('ALL_IN')">
-                ALL-IN ({{ my_player.chips }})  
-            </button>
-        {% endif %}
       </div>
 
       <!-- СЛУЖЕБНАЯ НАВИГАЦИЯ (В левом нижнем углу) -->
@@ -204,7 +164,8 @@
         <div id="rebuy-modal" class="modal-overlay">
           <div class="rebuy-box">
               <h2>⚠️ Недостаточно фишек </h2>
-              <p>У вас меньше {{ game.big_blind }} фишек. <br> Докупитесь, чтобы остаться!</p>
+              <p>У вас меньше {{ game.big_blind }} фишек. <br> 
+                Докупитесь, или вы покинете стол через <strong id="rebuy-timer-text" style="color: #e74c3c;">30</strong> сек!</p>
               <input type="number" id="rebuy-amount" class="rebuy-input">
               <button class="btn-play" onclick="sendRebuy()" style="width: 100%; border: none;">ДОКУПИТЬ</button>
               <button class="btn-leave-table" style="margin-top: 10px; width: 100%;" onclick="leaveCurrentTable()">
@@ -276,7 +237,14 @@
         if (actionType === "RAISE") {
           const input = document.getElementById("raise-amount");
           betAmount = input ? parseInt(input.value) : 0;         
+        } 
+
+        else if (actionType === "ALL_IN") {
+          const heroChipsEl = document.querySelector('.pos-hero .player-chips');
+          betAmount = parseInt(heroChipsEl.innerText) || 0;
         }
+
+        console.log(`🚀 ШЛЮ ЭКШЕН: ${actionType}, СУММА: ${betAmount}`);
 
         // Звук
         if (actionType === "FOLD") playSound('fold');
@@ -315,17 +283,14 @@
       }
 
 
-      async function leaveCurrentTable() {
-        if (!confirm("Вы уверены")) return;
-
-        const formData = new FormData();
+      async function leaveCurrentTable(force = false) {
+        if (!force && !confirm("Вы уверены?")) return;
 
         if (stompClient && stompClient.connected) {
-          console.log("🛑 Отключаю WebSocket перед выходом...");
-          stompClient.disconnect(() => { console.log("Сокет закрыт успешно"); });
+          stompClient.disconnect();
         }
 
-
+        const formData = new FormData();
         formData.append('user_id', "{{ user.user_id }}");
 
         try {
@@ -344,23 +309,44 @@
         }
       }
 
+      let rebuyCountdownInterval = null;
+      
+      function checkRebuy(myPlayerState, tableBigBlind) {
+        if (!myPlayerState) return;
+        const chips = parseInt(myPlayerState.chips);
+        const bigBlind = parseInt(tableBigBlind);
+        const modal = document.getElementById('rebuy-modal');
+        const input = document.getElementById('rebuy-amount');
+        const timerText = document.getElementById('rebuy-timer-text');
 
-      function checkRebuy() {
-        // Узнаем статус игрока, для избежания ошибок используем trim() & toUpperCase
-        const PlayerStatus = "{{ my_player.status if my_player else '' }}".trim().toUpperCase(); // чуть позже будет использован для условия показа модалки
-        // Узнаем сколько у нас фишек - либо берем из WebSocket либо fakedata из Python
-        const chips = window.lastKnownChips !== null
-          ? window.lastKnownChips
-          : parseInt("{{ my_player.chips if my_player else 0 }}");
-        // Узнаем размер bigBlind
-        const bigBlind = parseInt("{{ game.big_blind }}");
-        // Если фишек меньше чем bigBlind
         if (chips < bigBlind) {
-          console.log("Открытие окна докупки...");
-          const modal = document.getElementById('rebuy-modal');
-          if (modal) {
-            modal.style.display = 'flex'; 
+          console.log("🚨 Фишек меньше блайнда! Открываю окно докупки...");
+
+
+          if (modal && input && timerText) {
+            input.value = bigBlind * 10;
+            input.min = bigBlind; 
+            modal.style.display = 'flex';
+
+            clearInterval(rebuyCountdownInterval);
+
+            let timeLeft = 30;
+            timerText.innerText = timeLeft;
+
+            rebuyCountdownInterval = setInterval(() => {
+              timeLeft--;
+              timerText.innerText = timeLeft;
+
+              if (timeLeft <= 0) {
+                clearInterval(rebuyCountdownInterval);
+                console.log("⏰ Время на ребай вышло! Уходим в лобби...");
+                leaveCurrentTable(true);
+              }
+            }, 1000);
           }
+        } else {
+          if (modal) modal.style.display = 'none';
+          clearInterval(rebuyCountdownInterval);
         }
       }
 
@@ -383,6 +369,13 @@
           const result = await response.json();
           if (response.ok && !result.error) {
             console.log("Докупка одобрена. Закрывая окно.");
+
+            clearShowdownUI(); 
+
+            if (rebuyCountdownInterval) {
+              clearInterval(rebuyCountdownInterval);
+              rebuyCountdownInterval = null;
+            }
 
             document.getElementById('rebuy-modal').style.display = 'none';
           } else {
@@ -490,39 +483,53 @@
 
 
       function redrawCommunityCards(eventData) {
-        // Достаем массив карт из ивента
-        const cards = eventData.community_cards || [];
-        // Превращаем в строку для сравнения 
-        const newCardsString = cards.join(',');
-        if (newCardsString === lastCardsString) return;
 
+        const cards = eventData.community_cards || [];
+        const newCardsString = cards.join(',');
+
+        if (newCardsString === lastCardsString) return;
         lastCardsString = newCardsString;
-        // Обновление экрана
+
         const container = document.querySelector(".community-cards");
         if (!container) return;
 
-        container.innerHTML = '';
-
-        if (cards.length > 0) {
-          // Если получили карты
-          cards.forEach(card => {
-            const img = document.createElement('img');
-            const cardName = card.toUpperCase();
-            img.src = `/static/${cardName}.png`;
-            img.className = 'poker-card';
-            img.alt = cardName;
-            container.appendChild(img);
-          });
-          playSound('card');
-        } else {
-          // Если карт нет - рисуем пунктир
+        if (cards.length === 0) {
+          container.innerHTML = '';
           for (let i = 0; i < 3; i++) {
             const emptySlot = document.createElement('div');
             emptySlot.style.cssText = 'width: 70px; height: 100px; border: 2px dashed rgba(255,255,255,0.2); border-radius: 6px; margin: 0 5px;';
             container.appendChild(emptySlot);
           }
+          return;
         }
-        console.log("Общие карты на столе обновлены.");
+
+        if (container.querySelector('div')) {
+          container.innerHTML = '';
+        }
+
+        const currentCardElements = container.querySelectorAll('img.poker-card');
+
+        cards.forEach((card, index) => {
+          if (index < currentCardElements.length) {
+            currentCardElements[index].src = `/static/${card.toUpperCase()}.png`;
+            currentCardElements[index].classList.add('card-static');
+          }
+
+          else {
+            const img = document.createElement('img');
+            const cardName = card.toUpperCase();
+            img.src = `/static/${cardName}.png`;
+            img.className = 'poker-card';
+            img.alt = cardName;
+
+            if (index >= 3) {
+              img.style.animationDelay = '0s';
+            }
+
+            container.appendChild(img);
+            playSound('card');
+          }
+        });
       }
 
 
@@ -614,46 +621,79 @@
       function updateAllPlayers(playersList) {
         console.log("👥 Пересчитываем игроков за столом...");
 
-        for (let i = 1; i <= 9; i++) {
-          const seat = document.querySelector(`.pos-${i}`);
-          if (seat) {
-            seat.className = `player-seat pos-${i} status-empty`; 
-            seat.dataset.userid = '';
-            seat.innerHTML = '<span class="empty-seat-text">Свободно</span>';
-            seat.style.opacity = "1";
-            seat.style.filter = "none";
-          }
-        }
-
         const myPlayer = playersList.find(p => p.user_id === "{{ user.user_id }}");
         const heroSeatIdx = myPlayer ? myPlayer.seat_index : 0;
 
+        const occupiedSeats = [];
+
         playersList.forEach(p => {
           if (p.user_id === "{{ user.user_id }}") return;
-          const oppSeatIdx = p.seat_index;
-          const relativePos = (oppSeatIdx - heroSeatIdx - 1 + 10) % 10;
+          const relativePos = (p.seat_index - heroSeatIdx - 1 + 10) % 10;
 
           if (relativePos >= 0 && relativePos < 9) {
-            const seatElement = document.querySelector(`.pos-${relativePos + 1}`);
-            if (seatElement) {
-              seatElement.classList.remove('status-empty');
-              seatElement.dataset.userid = p.user_id;
-              seatElement.dataset.seatindex = p.seat_index;
+            const posClass = `.pos-${relativePos + 1}`;
+            occupiedSeats.push(posClass);
 
-              seatElement.innerHTML = `
-                <div class="opponent-hand"></div>
-                <span class="player-name">${p.name}</span>
-                <span class="player-chips">${p.chips} 💰</span>
-              `;
+            const seatElement = document.querySelector(posClass);
+
+            if (seatElement) {
+              if (seatElement.dataset.userid !== p.user_id) {
+                seatElement.classList.remove('status-empty');
+                seatElement.dataset.userid = p.user_id;
+                seatElement.dataset.seatindex = p.seat_index;
+
+                seatElement.innerHTML = `
+                  <div class="opponent-hand"></div>
+                  <span class="player-name">${p.name}</span>
+                  <span class="player-chips">${p.chips} 💰</span>
+                  <div class="timer-track"><div class="timer-fill"></div></div>
+                `;
+              } else {
+                const chipsEl = seatElement.querySelector('.player-chips');
+                if (chipsEl) chipsEl.innerText = `${p.chips} 💰`;
+
+                const nameEl = seatElement.querySelector('.player-name');
+                if (nameEl) nameEl.innerText = p.name;
+                seatElement.dataset.seatindex = p.seat_index;
+              }
+
               refreshSeatStatus(seatElement, p.status);
             }
           }
         });
+
+
+        for (let i = 1; i <= 9; i++) {
+          const posClass = `.pos-${i}`;
+          if (!occupiedSeats.includes(posClass)) {
+            const seat = document.querySelector(posClass);
+            if (seat && seat.dataset.userid !== '') {
+              seat.className = `player-seat pos-${i} status-empty`; 
+              seat.dataset.userid = '';
+              seat.innerHTML = '<span class="empty-seat-text">Свободно</span>';
+              seat.style.opacity = "1";
+              seat.style.filter = "none";
+            }
+          }
+        }
+
+
+        if (myPlayer) {
+          const heroNode = document.querySelector('.pos-hero');
+          if (heroNode) {
+            const chipsEl = heroNode.querySelector('.player-chips');
+            if (chipsEl) chipsEl.innerText = `${myPlayer.chips} 💰`;
+
+            refreshSeatStatus(heroNode, myPlayer.status);
+            heroNode.dataset.seatindex = myPlayer.seat_index;
+          }
+        }
       }
-        
+
 
       function renderStaticBets(players) {
         document.querySelectorAll('.player-bet').forEach(bet => bet.remove());
+
         players.forEach(player => {
           if (player.round_contribution && player.round_contribution > 0) {
             const seat = document.querySelector(`.player-seat[data-userid="${player.user_id}"]`);
@@ -661,6 +701,7 @@
               const betDiv = document.createElement('div');
               betDiv.className = 'player-bet';
               betDiv.style.animation = 'none';
+              betDiv.style.transition = 'none';
               betDiv.style.opacity = '1';
 
               betDiv.innerHTML = `
@@ -672,6 +713,153 @@
             }
           }
         });
+      }
+
+
+      function runTurnTimer(seatIndex, durationMs) {
+        document.querySelectorAll('.timer-track').forEach(track => {
+          track.classList.remove('timer-active');
+          const fill = track.querySelector('.timer-fill');
+          if (fill) {
+            fill.style.transition = 'none';
+            fill.style.height = '100%';
+            fill.classList.remove('timer-danger');
+          }
+        });
+
+        if (seatIndex === -1) return;
+
+        const activeSeat = document.querySelector(`.player-seat[data-seatindex="${seatIndex}"]`);
+        if (!activeSeat) return;
+
+        const track = activeSeat.querySelector('.timer-track');
+        const fill = activeSeat.querySelector('.timer-fill');
+        if (!track || !fill) return;
+
+        track.classList.add('timer-active');
+
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            fill.style.transition = `height ${durationMs}ms linear`;
+            fill.style.height = '0%';
+          });
+        });
+
+        if (durationMs > 3000) {
+          setTimeout(() => {
+            if (track.classList.contains('timer-active')) {
+              fill.classList.add('timer-danger');
+            }
+          }, durationMs - 3000);
+        }
+      }
+
+
+      function updateActionPanel(myPlayer, currentTurnSeat, bigBlind) {
+        const panel = document.getElementById('dynamic-action-panel');
+        if (!panel) return;
+
+        // 1. Если нас нет за столом, мы в ситауте, или сейчас НЕ НАШ ХОД - прячем панель
+        if (!myPlayer || myPlayer.status === 'SITTING_OUT' || myPlayer.status === 'FOLDED' || myPlayer.seat_index !== currentTurnSeat) {
+          panel.style.display = 'none';
+          return;
+        }
+
+        // 2. НАШ ХОД! Показываем панель и снимаем блокировки (если были)
+        panel.style.display = 'flex';
+        panel.style.pointerEvents = 'auto';
+        panel.style.opacity = '1';
+
+        // 3. Берем данные от Владоса (он уже всё посчитал!)
+        const toCall = myPlayer.amount_to_call || 0;
+        const minRaise = toCall > 0 ? toCall * 2 : bigBlind;
+
+        // 4. Рендерим кнопки (Сравни со своим старым Jinja-кодом)
+        panel.innerHTML = `
+          <button class="btn btn-fold" onclick="sendPokerAction('FOLD')">FOLD</button>
+
+          ${toCall === 0
+            ? `<button class="btn btn-check" onclick="sendPokerAction('CHECK')">CHECK</button>
+              <button class="btn" style="background-color: #555; cursor: not-allowed;" disabled>CALL</button>`
+            : `<button class="btn" style="background-color: #555; cursor: not-allowed;" disabled>CHECK</button>
+              <button class="btn btn-call" onclick="sendPokerAction('CALL')">CALL (${toCall})</button>`
+          }
+
+          <div class="raise-group">
+            <input type="number" id="raise-amount" value="${minRaise}" step="50" min="${toCall > 0 ? toCall : bigBlind}" />
+            <button class="btn btn-raise-action" onclick="sendPokerAction('RAISE')">RAISE</button>
+          </div>
+
+          <button class="btn btn-allin" onclick="sendPokerAction('ALL_IN')">
+            ALL-IN (${myPlayer.chips})
+          </button>
+        `;
+      }
+
+
+      function clearShowdownUI() {
+        document.querySelectorAll('.hand-name-badge').forEach(b => b.remove());
+        document.querySelectorAll('img.poker-card, img.hand-card').forEach(img => {
+          img.classList.remove('card-dimmed', 'card-winner-rank', 'card-winner-kicker');
+        });
+      }
+
+
+      const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+      let isShowdownRunning = false;
+
+      async function playShowdownSequence(showdownDetails) {
+        if (!showdownDetails || isShowdownRunning) return;
+
+        if (!showdownDetails.payouts || !Array.isArray(showdownDetails.payouts)) return;
+
+        const payouts = showdownDetails.payouts;
+
+        isShowdownRunning = true;
+        console.log(`🎬 Начинаем раздачу наград. Всего выплат: ${payouts.length}`);
+
+        for (const payout of payouts) {
+          clearShowdownUI();
+          document.querySelectorAll('img.poker-card, img.hand-card').forEach(img => img.classList.add('card-dimmed'));
+
+          if (payout.rank_cards && Array.isArray(payout.rank_cards)) {
+            payout.rank_cards.forEach(card => {
+              const el = document.querySelector(`img[src*="${card.toUpperCase()}.png"]`);
+              if (el) {
+                el.classList.remove('card-dimmed');
+                el.classList.add('card-winner-rank');
+              }
+            });
+          }
+
+          if (payout.kicker_cards && Array.isArray(payout.kicker_cards)) {
+            payout.kicker_cards.forEach(card => {
+              const el = document.querySelector(`img[src*="${card.toUpperCase()}.png"]`);
+              if (el) {
+                el.classList.remove('card-dimmed');
+                el.classList.add('card-winner-kicker');
+              }
+            });
+          }
+
+          const winnerSeat = document.querySelector(`.player-seat[data-userid="${payout.user_id}"]`);
+          if (winnerSeat) {
+            const badge = document.createElement('div');
+            badge.className = 'hand-name-badge';
+            const readableName = payout.hand_name;
+            const potType = payout.is_side_pot ? "SIDE POT" : "MAIN POT";
+
+            badge.innerText = `${readableName} | ${potType} (+${payout.amount} 💰)`;
+            winnerSeat.appendChild(badge);
+            playSound('bet');
+          }
+
+          await sleep(8000);
+        }
+
+        await sleep(2000);
+        clearShowdownUI();
+        isShowdownRunning = false;
       }
 
 
@@ -705,29 +893,52 @@
 
                       case 'TABLE_UPDATE':
 
+                          // if (eventData.state !== 'SHOWDOWN') {
+                          //   clearShowdownUI();
+                          // }
+
                           // Обновляем общие цифры
-                          document.getElementById('pot-value').innerText = eventData.pot;
+                          const potEl = document.getElementById('pot-value');
+                          if (potEl) potEl.innerText = eventData.pot;
+
                           redrawCommunityCards(eventData);
                           
                           
                           if (eventData.players) {
+                            const myId = String("{{ user.user_id }}");
+                            const me = eventData.players.find(p => String(p.user_id) === myId);
+
                             updateAllPlayers(eventData.players);
                             renderOpponentCards(eventData.players);
                             renderStaticBets(eventData.players);
+
+                            updateActionPanel(me, eventData.current_turn_seat, eventData.big_blind);
+
+                            if (me && eventData.state === 'WAITING_FOR_PLAYERS') {
+                              checkRebuy(me, eventData.big_blind);
+                            }
+                            
                           }
 
                           updateActiveTurn(eventData.current_turn_seat);
-                          checkRebuy();
 
-                          // Логика фаз игры:
-                          if (eventData.state === 'PRE_FLOP') {
-                              // Начало раздачи! Шпион идет за твоими картами
-                              fetchMyPrivateCards(); 
+                          const timeToAct = eventData.time_to_act_ms || 15000;
+                          runTurnTimer(eventData.current_turn_seat, timeToAct);
+
+                          const activePhases = ['PRE_FLOP', 'FLOP', 'TURN', 'RIVER'];
+
+                          if (activePhases.includes(eventData.state)) {
+                            fetchMyPrivateCards();
                           }
+
                           if (eventData.state === 'SHOWDOWN') {
-                              // Конец раздачи! Срываем маски
-                              renderAllHoleCards(eventData.players);
+                            renderAllHoleCards(eventData.players);
+
+                            if (eventData.showdown_details) {
+                              playShowdownSequence(eventData.showdown_details);
+                            }
                           }
+
                           break;
 
                         
@@ -746,6 +957,8 @@
                           // (Владос должен присылать новый current_turn_seat в этом ивенте!)
                           if (eventData.current_turn_seat !== undefined) {
                               updateActiveTurn(eventData.current_turn_seat);
+                              const newTimeToAct = eventData.time_to_act_ms || 15000;
+                              runTurnTimer(eventData.current_turn_seat, newTimeToAct);
                           }
                           break;
 
@@ -786,18 +999,28 @@
 
       window.addEventListener('DOMContentLoaded', () => {
         console.log("Интерфейс загружен. Все запускаем...");
-        // Не банкрот ли мы еще до старта
-        checkRebuy();
 
-        // Подкключаемся к серверу Владоса
-        connectWebSocket();
+        const metadataNode = document.getElementById('poker-metadata');
+        if (!metadataNode) return;
+        
+        const initialPlayers = JSON.parse(metadataNode.getAttribute('data-players'));
+        const initialState = metadataNode.getAttribute('data-state');
 
-        // 3. (Опционально) Если игра УЖЕ идет при нашем входе - сразу просим свои карты
-        const currentState = "{{ game.state }}";
-        if (currentState === 'PRE_FLOP' || currentState === 'FLOP' || currentState === 'TURN' || currentState === 'RIVER') {
-          console.log("🎲 Игра уже идет. Запрашиваю свои карты...");
+        if (initialPlayers && initialPlayers.length > 0) {
+          updateAllPlayers(initialPlayers);
+        }
+
+        if (initialPlayers && initialPlayers.length > 0) {
+          renderStaticBets(initialPlayers);
+        }
+
+        const activePhases = ['PRE_FLOP', 'FLOP', 'TURN', 'RIVER'];
+        if (activePhases.includes(initialState)) {
           fetchMyPrivateCards();
         }
+        
+        checkRebuy();
+        connectWebSocket();
       });
 
 

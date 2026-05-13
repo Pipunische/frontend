@@ -550,20 +550,20 @@
 @keyframes bet-pop {
   0% {
     opacity: 0;
-    margin-top: 20px;
+    /* margin-top: 20px; */
     transform: scale(0.5);
   }
   100% {
     opacity: 1;
-    margin-top: 40px;
+    /* margin-top: 40px; */
     transform: scale(1);
   }
 }
 
 /* Позиционирование ставок для каждого места (чтобы лежали ближе к центру) */
 .pos-1 .player-bet {
-  bottom: 135px;
-  left: 115%;
+  bottom: 155px;
+  left: 145%;
   transform: translateX(-50%);
 }
 .pos-2 .player-bet {
@@ -575,16 +575,16 @@
   left: 140px;
 }
 .pos-4 .player-bet {
-  top: 80px;
+  top: 120px;
   left: 110px;
 }
 .pos-5 .player-bet {
-  top: 100px;
-  left: 20%;
+  top: 130px;
+  left: 50%;
   transform: translateX(-50%);
 }
 .pos-6 .player-bet {
-  top: 80px;
+  top: 120px;
   right: 110px;
 }
 .pos-7 .player-bet {
@@ -596,12 +596,12 @@
   right: 140px;
 }
 .pos-9 .player-bet {
-  bottom: 135px;
-  right: 115%;
+  bottom: 155px;
+  right: 145%;
   transform: translateX(50%);
 }
 .pos-hero .player-bet {
-  top: -120px;
+  top: -90px;
 
   left: 0;
   right: 0;
@@ -760,4 +760,99 @@
   vertical-align: middle; /* Центровка по линии текста */
   margin-top: -2px; /* Микро-корректировка высоты */
   margin-left: 4px;
+}
+
+/* Трек таймера (Оболочка) */
+.timer-track {
+  position: absolute;
+  top: 10px;
+  right: -16px; /* Вынесли чуть дальше, чтобы не перекрывать рамку */
+  width: 8px; /* Сделали чуть толще для красоты */
+  height: calc(100% - 20px);
+  background: rgba(0, 0, 0, 0.8);
+  border: 1px solid #444;
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity 0.3s;
+  z-index: 25;
+}
+
+/* Бегущая полоска */
+.timer-fill {
+  position: absolute;
+  bottom: 0; /* 🔥 ПРИБИВАЕМ К НИЗУ */
+  left: 0;
+  width: 100%;
+  height: 100%; /* 🔥 JS будет менять это от 100% до 0% */
+  background: #2ecc71;
+  box-shadow: 0 0 8px #2ecc71;
+  border-radius: 3px;
+}
+
+.timer-active {
+  opacity: 1;
+}
+
+.timer-danger {
+  background: #e74c3c !important;
+  box-shadow: 0 0 10px #e74c3c !important;
+}
+
+/* 1. Прячем всё лишнее (эффект "ночи") */
+.card-dimmed {
+  filter: brightness(0.3) grayscale(90%) !important;
+  opacity: 0.5;
+  transition: all 0.6s ease;
+}
+
+/* 2. Золотое сияние для РАНГА (Пара, Сет, Стрит) */
+.card-winner-rank {
+  filter: brightness(1.2) contrast(1.1) !important;
+  box-shadow:
+    0 0 20px gold,
+    0 0 40px orange !important;
+  border: 2px solid gold;
+  transform: translateY(-20px) scale(1.15) !important;
+  z-index: 100 !important;
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+/* 3. Серебряное/мягкое сияние для КИКЕРОВ */
+.card-winner-kicker {
+  filter: brightness(1) !important;
+  box-shadow: 0 0 10px #bdc3c7 !important;
+  border: 1px solid #bdc3c7;
+  transform: translateY(-10px) !important;
+  z-index: 90 !important;
+  opacity: 0.9;
+}
+
+/* 4. Плашка с названием комбинации */
+.hand-name-badge {
+  position: absolute;
+  top: -45px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: linear-gradient(135deg, #f1c40f 0%, #d4ac0d 100%);
+  color: #000;
+  padding: 6px 15px;
+  border-radius: 20px;
+  font-weight: 900;
+  font-size: 13px;
+  text-transform: uppercase;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
+  z-index: 110;
+  white-space: nowrap;
+  animation: badgePop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes badgePop {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 20px) scale(0.5);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
 }
