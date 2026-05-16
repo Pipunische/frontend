@@ -12,7 +12,7 @@ app = FastAPI()
 
 APP_VERSION = int(time.time())
 
-app.add_middleware(SessionMiddleware, secret_key="alexei_pipunesco")
+app.add_middleware(SessionMiddleware, secret_key="alexei_pipunesco", max_age=604800)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
@@ -56,74 +56,79 @@ def page_lobby(request: Request, error: str = None):
     if not current_user:
         return RedirectResponse(url="/login", status_code=303)
 
+    balance_url = f"http://{JAVA_HOST}:8080/api/auth/{current_user['user_id']}/balance"
+    balance_res = java_request("GET", balance_url, request)
+
+    if not balance_res or balance_res.status_code == 401:
+        print("🚨 При обновлении сессии возникли ошибки. Отправляю в login...")
+        request.session.clear()
+        return RedirectResponse(url="/login?error=session_expired", status_code=303)
+
+    if balance_res.status_code == 200:
+        new_balance = balance_res.json().get("wallet_balance")
+        if new_balance is not None:
+            current_user["wallet_balance"] = new_balance
+            request.session["user"] = current_user
+            print(f"💰 Баланс успешно получен: {new_balance}", flush=True)
     
-    try:
-        balance_url = f"http://{JAVA_HOST}:8080/api/auth/{current_user['user_id']}/balance"
-        headers = {"Authorization": f"Bearer {current_user.get('token')}"}
-
-        balance_res = requests.get(balance_url, headers=headers, timeout=2)
-        if balance_res.status_code == 200:
-            fresh_balance = balance_res.json().get("wallet_balance")
-            if fresh_balance is not None:
-                current_user["wallet_balance"] = fresh_balance
-                request.session["user"] = current_user
-                print(f"💰 Баланс успешно гидратирован из Ядра: {fresh_balance}", flush=True)
-        else :
-            print(f"⚠️ Ядро отказало в балансе. Статус: {balance_res.status_code}", flush=True)
-
-    except Exception as e:
-        print(f"⚠️ Обрыв связи с Ядром при запросе баланса: {e}", flush=True)
-
-
     is_down = False
     tables_data = []
 
-    try:
-        response = requests.get(JAVA_URL, timeout=3)
-        if response.status_code == 200:
-            tables_data = response.json()
-        else:
-            is_down = True
-    except Exception as e:
-        print(f"Нет лобби: {e}")
+    tables_res = java_request("GET", JAVA_URL, request)
+
+    if tables_res and tables_res.status_code == 200:
+        tables_data = tables_res.json()
+    else:
+        print(f"🛑 При получении столов произошла ошибка: {tables_res.status_code if tables_res else 'No response'}")
         is_down = True
 
-    context = {"tables": tables_data, "is_server_down": is_down, "user": current_user, "error": error, "java_host": JAVA_HOST}
-    return templates.TemplateResponse(
-        request=request, name="clear_lobby.html", context=context
-    )
+    context = {
+        "tables": tables_data,
+        "is_server_down": is_down,
+        "user": current_user,
+        "user_token": current_user.get("token") or "",
+        "error": error,
+        "java_host": JAVA_HOST,
+        "v": APP_VERSION
+    }
+
+    return templates.TemplateResponse(request=request, name="clear_lobby.html", context=context)
+    
 
 # ребай
 @app.post("/table/{table_id}/rebuy")
-async def rebuy_process(table_id: str, request: Request, amount: int = Form(...)):
+def rebuy_process(table_id: str, request: Request, amount: int = Form(...)):
     user = request.session.get("user")
-    if not user: return {"error": "unauthorized"}
+    if not user: return {"error": "unauthorized", "redirect": "/login"}
 
-    target_url = f"{JAVA_URL}/{table_id}/rebuy" # проверка правильности адреса
-    headers = {"Authorization": f"Bearer {user.get('token')}"} # проврка не ждет ли владос json
+    target_url = f"{JAVA_URL}/{table_id}/rebuy" 
+    payload = {"user_id": user.get("user_id"), "amount": amount}
 
-    try:
-        payload = {"user_id": user.get("user_id"), "amount": amount} # проверить какой тип данных он ждет
-        print(f"🚀 ШЛЮ РЕБАЙ ВЛАДОСУ: {payload}")
-        response = requests.post(target_url, json=payload, headers=headers, timeout=5) 
-        print(f"📥 ОТВЕТ ВЛАДОСА: Статус {response.status_code}, Текст: {response.text}")
+    print(f"🚀 ШЛЮ РЕБАЙ НА БЕКЕНД: {payload}", flush=True)
 
-        if response.ok:
-            print(f"Статус от Ядра: {response.status_code}, Текст: {response.text}")
-            data = response.json() # что возвращает владос
+    response = java_request("POST", target_url, request, json_data=payload)
 
-            user["wallet_balance"] = data.get("wallet_balance")
-            user["chips"] = data.get("chips", user.get("chips", 0))
+    if not response or response.status_code == 401:
+        return {"redirect": "/login?error=session_expired"}
 
-            request.session["user"] = user
-            print(f"Ребай на {amount} успешен для {user.get('name')}")
-            return {"status": "success"} # лог js скрипту
-        else:
-            print("ХУЙ ТЕБЕ")
-            return {"error": f"ядро отказало: {response.text}"}
-    except Exception as e:
-        print(f"ошибка ребая {e}")
-        return {"error": "Connection lost"}
+    if response.ok:
+        data = response.json()
+        user["wallet_balance"] = data.get("wallet_balance")
+        user["chips"] = data.get("chips", user.get("chips", 0))
+        request.session["user"] = user
+
+        print(f"✅ Ребай на {amount} прошел успешно для {user.get('name')}", flush=True)
+        return {"status": "success"}
+
+    else:
+        error_text = "Unknown error"
+        try:
+            error_text = response.json().get("error", response.text)
+        except:
+            error_text = response.text
+        print(f"❌ БЕКЕНД ОТКАЗАЛ В РЕБАЕ: {error_text}", flush=True)
+        return {"error": error_text}
+
 
 @app.get("/login", response_class=HTMLResponse)
 def page_login(request: Request):
@@ -132,36 +137,32 @@ def page_login(request: Request):
 
 @app.post("/login")
 def login_process(request: Request, login: str = Form(...), password: str = Form(...)): 
-    print(f"Зашел логин:: {login}, пароль: [скрыто]")
-
+    print(f"🔑 Игрок с логином {login} пытается зайти", flush=True)
     login_url = f"http://{JAVA_HOST}:8080/api/auth/login"
 
     try:
         response = requests.post(login_url, json={"login": login, "password": password}, timeout=3) 
 
-        if response.status_code == 200:
-            
+        if response.status_code == 200:         
             user_data = response.json()
-            token = user_data.get("token")
-
-            print("Данные от сервера: ", user_data)
             
             request.session["user"] = {
                 "user_id": str(user_data.get("user_id")),
                 "name": user_data.get("nickname"),
                 "wallet_balance": user_data.get("wallet_balance"),
-                "chips": 3000,
-                "token": token
+                "token": user_data.get("access_token"),
+                "refresh_token": user_data.get("refresh_token")
             }
 
+            print(f"🥷 Игрок {user_data.get('nickname')} успешно залогинился. Данные игрока:", user_data)
             return RedirectResponse(url="/lobby", status_code=303)
+
         else: 
-
             error_message = "Неверный логин или пароль"
-            return templates.TemplateResponse(request=request, name="login.html", context={"error": error_message})    
-    except Exception as e:
+            return templates.TemplateResponse(request=request, name="login.html", context={"error": error_message})  
 
-        print(f"Ошибка соединения с ядром: {e}")
+    except Exception as e:
+        print(f"🤣 БЕКЕНД УПАЛ ПРИ ЛОГИНЕ: {e}")
         return templates.TemplateResponse(request=request, name="login.html")
 
 
@@ -172,7 +173,6 @@ def page_registration(request: Request):
 @app.post("/register")
 def registration_process(request: Request, nickname: str = Form(...), login: str = Form(...), password: str = Form(...)):
     print(f"Попытка регистрации с ником: {nickname} и логином {login}") 
-
     register_url = f"http://{JAVA_HOST}:8080/api/auth/register"
 
     try:
@@ -180,81 +180,116 @@ def registration_process(request: Request, nickname: str = Form(...), login: str
         response = requests.post(register_url, json=payload, timeout=3)
 
         if response.status_code == 200:
-
             user_data = response.json()
-            token = user_data.get("token")
-            print("Регистрация прошла успешно", user_data)
 
             request.session["user"] = {
                 "user_id": str(user_data.get("user_id")),
                 "name": user_data.get("nickname"),
-                "wallet_balance": user_data.get("wallet_balance"),
-                "chips": 3000,
-                "token": token
+                "wallet_balance": user_data.get("wallet_balance", 0),
+                "token": user_data.get("access_token"),
+                "refresh_token": user_data.get("refresh_token")
             }
-
+            
+            print(f"🥷 Игрок {user_data.get('nickname')} успешно прошел регистрацию. Данные игрока:", user_data)
             return RedirectResponse(url="/lobby", status_code=303)
-        else:
 
-            error_message = f"Ошибка регистрации {response.text}"
-            return templates.TemplateResponse(request=request, name="registration.html", context={"error": error_message})
+        else:
+            error_text = "Ошибка регистрации"
+            try: error_text = response.json().get("error", response.text)
+            except: error_text = response.text
+            return templates.TemplateResponse(request=request, name="registration.html", context={"error": error_text})
 
     except Exception as e:
+        print(f"🤣 БЕКЕНД УПАЛ ПРИ РЕГИСТРАЦИИ: {e}" )
+        return templates.TemplateResponse(request=request, name="registration.html", context={"error": "Бек-сервер недоступен"})    
 
-        print(f"Ошибка соединения с ядром: {e}" )
-        return templates.TemplateResponse(request=request, name="registration.html", context={"error": "Ошибка сервера при регистрации"})
+
+def java_request(method, url, request: Request, json_data=None, params=None):
+    user = request.session.get("user")
+    if not user:
+        return None
+    
+    headers = {"Authorization": f"Bearer {user.get('token')}"}
+
+    res = requests.request(method, url, json=json_data, params=params, headers=headers, timeout=5)
+
+    if res.status_code == 401 and user.get("refresh_token"):
+        print(f"🔄 Access Token для {user['name']} истек. Попытка динамического обновления...")
+        refresh_url = f"http://{JAVA_HOST}:8080/api/auth/refresh"
+        refresh_payload = {"refresh_token": user.get("refresh_token")}
+
+        refresh_res = requests.post(refresh_url, json=refresh_payload, timeout=3)
+
+        if refresh_res.status_code == 200:
+            new_tokens = refresh_res.json()
+            user["token"] = new_tokens.get("access_token")
+
+            if new_tokens.get("refresh_token"):
+                user["refresh_token"] = new_tokens.get("refresh_token")
+
+            request.session["user"] = user
+            print("✅ Токен успешно обновлен. Пробую повторить запрос...")
+
+            headers["Authorization"] = f"Bearer {user['token']}"
+            return requests.request(method, url, json=json_data, params=params, headers=headers, timeout=5)
+        
+        else:
+            print("🚨 Refresh Token истек - сессия закончена.")
+            request.session.clear()
+            return refresh_res
+
+    return res
+    
 
 
 @app.post("/table/{table_id}/leave")
 def leave_table(request: Request, table_id: str, user_id: str = Form(None)):
-
     user = request.session.get("user")
-
     action_user_id = user.get("user_id") if user else user_id
+    user_name = user.get('name') if user else "Spectator"
 
     if not action_user_id:
-        print("Неизвестный игрок пытается выйти.")
         return RedirectResponse(url="/login", status_code=303)   
     
     target_url= f"{JAVA_URL}/{table_id}/leave"
+    payload = {"user_id": action_user_id}
 
-    try:
-        payload = {"user_id": action_user_id}
-        headers = {"Authorization": f"Bearer {user.get('token')}"} if user else {} 
+    print(f"🏃 Игрок с ником {user_name} запрашивает выход из стола {table_id}", flush=True)
 
-        leave_response = requests.post(target_url, json=payload, headers=headers, timeout=2)
+    response = java_request("POST", target_url, request, json_data=payload)
 
-        print(f"Игрок {action_user_id} встал из-за стола {table_id}") 
-        if leave_response.status_code == 200:
-            print("Успешно вышел")
-        else:
-            print(f"Непонятная ошибка, status_code {leave_response.status_code}")        
-    except Exception as e:
-        print(f"Ошибка при выходе из-за стола {e}")
+    if response and response.ok:
+        print(f"✅ Игрок с ником {user_name} успешно вышел со стола {table_id} в lobby", flush=True)
+    else:
+        status = response.status_code if response else "No response"
+        print(f"🚫 БЕКЕНД НЕ ПОДТВЕРДИЛ ВЫХОД ИГРОКА С НИКОМ {user_name}. (Статус {status}), но игрок все равно был перемещен в lobby", flush=True)
 
     return {"status": "success", "redirect": "/lobby"}
 
 
 @app.get("/logout")
-async def logout(request: Request):
-
+def logout(request: Request):
     user = request.session.get("user")
+
     if user:
+        user_name = user.get('name', 'Unknown')
+        print(f"🚪 Игрок с ником {user_name} пытается закончить сессию...", flush=True)
+
+        logout_url = f"http://{JAVA_HOST}:8080/api/auth/logout"
+
         try:
-            headers = {"Authorization": f"Bearer {user.get('token')}"}
-            logout_response = requests.post(f"http://{JAVA_HOST}:8080/api/auth/logout", json={"user_id": user.get('user_id')}, headers=headers, timeout=2)
-            if logout_response.status_code == 200:
-                print("Успешно вышли")
+            logout_response = java_request("POST", logout_url, request, json_data={"user_id": user.get('user_id')})
+            if logout_response and logout_response.status_code == 200:
+                print(f"🥷 Игрок с ником {user_name} успешно закончил сессию.")
             else:
-                print(f"Непонятная ошибка, status_code {logout_response.status_code}")
+                status = logout_response.status_code if logout_response else "No Response"
+                print(f"По неизвестной причине игрок с ником {user_name} не смог закончить сессию, status_code {status}")
         except Exception as e:
-            print(f"Невозможность выхода {e}")
+            print(f"🚫 БЕК-СЕРВЕР НЕ В СОСТОЯНИИ ОБРАБАТЫВАТЬ ЗАПРОСЫ {e}")
 
     request.session.clear()
-    print("Игрок вышел из игры")
+    print("👌 BFF сессия была очищена, а также был произведен редирект на login", flush=True)
     return RedirectResponse(url="/login", status_code=303)
-
-
 # --------------------------------------------------------------------
 
 
@@ -265,139 +300,121 @@ def page_table(request: Request, table_id: str, buy_in: int = 0):
     if not MY_USER:
         return RedirectResponse(url="/login", status_code=303)
 
-    headers = {"Authorization": f"Bearer {MY_USER.get('token')}"}
     base_table_url = f"{JAVA_URL}/{table_id}"
+
     try:
-        response = requests.get(base_table_url, headers=headers, timeout=3)
+        response = java_request("GET", base_table_url, request)
+
+        if not response or response.status_code == 401:
+            request.session.clear()
+            return RedirectResponse(url="/login?error=session_expired", status_code=303)
+
         if response.status_code != 200:
             return RedirectResponse(url="/lobby", status_code=303)
-
+    
         game_state = response.json()
-        my_id = str(MY_USER.get("user_id"))     
-           
+        my_id = str(MY_USER.get("user_id"))
         current_player_id = [str(p.get("user_id")) for p in game_state.get("players", [])]
 
         if my_id not in current_player_id:
+            if buy_in > 0 and request.headers.get("accept") != "application/json":
+                min_required = game_state.get("min_buy_in", 0)
+                wallet = int(MY_USER.get("wallet_balance", 0))
 
-            print(f"Игрока {MY_USER.get('name')} нет за столом, садимся")
-            min_required = game_state.get("min_buy_in", 0)
-            wallet = int(MY_USER.get("wallet_balance", 0))
+                if wallet >= min_required:
 
-            if wallet >= min_required:
+                    print(f"🚀 Игрок {MY_USER['name']} пытается сесть за стол с buy_in: {buy_in}")
 
-                final_buy_in = buy_in if buy_in >= min_required else min_required
-                print(f"Игрок {MY_USER.get('name')} садится за стол с байином {final_buy_in}")
+                    final_buy_in = buy_in if buy_in >= min_required else min_required
+                    join_data = {"user_id": my_id, "chips": final_buy_in, "token": MY_USER.get("token")}
+                    join_res = java_request("POST", f"{base_table_url}/join", request, json_data=join_data)
 
-                join_data = {
-                    "user_id": my_id,
-                    "chips": final_buy_in,
-                    "token": MY_USER.get("token")
-                }    
-        
-                headers = {"Authorization": f"Bearer {MY_USER.get('token')}"}
-                join_response = requests.post(f"{base_table_url}/join", json=join_data, headers=headers, timeout=2)
-
-                if join_response.status_code == 200:
-
-                    print("Успешная посадка")
-                    game_state = requests.get(base_table_url, headers=headers, timeout=3).json()
+                    if join_res and join_res.status_code == 200:
+                        print("✅ Успешная посадка")
+                        game_state = java_request("GET", base_table_url, request).json()
+                    else:
+                        return RedirectResponse(url="/lobby?error=join_failed", status_code=303)
 
                 else:
-
-                    print(f"Владос не дал сесть: {join_response.status_code}")
-                    return RedirectResponse(url="/lobby?error=join_failed", status_code=303)
+                    print(f"⚠️ У игрока {MY_USER['name']} недостаточно средств для данного стола.")
+                    return RedirectResponse(url="/lobby?error=no_money", status_code=303)
 
             else:
+                if request.headers.get("accept") == "application/json":
+                    return JSONResponse(content={"error": "not_at_table", "redirect": "/lobby"})
+                return RedirectResponse(url="/lobby", status_code=303)
 
-                print(f"Игрок {MY_USER.get('name')} бомж. Кошелек: {wallet}, Надо: {min_required}")
-                return RedirectResponse(url="/lobby?error=no_money", status_code=303)
-        
-        players_info = game_state.get("players", [])
-        print("Игроки:", players_info)
+        dealer_idx = game_state.get("dealer_seat", -1)
+        active_idx = game_state.get("current_turn_seat", -1)
+        community_cards = game_state.get("community_cards", [])
+        table_name = game_state.get("table_name")
 
-    except Exception as e:
-        print(f"Ошибка: {e}")
-        return RedirectResponse(url=f"/lobby/{table_id}", status_code=303)
+        my_player = None
+        my_cards = []
+        others_raw = []
 
-    # Логика стола
+        for p in game_state.get("players", []):
+            seat = p.get("seat_index", -1)
+            p["is_dealer"] = (seat == dealer_idx)
+            p["is_active_turn"] = (seat == active_idx)
+            p["round_contribution"] = p.get("round_contribution", 0)
 
-    dealer_idx = game_state.get("dealer_seat", -1)
-    active_idx = game_state.get("current_turn_seat", -1)
-    community_cards = game_state.get("community_cards", [])
-    table_name = game_state.get("table_name")
+            real_cards = extract_cards(p)
 
-    my_player = None
-    my_cards = []
-    # Временный список для остальных
-    others_raw = []
-
-    for p in game_state.get("players", []):
-        seat = p.get("seat_index", -1)
-
-        p["is_dealer"] = (seat == dealer_idx)
-        p["is_active_turn"] = (seat == active_idx)
-        p["round_contribution"] = p.get("round_contribution", 0)
-
-        real_cards = extract_cards(p)
-
-        if str(p.get("user_id")) == str(MY_USER.get("user_id")):
-            my_player = p
-            my_cards = real_cards
-        else:   
-            state = game_state.get("state")
-            if state == "WAITING_FOR_PLAYERS":
-                p["cards"] = []
-            elif state == "SHOWDOWN":             
-                p["cards"] = real_cards
+            if str(p.get("user_id")) == my_id:
+                my_player = p
+                my_cards = real_cards
             else:
-                p["cards"] = ["card_back", "card_back"]
-            others_raw.append(p)
-    
-    # Делаем рассадку
-    ordered_others = [None] * 9
+                state = game_state.get("state")
+                if state == "SHOWDOWN":
+                    p["cards"] = real_cards
+                elif state == "WAITING_FOR_PLAYERS":
+                    p["cards"] = []
+                else:
+                    p["cards"] = ["card_back", "card_back"]
+                others_raw.append(p)
 
-    if my_player:
-        hero_seat = my_player.get("seat_index", 0)
-        # Пересаживаем на новые места
-        for p in others_raw:
-            opp_seat = p.get("seat_index", 0)
-            # Формула сдвига
-            relative_pos = (opp_seat - hero_seat - 1) % 10
-            if 0 <= relative_pos < 9:
-                ordered_others[relative_pos] = p
-    else:
-        # Если зашел как зритель выводим как есть 
-        for p in others_raw:
-            seat = p.get("seat_index", 0)
-            if 0 <= seat < 9:
-                ordered_others[seat] = p
+        ordered_others = [None] * 9
+        if my_player:
+            hero_seat = my_player.get("seat_index", 0)
+            for p in others_raw:
+                opp_seat = p.get("seat_index", 0)
+                relative_pos = (opp_seat - hero_seat - 1 + 10) % 10
+                if 0 <= relative_pos < 9:
+                    ordered_others[relative_pos] = p
+        else:
+            for p in others_raw:
+                seat = p.get("seat_index", 0)
+                if 0 <= seat < 9:
+                    ordered_others[seat] = p
 
-    
+        context = {
+            "my_player": my_player,
+            "ordered_others": ordered_others,
+            "game": game_state,
+            "table_id": table_id,
+            "table_name": table_name,
+            "user": MY_USER,
+            "user_token": MY_USER.get("token") or "",
+            "my_cards": my_cards,
+            "community_cards": community_cards,
+            "java_host": JAVA_HOST,
+            "v": APP_VERSION
+        }
 
-    context = {
-        "my_player": my_player,
-        "ordered_others": ordered_others,   
-        "game": game_state,
-        "table_id": table_id,
-        "table_name": table_name,
-        "user": MY_USER,
-        "my_cards": my_cards,
-        "community_cards": community_cards,
-        "java_host": JAVA_HOST,
-        "v": APP_VERSION
-    }
+        if request.headers.get("accept") == "application/json":
+            json_data = {k: v for k, v in context.items() if k != "request"}
+            return JSONResponse(content=json_data)
 
-    if request.headers.get("accept") == "application/json":
-    # Создаем копию контекста для JSON, но удаляем из неё объект 'request' 
-    # (потому что JSONResponse не умеет превращать объекты FastAPI в текст)
-        json_data = {k: v for k, v in context.items() if k != "request"}
-        return JSONResponse(content=json_data)
+        return templates.TemplateResponse(name="clear_index.html", context=context, request=request)
 
-    return templates.TemplateResponse(name="clear_index.html", context=context, request=request)
-
+    except Exception as e:  
+        print(f"💥 Стол упал: {e}", flush=True)
+        return RedirectResponse(url="/lobby", status_code=303)
+ 
 
 @app.post("/table/{table_id}/action")
-async def handle_action_(table_id: str, action: ActionRequest, request: Request):
+def handle_action_(table_id: str, action: ActionRequest, request: Request):
 
     MY_USER = request.session.get("user")
     if not MY_USER:
@@ -405,32 +422,21 @@ async def handle_action_(table_id: str, action: ActionRequest, request: Request)
 
     target_url = f"{JAVA_URL}/{table_id}/action"
     payload = action.model_dump()
-    print(f"📡 ОТПРАВКА В JAVA: URL={target_url} | JSON={payload}", flush=True)
-    try:
-        print(f"Шлем java по адрессу: {target_url}")
+    print(f"📡 ВХОДЯЩИЙ ЭКШЕН: {action.type} от {MY_USER['name']}", flush=True)
 
-        headers = {"Authorization": f"Bearer {MY_USER.get('token')}"}        
-        response = requests.post(target_url, json=action.model_dump(), headers=headers, timeout=5)
-        if response.status_code != 200:
+    response = java_request("POST", target_url, request, json_data=payload)
 
-            error_text = "Unknown error"
-            try:
-                data = response.json()
-                error_text = data.get("error", response.text)
-            except Exception:
-                error_text = response.text
-            
-            print(f"🚨 ОШИБКА JAVA ({response.status_code}): {error_text}", flush=True)
+    if not response or response.status_code == 401:
+        return {"redirect": "/login?error=session_expired"}
 
-            return {
-                "error": f"java error {response.status_code}",
-                "detail": response.text,
-            }
-        print("Ставка успешно принята Джавой!")
-        return response.json()
-    except Exception as e:
-        print(f"Обрыв связи при ставке: {e}")
-        return {"error": "Connection lost", "detail": str(e)}
+    if response.status_code != 200:
+        error_text = "Unknown error"
+        try:
+            error_text = response.json().get("error", response.text)
+        except:
+            error_text = response.text
+        print(f"🚨 ОТКАЗ ЯДРА НА ДЕЙСТВИЕ ({response.status_code}): {error_text}", flush=True)
+        return {"error": f"java error {response.status_code}", "detail": error_text}
 
-
-# новый функционал
+    print(f"✅ Действие {action.type} успешно обработано Ядром", flush=True)
+    return response.json()

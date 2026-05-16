@@ -132,9 +132,9 @@
             {{ my_player.chips if my_player else user.chips }} 💰
           </span>
 
-          <span class="player-chips" style="color: #f1c40f; font-size: 12px; opacity: 0.8;">
+          <!-- <span class="player-chips" style="color: #f1c40f; font-size: 12px; opacity: 0.8;">
             Кошелек: {{ user.wallet_balance }} 🪙
-          </span>
+          </span> -->
 
           <div class="timer-track"><div class="timer-fill"></div></div>
 
@@ -179,7 +179,7 @@
 
       // Идентификация
       const tableId = window.location.pathname.split("/").pop();
-      const userToken = "{{ user.token }}";
+      const userToken = "{{ user_token }}";
 
       // Сетевые настройки
       const javaHost = "{{ java_host }}";
@@ -265,8 +265,10 @@
 
           const result = await response.json();
 
-          // Обработка форс-мажора
           if (result.redirect) {
+            if (result.redirect.includes('session_expired')) {
+              alert("⚠️ Сессия завершена. Требуется перезайти в аккаунт.");
+            }
             window.location.href = result.redirect;
             return;
           }
@@ -310,43 +312,59 @@
       }
 
       let rebuyCountdownInterval = null;
+      let currentSitOutDeadline = 0; 
       
       function checkRebuy(myPlayerState, tableBigBlind) {
         if (!myPlayerState) return;
+
         const chips = parseInt(myPlayerState.chips);
         const bigBlind = parseInt(tableBigBlind);
+
         const modal = document.getElementById('rebuy-modal');
-        const input = document.getElementById('rebuy-amount');
+        const input = document.getElementById('rebuy-amount'); 
         const timerText = document.getElementById('rebuy-timer-text');
 
-        if (chips < bigBlind) {
-          console.log("🚨 Фишек меньше блайнда! Открываю окно докупки...");
+        const deadline = myPlayerState.sit_out_deadline;
 
-
-          if (modal && input && timerText) {
-            input.value = bigBlind * 10;
-            input.min = bigBlind; 
-            modal.style.display = 'flex';
-
-            clearInterval(rebuyCountdownInterval);
-
-            let timeLeft = 30;
-            timerText.innerText = timeLeft;
-
-            rebuyCountdownInterval = setInterval(() => {
-              timeLeft--;
-              timerText.innerText = timeLeft;
-
-              if (timeLeft <= 0) {
-                clearInterval(rebuyCountdownInterval);
-                console.log("⏰ Время на ребай вышло! Уходим в лобби...");
-                leaveCurrentTable(true);
-              }
-            }, 1000);
-          }
-        } else {
+        if (chips >= bigBlind) {
           if (modal) modal.style.display = 'none';
-          clearInterval(rebuyCountdownInterval);
+          if (rebuyCountdownInterval) {
+            clearInterval(rebuyCountdownInterval);
+            rebuyCountdownInterval = null;
+          }
+          currentSitOutDeadline = 0;
+          return; 
+        }
+
+        if (modal && input) {
+          input.value = bigBlind;
+          input.min = bigBlind;
+          modal.style.display = 'flex';
+        }
+
+        if (deadline && deadline > 0) {
+          if (currentSitOutDeadline === deadline) return;
+
+          currentSitOutDeadline = deadline;
+          console.log("🚨 Банкрот! Точка невозврата:", currentSitOutDeadline);
+
+          if (rebuyCountdownInterval) clearInterval(rebuyCountdownInterval);
+
+          rebuyCountdownInterval = setInterval(() => {
+            const timeLeftMs = currentSitOutDeadline - Date.now();
+            const secondsLeft = Math.max(0, Math.ceil(timeLeftMs / 1000));
+
+            if (timerText) timerText.innerText = secondsLeft;
+
+            if (secondsLeft <= 0) {
+              clearInterval(rebuyCountdownInterval);
+              currentSitOutDeadline = 0;
+              console.log("⏰ Время на ребай вышло! Ждем кика от Владоса.");
+              leaveCurrentTable(true);
+            }
+          }, 1000);
+        } else {
+          if (timerText) timerText.innerText = "∞";
         }
       }
 
@@ -367,6 +385,15 @@
           });
 
           const result = await response.json();
+
+          if (result.redirect) {
+            if (result.redirect.includes('session_expired')) {
+              alert("⚠️ Сессия окончательно завершена. Требуется повторный вход.");
+            }
+            window.location.href = result.redirect;
+            return;
+          }
+
           if (response.ok && !result.error) {
             console.log("Докупка одобрена. Закрывая окно.");
 
@@ -379,7 +406,7 @@
 
             document.getElementById('rebuy-modal').style.display = 'none';
           } else {
-            alert("Банк отказал: " + (result.error || "Недостаточно средств в кошельке"));
+            alert(result.error || "Недостаточно средств");
           }
         } catch (err) {
           console.error("Ошибка при ребае:", err);
@@ -443,6 +470,16 @@
             headers: { 'Accept': 'application/json' }
           });
           const data = await response.json();
+
+
+
+          if (data.redirect) {
+            if (data.redirect.includes('session_expired')) {
+              alert("Срок дейтсвия вашей сессии истек. Для продления перезайдите в аккаунт. Благодарим за усидчивость!");
+            }
+            window.location.href = data.redirect;
+            return;
+          }
           // Достаем мои карты из my_cards
           const cards = data.my_cards;
           if (cards && cards.length > 0) {
@@ -772,7 +809,10 @@
 
         // 3. Берем данные от Владоса (он уже всё посчитал!)
         const toCall = myPlayer.amount_to_call || 0;
+        const myChips = myPlayer.chips || 0;
         const minRaise = toCall > 0 ? toCall * 2 : bigBlind;
+
+        const isCallAllIn = (toCall >= myChips);
 
         // 4. Рендерим кнопки (Сравни со своим старым Jinja-кодом)
         panel.innerHTML = `
@@ -781,8 +821,9 @@
           ${toCall === 0
             ? `<button class="btn btn-check" onclick="sendPokerAction('CHECK')">CHECK</button>
               <button class="btn" style="background-color: #555; cursor: not-allowed;" disabled>CALL</button>`
-            : `<button class="btn" style="background-color: #555; cursor: not-allowed;" disabled>CHECK</button>
-              <button class="btn btn-call" onclick="sendPokerAction('CALL')">CALL (${toCall})</button>`
+            : `<button class="btn btn-call" onclick="sendPokerAction('CALL')" ${isCallAllIn ? 'style="background-color: #e74c3c;"' : ''}>
+              ${isCallAllIn ? 'CALL (ALL-IN)' : `CALL (${toCall})`}
+              </button>`
           }
 
           <div class="raise-group">
@@ -791,17 +832,25 @@
           </div>
 
           <button class="btn btn-allin" onclick="sendPokerAction('ALL_IN')">
-            ALL-IN (${myPlayer.chips})
+            ALL-IN (${myChips})
           </button>
         `;
       }
 
 
-      function clearShowdownUI() {
+      function clearShowdownUI(clearCards = false) {
         document.querySelectorAll('.hand-name-badge').forEach(b => b.remove());
+
         document.querySelectorAll('img.poker-card, img.hand-card').forEach(img => {
           img.classList.remove('card-dimmed', 'card-winner-rank', 'card-winner-kicker');
         });
+
+        if (clearCards) {
+          document.querySelectorAll('.opponent-hand, .my-hand').forEach(hand => {
+            hand.innerHTML = '';
+          });
+          console.log("🧹 Карты полностью удалены (Генеральная уборка).");
+        }
       }
 
 
@@ -809,36 +858,48 @@
       let isShowdownRunning = false;
 
       async function playShowdownSequence(showdownDetails) {
-        if (!showdownDetails || isShowdownRunning) return;
+        if (!showdownDetails || !showdownDetails.payouts || isShowdownRunning) return;
 
-        if (!showdownDetails.payouts || !Array.isArray(showdownDetails.payouts)) return;
+        const rawPayouts = showdownDetails.payouts;
 
-        const payouts = showdownDetails.payouts;
+        const uniqueWinners = new Set(rawPayouts.map(p => p.user_id));
+        let finalPayouts = [];
+
+        if (uniqueWinners.size === 1) {
+          console.log("🥇 Один победитель забирает всё! Агрегируем...");
+          const winnerId = Array.from(uniqueWinners)[0];
+          const totalAmount = rawPayouts.reduce((sum, p) => sum + p.amount, 0);
+
+          finalPayouts = [{
+            ...rawPayouts[0],
+            amount: totalAmount,
+            pot_label: "TOTAL POT"
+          }];
+        } else {
+          console.log("⚔️ Несколько победителей. Запускаю поочередную выплату...");
+          finalPayouts = rawPayouts.map(p => ({
+            ...p,
+            pot_label: p.is_side_pot ? "SIDE POT" : "MAIN POT"
+          }));
+        }
 
         isShowdownRunning = true;
-        console.log(`🎬 Начинаем раздачу наград. Всего выплат: ${payouts.length}`);
 
-        for (const payout of payouts) {
-          clearShowdownUI();
+        for (const payout of finalPayouts) {
+          clearShowdownUI(false);
           document.querySelectorAll('img.poker-card, img.hand-card').forEach(img => img.classList.add('card-dimmed'));
 
-          if (payout.rank_cards && Array.isArray(payout.rank_cards)) {
+          if (payout.rank_cards) {
             payout.rank_cards.forEach(card => {
               const el = document.querySelector(`img[src*="${card.toUpperCase()}.png"]`);
-              if (el) {
-                el.classList.remove('card-dimmed');
-                el.classList.add('card-winner-rank');
-              }
+              if (el) { el.classList.remove('card-dimmed'); el.classList.add('card-winner-rank'); }
             });
           }
 
-          if (payout.kicker_cards && Array.isArray(payout.kicker_cards)) {
+          if (payout.kicker_cards) {
             payout.kicker_cards.forEach(card => {
               const el = document.querySelector(`img[src*="${card.toUpperCase()}.png"]`);
-              if (el) {
-                el.classList.remove('card-dimmed');
-                el.classList.add('card-winner-kicker');
-              }
+              if (el) { el.classList.remove('card-dimmed'); el.classList.add('card-winner-kicker'); }
             });
           }
 
@@ -846,19 +907,17 @@
           if (winnerSeat) {
             const badge = document.createElement('div');
             badge.className = 'hand-name-badge';
-            const readableName = payout.hand_name;
-            const potType = payout.is_side_pot ? "SIDE POT" : "MAIN POT";
-
-            badge.innerText = `${readableName} | ${potType} (+${payout.amount} 💰)`;
+            badge.innerText = `${payout.hand_name} | ${payout.pot_label} (+${payout.amount} 💰)`;
             winnerSeat.appendChild(badge);
             playSound('bet');
           }
 
-          await sleep(8000);
+          const pauseTime = uniqueWinners.size === 1 ? 6000 : 3500;
+          await sleep(pauseTime);
         }
 
         await sleep(2000);
-        clearShowdownUI();
+        clearShowdownUI(true);
         isShowdownRunning = false;
       }
 
@@ -866,6 +925,13 @@
       // === ГЛАВНЫЙ СЕТЕВОЙ ЦЕНТР (ДИРИЖЕР) ===
 
       function connectWebSocket() {
+
+        if (!userToken || userToken === "None" || userToken.trim() === "") {
+          console.error("🚫 Соединение отменено: отсутствует токен авторизации.");
+          window.location.href = "/login?error=session_expired";
+          return;
+        }
+
           // Инициализируем соединение
           let socket = new SockJS(wsUrl);
           stompClient = Stomp.over(socket);
@@ -893,58 +959,67 @@
 
                       case 'TABLE_UPDATE':
 
-                          // if (eventData.state !== 'SHOWDOWN') {
-                          //   clearShowdownUI();
-                          // }
+                        if (eventData.state === 'WAITING_FOR_PLAYERS') {
+                          clearShowdownUI(true);
+                          myLastCardsString = "";
+                          console.log("🧹 Стол подготовлен к новой раздаче.");
+                        }
 
-                          // Обновляем общие цифры
-                          const potEl = document.getElementById('pot-value');
-                          if (potEl) potEl.innerText = eventData.pot;
+                        const potEl = document.getElementById('pot-value');
+                        if (potEl) potEl.innerText = eventData.pot;
+                        redrawCommunityCards(eventData);
 
-                          redrawCommunityCards(eventData);
-                          
-                          
-                          if (eventData.players) {
-                            const myId = String("{{ user.user_id }}");
-                            const me = eventData.players.find(p => String(p.user_id) === myId);
+                        if (eventData.players) {
+                          const myId = String("{{ user.user_id }}");
+                          const me = eventData.players.find(p => String(p.user_id) === myId);
 
-                            updateAllPlayers(eventData.players);
-                            renderOpponentCards(eventData.players);
-                            renderStaticBets(eventData.players);
+                          updateAllPlayers(eventData.players);
+                          renderOpponentCards(eventData.players);
+                          renderStaticBets(eventData.players);
+                          updateActionPanel(me, eventData.current_turn_seat, eventData.big_blind);
+                        
 
-                            updateActionPanel(me, eventData.current_turn_seat, eventData.big_blind);
+                          if (me && me.chips < eventData.big_blind) {
 
-                            if (me && eventData.state === 'WAITING_FOR_PLAYERS') {
+                            const isHandOver = (eventData.state === 'WAITING_FOR_PLAYERS');
+                            const isFoldedBroke = (me.status === 'FOLDED');
+
+                            if (isHandOver) {
+                              checkRebuy(me, eventData.big_blind, true);
+                            }
+
+                            else if (isFoldedBroke) {
+                              checkRebuy(me, eventData.big_blind, false);
+                            }
+
+                            if (eventData.state === 'WAITING_FOR_PLAYERS') {
                               checkRebuy(me, eventData.big_blind);
                             }
+                          } else {
+                            checkRebuy(me, eventData.big_blind, false);
+                          }
+                        }                                                    
+
+                        updateActiveTurn(eventData.current_turn_seat);
+                        const timeToAct = eventData.time_to_act_ms || 15000;
+                        runTurnTimer(eventData.current_turn_seat, timeToAct);
+
+                        const activePhases = ['PRE_FLOP', 'FLOP', 'TURN', 'RIVER'];
+                        if (activePhases.includes(eventData.state)) {
+                          fetchMyPrivateCards();
+                        }
+
+                        if (eventData.state === 'SHOWDOWN') {
+                          renderAllHoleCards(eventData.players);
                             
+                          if (eventData.showdown_details) {
+                            playShowdownSequence(eventData.showdown_details);
                           }
+                        }
 
-                          updateActiveTurn(eventData.current_turn_seat);
+                        break;
 
-                          const timeToAct = eventData.time_to_act_ms || 15000;
-                          runTurnTimer(eventData.current_turn_seat, timeToAct);
-
-                          const activePhases = ['PRE_FLOP', 'FLOP', 'TURN', 'RIVER'];
-
-                          if (activePhases.includes(eventData.state)) {
-                            fetchMyPrivateCards();
-                          }
-
-                          if (eventData.state === 'SHOWDOWN') {
-                            renderAllHoleCards(eventData.players);
-
-                            if (eventData.showdown_details) {
-                              playShowdownSequence(eventData.showdown_details);
-                            }
-                          }
-
-                          break;
-
-                        
-                        // ---------------------------------------------------
-                        // 2. МИКРО-СОБЫТИЕ (Кто-то сделал ставку)
-                        // ---------------------------------------------------
+                      
                       case 'PLAYER_ACTION':
                           // Обновляем банк (тут он называется total_pot по контракту Владоса)
                           document.getElementById('pot-value').innerText = eventData.total_pot;
@@ -1000,6 +1075,12 @@
       window.addEventListener('DOMContentLoaded', () => {
         console.log("Интерфейс загружен. Все запускаем...");
 
+        if (window.location.search.includes('buy_in')) {
+          const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+          window.history.replaceState({path: cleanUrl}, '', cleanUrl);
+          console.log("🧹 URL очищен от параметров посадки.");
+        }
+
         const metadataNode = document.getElementById('poker-metadata');
         if (!metadataNode) return;
         
@@ -1022,7 +1103,6 @@
         checkRebuy();
         connectWebSocket();
       });
-
 
     </script>
   </body> 

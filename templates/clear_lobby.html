@@ -236,7 +236,7 @@
 
 <script>
 
-    const userToken = "{{ user.token if user else '' }}";
+    const userToken = "{{ user_token if user else '' }}";
 
     function joinTableWithBuyIn(tableId) {
         const input = document.getElementById(`buyin-${tableId}`);
