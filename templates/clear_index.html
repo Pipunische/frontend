@@ -217,7 +217,7 @@
       // Функция сбрасывает все визуальные эффекты и ставит актуальный статус
       function refreshSeatStatus(playerSeat, status) {
         // Удаляем все возможные "плохие" статусы
-        playerSeat.classList.remove('status-sitting_out', 'status-folded', 'status-waiting', 'status-empty');
+        playerSeat.classList.remove('status-sitting_out', 'status-folded', 'status-waiting', 'status-empty', 'status-all_in');
     
         // Добавляем текущий статус от Владоса
         const lowerStatus = status.toLowerCase();
@@ -267,13 +267,13 @@
 
           if (result.redirect) {
             if (result.redirect.includes('session_expired')) {
-              alert("⚠️ Сессия завершена. Требуется перезайти в аккаунт.");
+              alert("⚠️ Сессия завершена. БЭМ БЭМ БЭМ. Требуется перезайти в аккаунт.");
             }
             window.location.href = result.redirect;
             return;
           }
 
-          if (!response.ok) {
+          if (result.error) {
             alert("Ошибка: " + (result.detail || result.error || "Действие отклонено"));
           } else {
             console.log("Команда принята. Ждем WebSocket-обновление...");
@@ -1063,10 +1063,20 @@
               });
 
           }, function(error) {
-              // ЕСЛИ СВЯЗЬ ПОРВАЛАСЬ (Владос закрыл крышку ноута)
               console.error("❌ Ошибка WebSocket (Связь оборвана):", error);
-        
-              // Пытаемся переподключиться через 5 секунд (Авто-реконнект)
+
+              const errorStr = String(error).toLowerCase();
+
+              if (errorStr.includes('unauthorized') || errorStr.includes('401') || errorStr.includes('access denied')) {
+                console.error("🚨 Сервер отклонил токен при реконнекте. Выкидываем на логин.");
+                fetch('/logout', { method: 'GET' }).then(() => {
+                  window.location.href = "/login?error=session_expired";
+                });
+
+                return;
+              }
+
+              console.log("⏳ Пробую переподключиться через 5 секунд...");
               setTimeout(connectWebSocket, 5000);
           });
       }

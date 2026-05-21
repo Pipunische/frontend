@@ -1,12 +1,27 @@
 import time
+import os
+import uuid
+import boto3
 import requests
-from fastapi import FastAPI, Request, Form
+from fastapi import FastAPI, Request, Form, UploadFile, File
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.middleware.sessions import SessionMiddleware
 
+
+S3_ENDPOINT = os.getenv("S3_ENDPOINT", "https://yourendpoint.r2.cloudflarestorage.com")
+S3_ACCESS_KEY = os.getenv("S3_ACCESS_KEY", "your_access_key")
+S3_SECRET_KEY = os.getenv("S3_SECRET_KEY", "your_secret_key")
+S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME", "polupoker-avatars")
+
+s3_client = boto3.client(
+    's3',
+    endpoint_url=S3_ENDPOINT,
+    aws_access_key_id=S3_ACCESS_KEY,
+    aws_secret_access_key=S3_SECRET_KEY
+)
 
 app = FastAPI()
 
@@ -47,7 +62,53 @@ def page_home(request: Request):
     return templates.TemplateResponse(
         request=request, name="clear_home.html", context=context
     )
+# -----------------------
 
+@app.post("/api/upload-avatar")
+async def upload_avatar(request: Request, avatar: UploadFile = File(...)):
+    user = request.session.get("user")
+    if not user:
+        return RedirectResponse(url="/login", status_code=303)
+    
+    if not avatar.content_type.startswith("image/"):
+        return RedirectResponse(url="/profile?error=invalid_file", status_code=303)
+
+    user_id = user.get("user_id")
+    file_ext = avatar.filename.split(".")[-1]
+
+    new_filename = f"{user_id}_{uuid.uuid4().hex[:8]}.{file_ext}"
+
+    try:
+        s3_client.upload_fileobj(
+            avatar.file,
+            S3_BUCKET_NAME,
+            new_filename,
+            ExtraArgs={'ContentType': avatar.content_type, 'ACL': 'public-read'}
+        )
+        print(f"☁️ Аватар загружен в облако: {new_filename}", flush=True)
+    except Exception as e:
+        print(f"💥 Ошибка загрузки в S3: {e}", flush=True)
+        return RedirectResponse(url="/profile?error=s3_failed", status_code=303)
+
+    public_url = f"{S3_ENDPOINT}/{S3_BUCKET_NAME}/{new_filename}"
+
+    update_url = f"http://{JAVA_HOST}:8080/api/auth/update-avatar"
+    payload = {"user_id": user_id, "avatar_url": public_url}
+
+    java_res = java_request("POST", update_url, request, json_data=payload)
+
+    if not java_res or java_res.status_code == 401:
+        return RedirectResponse(url="/login?error=session_expired", status_code=303)
+
+    if java_res.ok:
+        user["avatar_url"] = public_url
+        request.session["user"] = user
+        print(f"✅ Java принял ссылку на аватар!")
+    else:
+        print(f"❌ Ядро не обновило аватар: {java_res.text}", flush=True)
+
+    return RedirectResponse(url="/profile", status_code=303)
+# -----------------------
 
 @app.get("/lobby", response_class=HTMLResponse)
 def page_lobby(request: Request, error: str = None):
@@ -93,7 +154,7 @@ def page_lobby(request: Request, error: str = None):
     }
 
     return templates.TemplateResponse(request=request, name="clear_lobby.html", context=context)
-    
+ # -----------------------   
 
 # ребай
 @app.post("/table/{table_id}/rebuy")
@@ -128,12 +189,11 @@ def rebuy_process(table_id: str, request: Request, amount: int = Form(...)):
             error_text = response.text
         print(f"❌ БЕКЕНД ОТКАЗАЛ В РЕБАЕ: {error_text}", flush=True)
         return {"error": error_text}
-
+# -----------------------
 
 @app.get("/login", response_class=HTMLResponse)
 def page_login(request: Request):
     return templates.TemplateResponse(request=request, name="login.html")
-
 
 @app.post("/login")
 def login_process(request: Request, login: str = Form(...), password: str = Form(...)): 
@@ -164,7 +224,7 @@ def login_process(request: Request, login: str = Form(...), password: str = Form
     except Exception as e:
         print(f"🤣 БЕКЕНД УПАЛ ПРИ ЛОГИНЕ: {e}")
         return templates.TemplateResponse(request=request, name="login.html")
-
+# -----------------------
 
 @app.get("/register", response_class=HTMLResponse)
 def page_registration(request: Request):
@@ -202,7 +262,7 @@ def registration_process(request: Request, nickname: str = Form(...), login: str
     except Exception as e:
         print(f"🤣 БЕКЕНД УПАЛ ПРИ РЕГИСТРАЦИИ: {e}" )
         return templates.TemplateResponse(request=request, name="registration.html", context={"error": "Бек-сервер недоступен"})    
-
+# -----------------------
 
 def java_request(method, url, request: Request, json_data=None, params=None):
     user = request.session.get("user")
@@ -222,6 +282,7 @@ def java_request(method, url, request: Request, json_data=None, params=None):
 
         if refresh_res.status_code == 200:
             new_tokens = refresh_res.json()
+
             user["token"] = new_tokens.get("access_token")
 
             if new_tokens.get("refresh_token"):
@@ -234,12 +295,16 @@ def java_request(method, url, request: Request, json_data=None, params=None):
             return requests.request(method, url, json=json_data, params=params, headers=headers, timeout=5)
         
         else:
+            
+            print(f"🚨 ВЛАДОС ОТКАЗАЛ В РЕФРЕШЕ! Статус: {refresh_res.status_code}")
+            print(f"📦 ТЕЛО ОТВЕТА ЯДРА: {refresh_res.text}")            
+            print("🚨 Refresh Token истек - сессия закончена.", flush=True)
             print("🚨 Refresh Token истек - сессия закончена.")
             request.session.clear()
             return refresh_res
 
     return res
-    
+# -----------------------    
 
 
 @app.post("/table/{table_id}/leave")
@@ -265,7 +330,7 @@ def leave_table(request: Request, table_id: str, user_id: str = Form(None)):
         print(f"🚫 БЕКЕНД НЕ ПОДТВЕРДИЛ ВЫХОД ИГРОКА С НИКОМ {user_name}. (Статус {status}), но игрок все равно был перемещен в lobby", flush=True)
 
     return {"status": "success", "redirect": "/lobby"}
-
+# -----------------------
 
 @app.get("/logout")
 def logout(request: Request):
@@ -411,7 +476,7 @@ def page_table(request: Request, table_id: str, buy_in: int = 0):
     except Exception as e:  
         print(f"💥 Стол упал: {e}", flush=True)
         return RedirectResponse(url="/lobby", status_code=303)
- 
+ # -----------------------
 
 @app.post("/table/{table_id}/action")
 def handle_action_(table_id: str, action: ActionRequest, request: Request):
@@ -425,14 +490,17 @@ def handle_action_(table_id: str, action: ActionRequest, request: Request):
     print(f"📡 ВХОДЯЩИЙ ЭКШЕН: {action.type} от {MY_USER['name']}", flush=True)
 
     response = java_request("POST", target_url, request, json_data=payload)
+    
+    status = getattr(response, 'status_code', None)
+    print(f"🎯 Итоговый статус в контроллере: {status}", flush=True)
 
-    if not response or response.status_code == 401:
+    if response is None or status == 401:
         return {"redirect": "/login?error=session_expired"}
 
     if response.status_code != 200:
         error_text = "Unknown error"
         try:
-            error_text = response.json().get("error", response.text)
+            error_text = response.json().get("error", response.text) 
         except:
             error_text = response.text
         print(f"🚨 ОТКАЗ ЯДРА НА ДЕЙСТВИЕ ({response.status_code}): {error_text}", flush=True)
@@ -440,3 +508,19 @@ def handle_action_(table_id: str, action: ActionRequest, request: Request):
 
     print(f"✅ Действие {action.type} успешно обработано Ядром", flush=True)
     return response.json()
+# -----------------------
+
+@app.get("/profile", response_class=HTMLResponse)
+def page_profile(request: Request):
+    current_user = request.session.get("user")
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=303)
+    
+    context = {
+        "user": current_user,
+        "v": APP_VERSION
+    }
+
+    return templates.TemplateResponse(request=request, name="profile.html", context=context)
+
+
