@@ -1,7 +1,7 @@
 <style>
     body {
-        /* Сохраняем твой красивый фон с девушками */
-        background: url('/static/images/auth_fon.jpg') no-repeat center center fixed; 
+        /* Твой красивый фон с девушками */
+        background: url('/static/images/lobbyFon2.png') no-repeat center center fixed; 
         background-size: cover;
         margin: 0;
         color: white; 
@@ -12,21 +12,22 @@
         justify-content: center;
     }
 
-    /* 🔥 Новый полноэкранный дашборд */
+    /* Новый стеклянный дашборд */
     .dashboard-wrapper {
         width: 90%;
         max-width: 1200px;
         height: 80vh;
-        background: rgba(30, 40, 50, 0.85); /* Полупрозрачная темная панель */
-        backdrop-filter: blur(10px); /* Стеклянный эффект */
+        background: rgba(30, 40, 50, 0.85); 
+        backdrop-filter: blur(10px); 
+        -webkit-backdrop-filter: blur(10px);
         border: 2px solid #3498db;
         border-radius: 20px;
         box-shadow: 0 20px 50px rgba(0,0,0,0.7);
         display: flex;
-        overflow: hidden; /* Чтобы внутренние блоки не вылезали за скругления */
+        overflow: hidden; 
     }
 
-    /* Левая колонка (Аватар и Базовое Инфо) */
+    /* Левая колонка (Sidebar) */
     .profile-sidebar {
         width: 350px;
         background: rgba(20, 25, 30, 0.6);
@@ -37,7 +38,7 @@
         border-right: 1px solid rgba(52, 152, 219, 0.3);
     }
 
-    /* Правая колонка (Статистика и Настройки) */
+    /* Правая колонка (Content) */
     .profile-content {
         flex-grow: 1;
         padding: 40px;
@@ -59,7 +60,7 @@
         border: 4px solid #f1c40f;
         box-shadow: 0 10px 20px rgba(0,0,0,0.5);
         overflow: hidden;
-        margin-bottom: 20px;
+        margin-bottom: 10px; /* Уменьшили отступ для инлайн-виджета */
     }
     .avatar-preview img {
         width: 100%;
@@ -67,13 +68,112 @@
         object-fit: cover;
     }
 
+    /* 🔥🔥🔥 НОВЫЙ ИНЛАЙН-ВИДЖЕТ НИКНЕЙМА (Вставили сюда) 🔥🔥🔥 */
+    .nickname-widget {
+        margin: 15px 0;
+        height: 45px; /* Фиксируем высоту, чтобы баланс снизу не прыгал! */
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .nickname-view, .nickname-edit {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        width: 100%;
+        height: 100%;
+    }
+
     .user-nickname {
+        margin: 0;
         color: #f1c40f;
         font-size: 28px;
-        margin: 10px 0;
+        font-weight: 900;
         text-transform: uppercase;
-        letter-spacing: 2px;
+        letter-spacing: 1px;
+        text-shadow: 0 0 10px rgba(241, 196, 15, 0.3);
     }
+
+    .edit-btn {
+        background: transparent;
+        border: none;
+        font-size: 18px;
+        cursor: pointer;
+        opacity: 0.6;
+        transition: transform 0.2s, opacity 0.2s;
+    }
+    .edit-btn:hover {
+        opacity: 1;
+        transform: scale(1.2);
+    }
+
+    .nickname-edit input {
+            width: 180px; /* Слегка расширили для длинных ников */
+            padding: 8px 12px;
+            border-radius: 8px;
+            
+            /* 🔥 СТЕКЛО: Полупрозрачный фон с синим оттенком */
+            background: rgba(30, 40, 50, 0.4) !important;
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+            
+            /* 🔥 НЕОН: Тонкая циановая рамка и циановый светящийся текст */
+            border: 1px solid rgba(0, 242, 254, 0.3) !important;
+            color: #00f2fe !important; 
+            font-size: 18px;
+            font-weight: bold;
+            text-align: center;
+            outline: none;
+            
+            /* Внутренняя тень дает эффект "вдавленного стекла" */
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.6);
+            text-shadow: 0 0 5px rgba(0, 242, 254, 0.5);
+            
+            transition: all 0.3s ease;
+    }
+    .nickname-edit input:focus {
+            border-color: #00f2fe !important;
+            /* Внешнее свечение становится ярче */
+            box-shadow: 
+                0 0 15px rgba(0, 242, 254, 0.4), 
+                inset 0 0 10px rgba(0,0,0,0.8) !important;
+            color: #fff !important; /* При вводе буквы становятся белыми для читаемости */
+            text-shadow: 0 0 8px #00f2fe;
+    }
+
+    .save-nick-btn, .cancel-nick-btn {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 50%; /* Делаем круглыми! */
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            padding: 0;
+            color: #bdc3c7; /* Цвет иконки по умолчанию */
+    }
+
+    .save-nick-btn:hover {
+            background: rgba(46, 204, 113, 0.1) !important;
+            border-color: #2ecc71 !important;
+            color: #2ecc71 !important; /* Иконка зеленеет */
+            box-shadow: 0 0 15px rgba(46, 204, 113, 0.4) !important;
+            transform: translateY(-2px) scale(1.05);
+    }
+
+    .cancel-nick-btn:hover {
+            background: rgba(231, 76, 60, 0.1) !important;
+            border-color: #e74c3c !important;
+            color: #e74c3c !important; /* Иконка краснеет */
+            box-shadow: 0 0 15px rgba(231, 76, 60, 0.4) !important;
+            transform: translateY(-2px) scale(1.05);
+    }
+    /* 🔥🔥🔥 КОНЕЦ ВИДЖЕТА НИКНЕЙМА 🔥🔥🔥 */
 
     .wallet-badge {
         background: rgba(46, 204, 113, 0.2);
@@ -86,7 +186,7 @@
         margin-bottom: 30px;
     }
 
-    /* Кнопки */
+    /* Кнопки управления */
     .file-upload-btn, .save-btn, .back-btn {
         width: 100%;
         padding: 15px;
@@ -112,7 +212,7 @@
     .back-btn { background: transparent; border: 2px solid #95a5a6; color: #95a5a6; margin-top: auto; }
     .back-btn:hover { border-color: #f1c40f; color: #f1c40f; }
 
-    /* === ЭЛЕМЕНТЫ ПРАВОЙ КОЛОНКИ (Заготовка) === */
+    /* === ЭЛЕМЕНТЫ ПРАВОЙ КОЛОНКИ === */
     .content-header {
         font-size: 24px;
         color: #bdc3c7;
@@ -134,7 +234,50 @@
         padding: 20px;
         border-radius: 15px;
         text-align: center;
+        transition: transform 0.3s ease, box-shadow 0.3s ease; /* Анимация Лёхи */
     }
+
+    .stat-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 20px rgba(0,0,0,0.5);
+        border-color: #3498db;
+    }
+
+    .rank-card {
+        background: linear-gradient(135deg, rgba(155, 89, 182, 0.1), rgba(142, 68, 173, 0.3));
+        border: 2px solid rgba(155, 89, 182, 0.5);
+        padding: 25px;
+        border-radius: 15px;
+        text-align: center;
+        margin-top: 20px; 
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+    }
+
+    .rank-value {
+        color: #9b59b6;
+        font-size: 36px; 
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+        text-shadow: 0 0 15px rgba(155, 89, 182, 0.6);
+        margin: 10px 0;
+    }    
+
+    .rank-progress-track {
+        width: 80%;
+        height: 6px;
+        background: rgba(0,0,0,0.5);
+        border-radius: 3px;
+        margin: 0 auto;
+        overflow: hidden;
+    }
+    
+    .rank-progress-fill {
+        height: 100%;
+        background: #9b59b6;
+        box-shadow: 0 0 10px #9b59b6;
+    }
+
     .stat-title { color: #95a5a6; font-size: 14px; text-transform: uppercase; margin-bottom: 10px; }
     .stat-value { color: white; font-size: 28px; font-weight: bold; }
 
@@ -150,7 +293,35 @@
             {{ user.name[0] | upper }}
         </div>
         
-        <h2 class="user-nickname">{{ user.name }}</h2>
+        <div class="nickname-widget">
+            
+            <!-- Режим Чтения -->
+            <div class="nickname-view" id="nickname-view">
+                <h2 class="user-nickname" id="display-nickname">{{ user.name }}</h2>
+                <button class="edit-btn" onclick="toggleEditNickname()" title="Изменить ник">✏️</button>
+            </div>
+
+            <!-- Режим Редактирования (Абсолютный Inline) -->
+            <div class="nickname-edit" id="edit-nick-form" style="display: none;">
+                <input type="text" id="new-nickname-input" value="{{ user.name }}" maxlength="20" placeholder="Новый ник">
+                
+                <!-- Кнопка Галочка (Зеленый неон) -->
+                <button class="save-nick-btn" onclick="saveNickname()" title="Сохранить">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                    </svg>
+                </button>
+                
+                <!-- Кнопка Крестик (Красный неон) -->
+                <button class="cancel-nick-btn" onclick="toggleEditNickname()" title="Отмена">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                        <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                    </svg>
+                </button>
+            </div>
+            
+        </div>
+
         <div class="wallet-badge">💰 {{ user.wallet_balance }} 🪙</div>
 
         <!-- Форма аватара -->
@@ -172,21 +343,36 @@
         <h2 class="content-header">Статистика Игрока</h2>
         
         <div class="stats-grid">
+                        <!-- Карточка 1 -->
+            <!-- Карточка 1 -->
             <div class="stat-card">
                 <div class="stat-title">Сыграно раздач</div>
-                <div class="stat-value">0</div>
+                <div class="stat-value">{{ stats.hands_played }}</div>
             </div>
+            <!-- Карточка 2 -->
+            <div class="stat-card">
+                <div class="stat-title">% Побед</div>
+                <div class="stat-value" style="color: #3498db;">{{ stats.win_ratio }}%</div>
+            </div>
+            <!-- Карточка 3 -->
             <div class="stat-card">
                 <div class="stat-title">Выиграно фишек</div>
-                <div class="stat-value" style="color: #2ecc71;">0</div>
+                <div class="stat-value" style="color: #2ecc71;">{{ "{:,}".format(stats.total_won).replace(',', ' ') }}</div>
             </div>
+            <!-- Карточка 4 -->
             <div class="stat-card">
                 <div class="stat-title">Самый крупный банк</div>
-                <div class="stat-value" style="color: #f1c40f;">0</div>
+                <div class="stat-value" style="color: #f1c40f;">{{ "{:,}".format(stats.biggest_pot).replace(',', ' ') }}</div>
             </div>
-            <div class="stat-card">
-                <div class="stat-title">Ранг</div>
-                <div class="stat-value" style="color: #9b59b6;">Sucker</div>
+
+            <!-- 🔥 КАРТОЧКА РАНГА (Full Width) -->
+            <div class="rank-card">
+                <div class="stat-title">Текущий ранг</div>
+                <div class="rank-value">{{ stats.rank }}</div>
+                <!-- Прогресс-бар до следующего ранга (Заготовка на будущее) -->
+                <div class="rank-progress-track">
+                    <div class="rank-progress-fill" style="width: 15%;"></div>
+                </div>
             </div>
         </div>
     </div>
@@ -195,6 +381,60 @@
 
 <!-- Тот же самый JS скрипт для превью (он был рабочий) -->
 <script>
+
+    function toggleEditNickname() {
+        const viewBlock = document.querySelector('.nickname-view');
+        const editBlock = document.getElementById('edit-nick-form');
+
+        if (editBlock.style.display === 'none') {
+            viewBlock.style.display = 'none';
+            editBlock.style.display = 'flex';
+        } else {
+            viewBlock.style.display = 'flex';
+            editBlock.style.display = 'none';
+        }
+    }
+
+    async function saveNickname() {
+        const newNick = document.getElementById('new-nickname-input').value.trim();
+        if (!newNick || newNick.length > 20) {
+            alert("Ник должен состоять не более чем из 20 символов")
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/profile/nickname', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ new_nickname: newNick })
+            });
+
+            const result = await response.json();
+
+            if (result.redirect) {
+                window.location.href = result.redirect;
+                return;
+            }
+
+            if (response.ok && !result.error) {
+                document.getElementById('display-nickname').innerText = result.new_nickname;
+
+                const avatarContainer = document.getElementById('avatar-container');
+                if (avatarContainer && !avatarContainer.innerHTML.includes('img')) {
+                    avatarContainer.innerText = result.new_nickname.charAt(0).toUpperCase();
+                } 
+
+                toggleEditNickname();
+                alert("Никнейм успешно изменен.");
+            } else {
+                alert("Ошибка: " + (result.detail || result.error || "Неизвестная"));
+            }
+        } catch (err) {
+            console.error("Ошибка связи:", err);
+            alert("Ошибка связи с сервером");
+        }
+    }
+
     const fileInput = document.getElementById('avatar-input');
     const avatarContainer = document.getElementById('avatar-container');
     const saveBtn = document.getElementById('save-btn');

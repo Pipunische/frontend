@@ -93,6 +93,16 @@
             -webkit-text-fill-color: transparent;
             /* Легкое золотое свечение */
             filter: drop-shadow(0px 4px 15px rgba(241, 196, 15, 0.3));
+            animation: breatheGlow 4s ease-in-out infinite alternate;
+        }
+
+        @keyframes breatheGlow {
+            0% {
+                filter: drop-shadow(0 2px 8px rgba(241, 196, 15, 0.3));
+            }
+            100% {
+                filter: drop-shadow(0 8px 25px rgba(241, 196, 15, 0.7));
+            }
         }
 
         .subtitle {
@@ -104,19 +114,39 @@
 
         /* Стеклянная панель с кнопками */
         .action-card {
-            background: rgba(255, 255, 255, 0.05); /* Полупрозрачный белый */
-            backdrop-filter: blur(15px); /* Эффект матового стекла */
-            -webkit-backdrop-filter: blur(15px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            /* Делаем подложку темнее и глубже (с синеватым оттенком) */
+            background: rgba(10, 15, 30, 0.65); 
+            backdrop-filter: blur(25px); /* Больше матовости */
+            -webkit-backdrop-filter: blur(25px);
+            
+            /* Тонкая неоновая грань (пока синяя) */
+            border: 1px solid rgba(52, 152, 219, 0.25); 
             padding: 40px;
             border-radius: 24px;
-            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+            
+            /* Слоистые тени: внешняя глубокая + внутренняя 3D + внешнее мягкое свечение */
+            box-shadow: 
+                0 30px 60px rgba(0, 0, 0, 0.8),
+                inset 0 0 20px rgba(255, 255, 255, 0.05),
+                0 0 30px rgba(52, 152, 219, 0.1);
+                
             display: flex;
             flex-direction: column;
             gap: 20px;
             width: 100%;
             max-width: 300px;
+            transition: all 0.5s cubic-bezier(0.25, 0.8, 0.25, 1); /* Плавный переход */
         }
+
+        .action-card:hover {
+            border-color: rgba(241, 196, 15, 0.3); /* Рамка теплеет, переходит в золото */
+            box-shadow: 
+                0 30px 60px rgba(0, 0, 0, 0.9),
+                inset 0 0 25px rgba(255, 255, 255, 0.08),
+                0 0 40px rgba(241, 196, 15, 0.15); /* Золотой ореол */
+        }
+
+
 
         /* Кнопки */
         .btn {
@@ -133,10 +163,29 @@
         }
 
         .btn-primary {
-            background: linear-gradient(135deg, #f1c40f 0%, #d4ac0d 100%);
+            position: relative;
+            overflow: hidden;
+            background: linear-gradient(135deg, #f1c40f 0%, #e67e22 100%);
             color: #1a1a1a;
             border: none;
             box-shadow: 0 4px 15px rgba(241, 196, 15, 0.4);
+        }
+
+        .btn-primary::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -150%;
+            width: 50%;
+            height: 100%;
+            background: linear-gradient(to right, rgba(255,255,255,0) 0%, rgba(255,255,255,0.4) 50%, rgba(255,255,255,0) 100%);
+            transform: skewX(-25deg); /* Наклоняем полоску */
+            transition: none;
+        }
+
+        .btn-primary:hover::after {
+            left: 150%;
+            transition: all 0.7s ease-in-out; /* Блик быстро пробегает слева направо */
         }
 
         .btn-primary:hover {
@@ -145,16 +194,21 @@
         }
 
         .btn-outline {
-            background: transparent;
+            background: rgba(255, 255, 255, 0.02);
             color: #bdc3c7;
-            border: 2px solid #7f8c8d;
+            /* Тонкая, едва заметная грань */
+            border: 1px solid rgba(255, 255, 255, 0.15); 
+            backdrop-filter: blur(5px);
+            box-sizing: border-box;
         }
 
         .btn-outline:hover {
-            border-color: #f1c40f;
-            color: #f1c40f;
-            background: rgba(241, 196, 15, 0.05);
+            border-color: #00f2fe !important; /* Циановый неон при наведении (в тон нику!) */
+            color: #00f2fe !important;
+            background: rgba(0, 242, 254, 0.05) !important;
             transform: translateY(-3px);
+            /* Неоновый отсвет кнопки */
+            box-shadow: 0 0 20px rgba(0, 242, 254, 0.3); 
         }
 
         /* Если юзер уже залогинен */
@@ -172,6 +226,77 @@
             font-size: 0.8rem;
             color: #7f8c8d;
         }
+
+        /* === БЛОК ПРИВЕТСТВИЯ С АВАТАРОМ === */
+        .welcome-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        /* Мини-копия твоей будущей аватарки */
+        .mini-avatar {
+            width: 45px;
+            height: 45px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #3498db, #8e44ad);
+            border: 2px solid #f1c40f;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 20px;
+            font-weight: 900;
+            text-transform: uppercase;
+        }
+
+        .welcome-text {
+            font-size: 1.1rem;
+            color: #bdc3c7;
+            font-weight: bold;
+        }
+
+        .user-highlight {
+            color: #2ecc71;
+            text-shadow: 0 0 5px rgba(46, 204, 113, 0.4);
+        }
+
+        /* === КНОПКА "В ИГРУ" (Зеленый пульсирующий неон) === */
+        .btn-play-neon {
+            background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%) !important;
+            color: white !important;
+            border: none;
+            box-shadow: 0 4px 15px rgba(46, 204, 113, 0.4);
+            animation: playPulse 2.0s infinite alternate ease-in-out;
+        }
+
+        @keyframes playPulse {
+            0% {
+                box-shadow: 0 4px 10px rgba(46, 204, 113, 0.4);
+            }
+            100% {
+                box-shadow: 0 4px 25px rgba(46, 204, 113, 0.8), 0 0 10px rgba(46, 204, 113, 0.5);
+            }
+        }
+
+        /* === КНОПКА "ВЫХОД" (Красный неон) === */
+        .btn-danger-neon {
+            background: rgba(255, 255, 255, 0.02);
+            color: #bdc3c7;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            box-sizing: border-box;
+        }
+
+        .btn-danger-neon:hover {
+            border-color: #e74c3c !important; /* Красный неон */
+            color: #e74c3c !important;
+            background: rgba(231, 76, 60, 0.05) !important;
+            transform: translateY(-3px);
+            box-shadow: 0 0 20px rgba(231, 76, 60, 0.4);
+        }
     </style>
 </head>
 <body>
@@ -187,13 +312,21 @@
 
         <div class="action-card">
             {% if user %}
-                <div class="welcome-text">Привет, {{ user.name }}!</div>
-                <!-- Зеленая кнопка В ИГРУ -->
-                <a href="/lobby" class="btn btn-primary" style="background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%); box-shadow: 0 4px 15px rgba(46, 204, 113, 0.4); color: white;">
-                    В ИГРУ 🔥
-                </a>
+                <div class="welcome-container">
+                    <div class="mini-avatar">
+                        {{ user.name[0] | upper }}
+                    </div>
+                </div>
+
+                <!-- КНОПКИ ДЕЙСТВИЙ -->
+                <!-- Зеленая пульсирующая кнопка -->
+                <a href="/lobby" class="btn btn-play-neon">В ИГРУ</a>
+            
+                <!-- Циановая кнопка (использует наш прошлый стиль btn-outline) -->
                 <a href="/profile" class="btn btn-outline">ПРОФИЛЬ</a>
-                <a href="/logout" class="btn btn-outline" style="border-color: #e74c3c; color: #e74c3c;">ВЫХОД</a>
+            
+                <!-- Красная неоновая кнопка выхода -->
+                <a href="/logout" class="btn btn-danger-neon">ВЫХОД</a>
             {% else %}
                 <a href="/login" class="btn btn-primary">ВОЙТИ</a>
                 <a href="/register" class="btn btn-outline">РЕГИСТРАЦИЯ</a>

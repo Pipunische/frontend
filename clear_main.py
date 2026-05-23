@@ -43,6 +43,10 @@ def extract_cards(player: dict) -> list:
     return []
 
 
+class NicknameRequest(BaseModel):
+    new_nickname: str
+
+
 class ActionRequest(BaseModel):
     user_id: str
     name: str
@@ -108,6 +112,42 @@ async def upload_avatar(request: Request, avatar: UploadFile = File(...)):
         print(f"❌ Ядро не обновило аватар: {java_res.text}", flush=True)
 
     return RedirectResponse(url="/profile", status_code=303)
+# -----------------------
+
+@app.post("/api/profile/nickname")
+def update_nickname(request: Request, data: NicknameRequest):
+    user = request.session.get("user")
+    if not user:
+        return {"redirect": "/login?error=session_expired"}
+
+    user_id = user.get("user_id")
+    target_url = f"http://{JAVA_HOST}:8080/api/auth/{user_id}/nickname"
+    payload = {"new_nickname": data.new_nickname}
+
+    print(f"🔄 Запрос на смену ника: {user['name']} -> {data.new_nickname}", flush=True)
+
+    response = java_request("PATCH", target_url, request, json_data=payload)
+
+    status = getattr(response, 'status_code', None)
+    print(f"Java-ответ: Статус: {status}", flush=True)
+
+    if not response or response.status_code == 401:
+        return {"redirect": "/login?error=session_expired"}
+    
+    if response.status_code == 200:
+        user['name'] = data.new_nickname
+        request.session["user"] = user
+        print(f"✅ Ник успешно изменен на {data.new_nickname}", flush=True)
+        return {"status": "success", "new_nickname": data.new_nickname}
+
+    else:
+        error_text = "Unknown error"
+        try:
+            error_text = response.json().get("error", response.text)
+        except:
+            error_text = response.text
+        print(f"❌ При смене ника произошла ошибка: {error_text}", flush=True)
+        return {"error": error_text}
 # -----------------------
 
 @app.get("/lobby", response_class=HTMLResponse)
@@ -515,12 +555,30 @@ def page_profile(request: Request):
     current_user = request.session.get("user")
     if not current_user:
         return RedirectResponse(url="/login", status_code=303)
-    
+
+    user_id = current_user.get("user_id")
+
+    stats_data = {
+        "hands_played": 0,
+        "total_won": 0,
+        "win_ratio": 0,
+        "biggest_pot": 0,
+        "rank": "Sucker"
+    }
+
+    stats_url = f"http://{JAVA_HOST}:8080/api/user/{user_id}/stats"
+    stats_res = java_request("GET", stats_url, request)
+
+    if stats_res and stats_res.status_code == 200:
+        stats_data = stats_res.json()
+    else:
+        print("🚫 НЕ УДАЛОСЬ ПОЛУЧИТЬ СТАТИСТИКУ - НАПРАВИЛЬНЫЙ СТАТУС ИЛИ ОТСУТСВУЕТ ОТВЕТ.")
+
     context = {
         "user": current_user,
+        "stats": stats_data,
         "v": APP_VERSION
     }
 
     return templates.TemplateResponse(request=request, name="profile.html", context=context)
-
 

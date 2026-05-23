@@ -7,23 +7,38 @@
     <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
     <style>
-        /* Базовые настройки страницы */
         body {
-            background-color: #1a1a1a;
             color: #ecf0f1;
             font-family: 'Segoe UI', Arial, sans-serif;
             margin: 0;
             padding: 40px;
             text-align: center;
+            min-height: 100vh;
+            box-sizing: border-box;
+
+            /* Базовый темный цвет на случай, если картинка не загрузится */
+            background-color: #0a0f14;
+
+            /* 🔥 Твоя фоновая картинка с наложенным 82% темным фильтром */
+            background-image: 
+                linear-gradient(rgba(11, 15, 20, 0.82), rgba(11, 15, 20, 0.82)), 
+                url('/static/images/lobbyFon2.png') !important;
+            
+            background-position: center !important;
+            background-repeat: no-repeat !important;
+            background-attachment: fixed !important; /* Картинка не скроллится */
+            background-size: cover !important; /* Растягивается на весь экран */
         }
 
         h1 {
             margin-bottom: 40px;
             color: #f1c40f;
             text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+            font-weight: 900;
+            letter-spacing: 1px;
         }
 
-        /* РОДИТЕЛЬ: СЕТКА (GRID) */
+        /* === 2. СЕТКА СТОЛОВ === */
         .lobby-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -33,28 +48,27 @@
             text-align: left;
         }
 
-        /* КАРТОЧКА СТОЛА */
+        /* === 3. СТЕКЛЯННЫЕ КАРТОЧКИ (Glassmorphism 2.0) === */
         .table-card {
-            background: #2c3e50;
-            border: 2px solid #3498db;
-            border-radius: 15px;
+            background: rgba(255, 255, 255, 0.03) !important;
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+            border-radius: 20px !important;
             padding: 25px;
-            transition: 0.3s;
+            /* Плавный "пружинящий" переход при наведении */
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important;
             display: flex;
             flex-direction: column;
             justify-content: space-between;
-            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.4);
-        }
-
-        .table-card:hover {
-            transform: translateY(-10px);
-            border-color: #f1c40f;
-            box-shadow: 0 15px 30px rgba(241, 196, 15, 0.2);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5) !important;
+            border: 1px solid rgba(255, 255, 255, 0.08) !important;
+            box-sizing: border-box;
         }
 
         .table-name {
-            color: #26b86a;
+            color: #fff;
             font-size: 20px;
+            font-weight: bold;
             margin-bottom: 10px;
             word-break: break-all;
         }
@@ -63,37 +77,109 @@
             font-size: 32px;
             font-weight: bold;
             margin: 15px 0;
-            color: #fff;
+            transition: text-shadow 0.3s ease;
         }
 
         .buy-in {
-            font-size: 16px;
+            font-size: 14px;
             color: #bdc3c7;
             margin-bottom: 20px;
         }
 
         .players-count {
-            background: rgba(0, 0, 0, 0.2);
-            padding: 8px 10px;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 8px 15px;
             border-radius: 20px;
             display: inline-block;
             margin-bottom: 20px;
+            font-size: 14px;
+            border: 1px solid rgba(255,255,255,0.05);
         }
 
-        /* КНОПКА И СТАТУСЫ */
+        /* === 🟢 КАТЕГОРИЯ 1: LOW STAKES (Зеленый неон) === */
+        .stake-low:hover {
+            transform: translateY(-8px);
+            border-color: #2ecc71 !important;
+            box-shadow: 0 15px 30px rgba(46, 204, 113, 0.2), 0 0 15px rgba(46, 204, 113, 0.1) !important;
+        }
+        .stake-low .blinds { 
+            color: #2ecc71; 
+            text-shadow: 0 0 10px rgba(46, 204, 113, 0.2);
+        }
+
+        /* === 🔵 КАТЕГОРИЯ 2: STANDARD STAKES (Синий неон) === */
+        .stake-standard:hover {
+            transform: translateY(-8px);
+            border-color: #3498db !important;
+            box-shadow: 0 15px 30px rgba(52, 152, 219, 0.2), 0 0 15px rgba(52, 152, 219, 0.1) !important;
+        }
+        .stake-standard .blinds { 
+            color: #3498db; 
+            text-shadow: 0 0 10px rgba(52, 152, 219, 0.2);
+        }
+
+        /* === 🟡 КАТЕГОРИЯ 3: VIP STAKES (Золотой неон + Свечение) === */
+        .stake-vip:hover {
+            transform: translateY(-8px);
+            border-color: #f1c40f !important;
+            box-shadow: 0 15px 30px rgba(241, 196, 15, 0.3), 0 0 20px rgba(241, 196, 15, 0.15) !important;
+        }
+        .stake-vip .blinds { 
+            color: #f1c40f; 
+            text-shadow: 0 0 15px rgba(241, 196, 15, 0.4);
+        }
+
+
+        /* === 4. КНОПКИ, ИНПУТЫ И СТАТУСЫ === */
+        .buy-in-section {
+            width: 100%;
+        }
+
+        .buy-in-label {
+            font-size: 11px;
+            color: #7f8c8d;
+            display: block;
+            text-align: left;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .buyin-input-field {
+            width: 90px;
+            padding: 12px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(0, 0, 0, 0.4);
+            color: #fff;
+            font-weight: bold;
+            font-size: 14px;
+            outline: none;
+            box-sizing: border-box;
+            transition: border-color 0.3s, box-shadow 0.3s;
+        }
+        .buyin-input-field:focus {
+            border-color: #3498db;
+            box-shadow: 0 0 8px rgba(52, 152, 219, 0.3);
+        }
+
+        /* Кнопка "ВХОД" (Глянцевый зеленый градиент) */
         .btn-play {
-            background-color: #27ae60;
+            background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%) !important;
             color: white;
             padding: 12px;
             text-decoration: none;
-            border-radius: 8px;
+            border-radius: 10px;
             font-weight: bold;
-            transition: 0.2s;
+            transition: all 0.3s ease;
             text-align: center;
+            box-shadow: 0 4px 15px rgba(46, 204, 113, 0.3);
+            cursor: pointer;
         }
 
         .btn-play:hover {
-            background-color: #2ecc71;
+            transform: scale(1.05);
+            box-shadow: 0 6px 20px rgba(46, 204, 113, 0.5);
         }
 
         .status-full {
@@ -102,7 +188,8 @@
             padding: 12px;
             text-align: center;
             border: 1px solid #e74c3c;
-            border-radius: 8px;
+            border-radius: 10px;
+            background: rgba(231, 76, 60, 0.05);
         }
 
         .back-link {
@@ -110,13 +197,14 @@
             margin-top: 50px;
             color: #95a5a6;
             text-decoration: none;
+            font-weight: bold;
+            transition: color 0.3s;
         }
 
         .back-link:hover {
             color: #f1c40f;
         }
 
-        /* БОЛЬШИЕ ТАБЛИЧКИ ОШИБОК (растягиваем на всю сетку) */
         .alert-banner {
             grid-column: 1 / -1;
             padding: 40px;
@@ -126,25 +214,38 @@
 
         .chip-icon {
             display: inline-block;
-            width: 1.2em; /* Масштабируется вместе с размером шрифта! */
+            width: 1.2em;
             height: 1.2em;
-            background-image: url("/static/poker_chip.png"); /* Путь к твоему файлу */
+            background-image: url("/static/poker_chip.png");
             background-size: contain;
             background-repeat: no-repeat;
             background-position: center;
-            vertical-align: middle; /* Центровка по линии текста */
-            margin-top: -2px; /* Микро-корректировка высоты */
+            vertical-align: middle;
+            margin-top: -2px;
             margin-left: 4px;
         }
 
+        /* === 5. ПРОФИЛЬНЫЙ ВИДЖЕТ (Твой код без изменений) === */
         .user-profile-widget {
             position: absolute;
-            top: 20px;
+            top: 25px;
             right: 40px;
             display: flex;
-            align-items: center;
-            gap: 15px;
+            align-items: flex-start; /* Центрируем баланс по отношению к аватарке */
+            gap: 15px; /* Расстояние между балансом и аватаркой */
             z-index: 100;
+        }
+
+        .wallet-badge-compact {
+            background: rgba(0, 0, 0, 0.4); /* Легкая подложка для читаемости */
+            border: 1px solid rgba(241, 196, 15, 0.3);
+            padding: 6px 12px;
+            border-radius: 20px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+            font-size: 16px;
+            font-weight: bold;
+            color: #f1c40f;
+            margin-top: calc((45px - 34px) / 2);
         }
 
         .user-info {
@@ -171,26 +272,41 @@
         }
 
         .logout-link:hover { opacity: 1; }
+        
         .avatar-link {
             text-decoration: none;
-            transition: transform 0.2s;
+            display: flex;
+            flex-direction: column;
+            align-items: center; /* Центрируем ник под кружком */
+            gap: 5px;
+            transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
 
-        .avatar-link:hover { transform: scale(1.1); }
+        .avatar-link:hover { transform: scale(1.05); }
+        
         .default-avatar {
-            width: 50px;
-            height: 50px;
+            width: 55px; /* Сделал чуть меньше, чтобы смотрелось изящно */
+            height: 55px;
             border-radius: 50%;
             background: linear-gradient(135deg, #3498db, #8e44ad);
-            border: 2px solid #f1c40f;
+            border: 2px solid #00f2fe; /* Неоновая обводка */
             box-shadow: 0 4px 10px rgba(0,0,0,0.5);
             display: flex;
             align-items: center;
             justify-content: center;
             color: white;
-            font-size: 24px;
+            font-size: 20px;
             font-weight: 900;
             text-transform: uppercase;
+        }
+
+        .user-name-compact {
+            color: #00f2fe; /* Циановый неон, как на главной */
+            font-weight: bold;
+            font-size: 12px;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            text-shadow: 0 0 5px rgba(0, 242, 254, 0.5);
         }
     </style>
 </head>
@@ -198,22 +314,24 @@
 <body>
 
     <div class="user-profile-widget">
-        <div class="user-info">
-            <span class="user-name">{{ user.name }}</span>
+
+        <div class="wallet-badge-compact">
             <span class="player-chips wallet-balance-display">
                 <span class="chip-icon"></span> {{ user.wallet_balance }}
             </span>
-            <a href="/logout" class="logout-link">🚪 Выйти</a>
         </div>
 
         <a href="/profile" class="avatar-link" title="Перейти в профиль">
             <div class="default-avatar">
+                <!-- В будущем тут будет img -->
                 {{ user.name[0] | upper }}
             </div>
+            <!-- Никнейм прямо под кружком -->
+            <div class="user-name-compact">{{ user.name }}</div>
         </a>
     </div>
 
-    <h1>🃏 Выберите игровой стол</h1>
+    <h1>Выбери игровой стол</h1>
 
         {% if error == 'join_failed' %}
         <div style="background: #e74c3c; color: white; padding: 15px; border-radius: 10px; margin-bottom: 20px;">
@@ -244,51 +362,60 @@
         </div>
 
                     <!-- СЦЕНАРИЙ 3: ВСЁ ОТЛИЧНО, РИСУЕМ СТОЛЫ -->
-                <!-- СЦЕНАРИЙ 3: ВСЁ ОТЛИЧНО, РИСУЕМ СТОЛЫ -->
         {% else %}
-        {% for table in tables %}
-        <div class="table-card">
+            {% for table in tables %}
+        
+                {# 🔥 ДИНАМИЧЕСКИЙ РАСЧЕТ КЛАССА СТАВОК НА JINJA2 #}
+                {% set stake_class = 'stake-low' %}
+                {% if table.min_buy_in >= 10000 %}
+                    {% set stake_class = 'stake-vip' %}
+                {% elif table.min_buy_in >= 1000 %}
+                    {% set stake_class = 'stake-standard' %}
+                {% endif %}
 
-            <h3 style="margin: 5px 0; color: #fff;">{{ table.table_name }}</h3>
-            <div class="blinds">💵 {{ table.blinds or '0/0' }}</div>
+                <!-- Добавили динамический класс stake_class -->
+                <div class="table-card {{ stake_class }}">
+
+                    <h3 class="table-name-title">{{ table.table_name }}</h3>
+                    <div class="blinds">💵 {{ table.blinds or '0/0' }}</div>
     
-            <div style="font-size: 14px; color: #bdc3c7; margin-bottom: 15px;">
-                Мин. вход: <strong>{{ table.min_buy_in or 0 }} 💰</strong>
-            </div>
+                    <div class="min-buy-in-text">
+                        Мин. вход: <strong>{{ table.min_buy_in or 0 }} 💰</strong>
+                    </div>
 
-            <div class="players-count">
-                🤵‍♂️ Игроки: <strong id="count-{{ table.table_id }}">{{ table.current_players or 0 }} / {{ table.max_players or 10 }}</strong>
-            </div>
+                    <div class="players-count">
+                        🤵‍♂️ Игроки: <strong id="count-{{ table.table_id }}">{{ table.current_players or 0 }} / {{ table.max_players or 10 }}</strong>
+                    </div>
 
-            {% if table.current_players and table.max_players and table.current_players >= table.max_players %}
-                <div class="status-full">МЕСТ НЕТ</div>
-            {% elif user.wallet_balance < table.min_buy_in %}
-                <div class="status-full" style="border-color: #f39c12; color: #f39c12;">Недостаточно фишек</div>
-            {% else %}
-                <!-- БЛОК ПОСАДКИ (Аккордеон) -->
-                <div class="buy-in-section" id="buy-section-{{ table.table_id }}">
-                    <label style="font-size: 12px; color: #95a5a6;">Сумма для игры:</label>
-                    <div style="display: flex; gap: 10px; margin-top: 5px;">
-                        <!-- ИНПУТ ДЛЯ ВЫБОРА ФИШЕК -->
-                        <input type="number" id="buyin-{{ table.table_id }}" 
-                            value="{{ table.min_buy_in }}" 
-                            min="{{ table.min_buy_in }}" 
-                            max="{{ user.wallet_balance }}"
-                            step="10"
-                            style="width: 100px; padding: 10px; border-radius: 8px; border: 1px solid #3498db; background: #222; color: #fff; font-weight: bold;">
+                    {% if table.current_players and table.max_players and table.current_players >= table.max_players %}
+                        <div class="status-full">МЕСТ НЕТ</div>
+                    {% elif user.wallet_balance < table.min_buy_in %}
+                        <div class="status-full" style="border-color: #f39c12; color: #f39c12;">Недостаточно фишек</div>
+                    {% else %}
+                        <!-- БЛОК ПОСАДКИ -->
+                        <div class="buy-in-section" id="buy-section-{{ table.table_id }}">
+                            <label class="buy-in-label">Сумма для игры:</label>
+                            <div style="display: flex; gap: 10px; margin-top: 5px; width: 100%;">
+                                <!-- ИНПУТ ДЛЯ ВЫБОРА ФИШЕК -->
+                                <input type="number" id="buyin-{{ table.table_id }}" 
+                                    value="{{ table.min_buy_in }}" 
+                                    min="{{ table.min_buy_in }}" 
+                                    max="{{ user.wallet_balance }}"
+                                    step="10"
+                                    class="buyin-input-field">
                 
                         <!-- КНОПКА ОТПРАВКИ -->
-                        <button onclick="joinTableWithBuyIn('{{ table.table_id }}')" class="btn-play" style="flex-grow: 1; border: none;">
-                            ВХОД 🔥
-                        </button>
-                    </div>
+                                <button onclick="joinTableWithBuyIn('{{ table.table_id }}')" class="btn-play" style="flex-grow: 1; border: none;">
+                                    СЕСТЬ
+                                </button>
+                            </div>
+                        </div>
+                    {% endif %}
                 </div>
-            {% endif %}
-        </div>
-        {% endfor %}
+            {% endfor %}
         {% endif %}
 
-    </div>
+        </div>
 
     <br>
     <a href="/" class="back-link">← Вернуться на главную</a>
