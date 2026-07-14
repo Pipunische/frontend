@@ -214,15 +214,32 @@
 
         .chip-icon {
             display: inline-block;
-            width: 1.2em;
-            height: 1.2em;
-            background-image: url("/static/poker_chip.png");
+            width: 1.1em;
+            height: 1.1em;
+            background-image: url("/static/poker_chip.svg");
             background-size: contain;
             background-repeat: no-repeat;
             background-position: center;
             vertical-align: middle;
-            margin-top: -2px;
-            margin-left: 4px;
+            margin-top: -3px;
+            margin-left: 5px;
+            
+            /* 🔥 3D ОБЪЕМ: Тень на сукне + сочность цвета */
+            filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.7)) saturate(1.2);
+            
+            /* Настройка плавности для будущей анимации */
+            transition: transform 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275), filter 0.3s ease;
+            will-change: transform, filter; /* Подсказка для видеокарты */
+        }
+
+        .table-card:hover .chip-icon {
+            transform: rotate(360deg) scale(1.15); /* Полный оборот вокруг оси + увеличение */
+            filter: drop-shadow(0 4px 10px rgba(241, 196, 15, 0.5)) saturate(1.5) !important;
+        }
+
+        .user-profile-widget:hover .chip-icon {
+            transform: rotate(360deg) scale(1.15);
+            filter: drop-shadow(0 4px 10px rgba(241, 196, 15, 0.5)) saturate(1.5) !important;
         }
 
         /* === 5. ПРОФИЛЬНЫЙ ВИДЖЕТ (Твой код без изменений) === */
@@ -303,11 +320,102 @@
         .user-name-compact {
             color: #00f2fe; /* Циановый неон, как на главной */
             font-weight: bold;
-            font-size: 12px;
+            font-size: 17px;
             letter-spacing: 0.5px;
-            text-transform: uppercase;
             text-shadow: 0 0 5px rgba(0, 242, 254, 0.5);
         }
+
+        .lobby-header {
+            position: relative;
+            width: 100%; /* 🔥 КРИТИЧЕСКИЙ ФИКС: заставляем растянуться на весь экран */
+            max-width: 1200px; /* 🔥 Ограничиваем максимальной шириной нашей сетки */
+            margin: 0 auto 40px auto; /* Центрируем шапку */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 60px;
+            box-sizing: border-box; /* Защита от внутренних отступов */
+        }
+        
+        .lobby-header h1 {
+            margin: 0 !important; /* Убираем внешние отступы заголовка */
+            color: #f1c40f;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        #create-table-btn {
+            position: absolute !important;
+            left: 0 !important;
+            top: 50% !important;
+            transform: translateY(-50%) !important; /* Центровка по вертикали */
+            
+            background: linear-gradient(135deg, #3498db 0%, #2980b9 100%) !important;
+            color: white !important;
+            padding: 12px 20px;
+            border-radius: 10px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(52, 152, 219, 0.3);
+            cursor: pointer;
+            border: none;
+        }
+
+        #create-table-btn:hover {
+            /* Сохраняем сдвиг и добавляем легкое масштабирование */
+            transform: translateY(-50%) scale(1.05) !important; 
+            box-shadow: 0 6px 20px rgba(52, 152, 219, 0.5) !important;
+        }
+
+        .modal-overlay {
+            position: fixed; /* 🔥 Вырываем из потока документов и растягиваем на весь экран */
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85); /* Затемнение фона на 85% */
+            display: none; /* JS переключит на flex при нажатии кнопки */
+            justify-content: center;
+            align-items: center;
+            z-index: 9999; /* Всегда поверх лобби и виджетов */
+            backdrop-filter: blur(10px); /* Матовое размытие */
+            -webkit-backdrop-filter: blur(10px);
+        }
+
+        /* Контейнер формы внутри оверлея */
+        .modal-overlay .rebuy-box {
+            background: #222;
+            border: 2px solid #3498db;
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 0 30px rgba(52, 152, 219, 0.4);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            box-sizing: border-box;
+        }
+
+        /* Стилизуем кнопку отмены внутри модалки */
+        .modal-overlay .btn-leave-table {
+            background-color: transparent;
+            color: #95a5a6;
+            border: 2px solid #555;
+            border-radius: 10px;
+            padding: 12px 20px;
+            font-size: 14px;
+            font-weight: bold;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: 0.3s;
+            box-sizing: border-box;
+        }
+
+        .modal-overlay .btn-leave-table:hover {
+            background-color: #e74c3c;
+            color: white;
+            border-color: #e74c3c;
+            box-shadow: 0 0 15px rgba(231, 76, 60, 0.5);
+        }
+
     </style>
 </head>
 
@@ -331,15 +439,21 @@
         </a>
     </div>
 
-    <h1>Выбери игровой стол</h1>
+    <!-- КНОПКА СОЗДАНИЯ КАСТОМНОГО СТОЛА -->
+    <div class="lobby-header">
+        <button id="create-table-btn" class="btn-create-table" onclick="toggleCreateTableModal()">
+            🛠️ Создать стол
+        </button>
+        <h1>Выберите игровой стол</h1>
+    </div>
 
         {% if error == 'join_failed' %}
-        <div style="background: #e74c3c; color: white; padding: 15px; border-radius: 10px; margin-bottom: 20px;">
+        <div style="background: #e74c3c; color: white; padding: 15px; border-radius: 10px; max-width: 1200px; margin: 0 auto 20px auto; box-sizing: border-box; text-align: center;">
             ⚠️ Не удалось сесть за стол. Возможно, места закончились или недостаточно средств.
         </div>
         {% endif %}
 
-    <div class="lobby-grid">
+    <div class="lobby-grid">    
 
         <!-- СЦЕНАРИЙ 1: ВЛАДОС УПАЛ -->
         {% if is_down %}
@@ -367,9 +481,9 @@
         
                 {# 🔥 ДИНАМИЧЕСКИЙ РАСЧЕТ КЛАССА СТАВОК НА JINJA2 #}
                 {% set stake_class = 'stake-low' %}
-                {% if table.min_buy_in >= 10000 %}
+                {% if table.min_buy_in | int >= 10000 %}
                     {% set stake_class = 'stake-vip' %}
-                {% elif table.min_buy_in >= 1000 %}
+                {% elif table.min_buy_in | int >= 1000 %}
                     {% set stake_class = 'stake-standard' %}
                 {% endif %}
 
@@ -377,10 +491,12 @@
                 <div class="table-card {{ stake_class }}">
 
                     <h3 class="table-name-title">{{ table.table_name }}</h3>
-                    <div class="blinds">💵 {{ table.blinds or '0/0' }}</div>
+                    <div class="blinds">
+                        <span class="chip-icon"></span> {{ table.blinds or '0/0' }} 
+                    </div>
     
                     <div class="min-buy-in-text">
-                        Мин. вход: <strong>{{ table.min_buy_in or 0 }} 💰</strong>
+                        Мин. вход: <strong>{{ table.min_by_in_formatted or 0 }} <span class="chip-icon"></span></strong>
                     </div>
 
                     <div class="players-count">
@@ -389,7 +505,7 @@
 
                     {% if table.current_players and table.max_players and table.current_players >= table.max_players %}
                         <div class="status-full">МЕСТ НЕТ</div>
-                    {% elif user.wallet_balance < table.min_buy_in %}
+                    {% elif user.wallet_balance | int < table.min_buy_in | int %}
                         <div class="status-full" style="border-color: #f39c12; color: #f39c12;">Недостаточно фишек</div>
                     {% else %}
                         <!-- БЛОК ПОСАДКИ -->
@@ -420,12 +536,94 @@
     <br>
     <a href="/" class="back-link">← Вернуться на главную</a>
 
+    <div id="create-table-modal" class="modal-overlay">
+        <div class="rebuy-box" style="width: 420px; border-color: #3498db; box-shadow: 0 0 30px rgba(52, 152, 219, 0.4);">
+            <h2 style="color: #3498db; margin-bottom: 20px;">Настройка стола</h2>
+            
+            <input type="text" id="create-name" placeholder="Название стола" class="buyin-input-field" style="width: 100%; margin-bottom: 15px;">
+            <input type="password" id="create-passcode" placeholder="Пароль (необязательно)" class="buyin-input-field" style="width: 100%; margin-bottom: 15px;">
+            <input type="number" id="create-chips" placeholder="Сумма бай-ина (фишки)" class="buyin-input-field" style="width: 100%; margin-bottom: 15px;">
+            
+            <div style="display: flex; gap: 10px; width: 100%; margin-bottom: 15px;">
+                <input type="number" id="create-sb" placeholder="Малый блайнд" class="buyin-input-field" style="flex-grow: 1;">
+                <input type="number" id="create-bb" placeholder="Большой блайнд" class="buyin-input-field" style="flex-grow: 1;">
+            </div>
+
+            <div style="display: flex; gap: 10px; width: 100%; margin-bottom: 20px;">
+                <input type="number" id="create-min-players" placeholder="Мин. игроков" value="2" min="2" class="buyin-input-field" style="flex-grow: 1;">
+                <input type="number" id="create-max-players" placeholder="Макс. игроков" value="10" max="10" class="buyin-input-field" style="flex-grow: 1;">
+            </div>
+
+            <div style="display: flex; gap: 10px; width: 100%;">
+                <button onclick="sendCreateTable()" class="btn-play" style="flex-grow: 1; background: #3498db;">СОЗДАТЬ</button>
+                <button onclick="toggleCreateTableModal()" class="btn-leave-table" style="margin-bottom: 0;">ОТМЕНА</button>
+            </div>
+        </div>
+    </div>
+
 </body>
 
 
 <script>
 
     const userToken = "{{ user_token if user else '' }}";
+
+    function toggleCreateTableModal() {
+        const modal = document.getElementById('create-table-modal');
+        if (modal.style.display === 'flex') {
+            modal.style.display = 'none';
+        } else {
+            modal.style.display = 'flex';
+        }
+    }
+
+    async function sendCreateTable() {
+        const name = document.getElementById('create-name').value.trim();
+        const passcode = document.getElementById('create-passcode').value.trim();
+        const chips = parseInt(document.getElementById('create-chips').value);
+        const sb = parseInt(document.getElementById('create-sb').value);
+        const bb = parseInt(document.getElementById('create-bb').value);
+        const minPlayers = parseInt(document.getElementById('create-min-players').value) || 2;
+        const maxPlayers = parseInt(document.getElementById('create-max-players').value) || 10;
+
+        if  (!name || isNaN(chips) || isNaN(sb) || isNaN(bb)) {
+            alert("Заполните обязательные поля!");
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/tables', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: name,
+                    passcode: passcode,
+                    chips: chips,
+                    min_players_num: minPlayers,
+                    max_players_num: maxPlayers,
+                    small_blind: sb,
+                    big_blind: bb
+                })
+            });
+
+            const result = await response.json();
+
+            if (result.redirect) {
+                window.location.href = result.redirect;
+                return;
+            }
+
+            if (response.ok && !result.error) {
+                console.log("✅ СТОЛ УСПЕШНО СОЗДАН.")
+            } else {
+                alert("Ошибка создания: " + (result.detail || result.error || "Неизвестная ошибка"));
+            }
+        } catch (err) {
+            console.error("Ошибка связи:", err);
+            alert("Ошибка связи с сервером");
+        }
+    }
+
 
     function joinTableWithBuyIn(tableId) {
         const input = document.getElementById(`buyin-${tableId}`);
@@ -455,7 +653,7 @@
         window.location.href = `/table/${tableId}?buy_in=${buyIn}`;
     }
 
-    const wsUrl = "http://{{ java_host }}:8080/ws-poker";
+    const wsUrl = "https://{{ java_host }}/ws-poker";
     
     function connectLobbySocket() {
         let socket = new SockJS(wsUrl);

@@ -1,63 +1,151 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PokerClub - Вход</title>
+    <title>PoluPoker - Авторизация</title>
     
-    <!-- Подключаем крутой шрифт Poppins -->
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <!-- Импортируем внешний исправленный CSS файл -->
+    <link rel="stylesheet" href="{{ url_for('static', path='css/glass_auth.css') }}?v={{ v }}">
     
-    <!-- Подключаем иконки FontAwesome (человечек и замок) -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    
-    <!-- Подключаем твой новый Glassmorphism CSS -->
-    <link rel="stylesheet" href="{{ url_for('static', path='css/glass_auth.css') }}">
+    <!-- 🔥 ОФИЦИАЛЬНЫЙ СКРИПТ GOOGLE IDENTITY -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
 
     <div class="login-box">
-        <!-- ФОРМА: action="/login" и method="POST" говорят браузеру отправить данные Питону! -->
-        <form action="/login" method="POST" id="loginForm">
-            <h2>ВХОД</h2>
+        <div id="loginForm" style="display: flex; flex-direction: column; align-items: center;">
+            <h2>ВХОД В КЛУБ</h2>
 
-            <!-- Блок для вывода ошибки от Питона (например, "Неверный пароль") -->
-            {% if error %}
-                <div class="error-msg">{{ error }}</div>
-            {% endif %}
-
-            <!-- Поле Логина -->
-            <div class="input-group">
-                <i class="fas fa-user"></i>
-                <!-- name="login" - это то, что ждет Питон: login: str = Form(...) -->
-                <input type="text" name="login" id="username" placeholder="Ваш логин" required autocomplete="off">
+            <!-- Блок для вывода ошибок -->
+            {% set show_error = error or request.query_params.get('error') == 'session_expired' %}
+            
+            <div id="error-message" class="error-msg {{ 'hidden' if not show_error }}">
+                {% if request.query_params.get('error') == 'session_expired' %}
+                    Ваша сессия истекла. Войдите заново.
+                {% else %}
+                    {{ error }}
+                {% endif %}
             </div>
 
-            <!-- Поле Пароля -->
-            <div class="input-group">
-                <i class="fas fa-lock"></i>
-                <!-- name="password" - это то, что ждет Питон: password: str = Form(...) -->
-                <input type="password" name="password" id="password" placeholder="Пароль" required>
-            </div>
-
-            <button type="submit" class="login-btn" id="submitBtn">Войти в клуб</button>
-
-            <p class="signup-link">
-                Новичок? <a href="/register">Создать аккаунт</a>
+            <p style="color: #bdc3c7; font-size: 14px; margin-bottom: 30px; text-align: center;">
+                Для доступа к столам авторизуйтесь через Google
             </p>
-        </form>
+
+            <!-- 🔥 КНОПКА GOOGLE -->
+            <div id="g_id_onload"
+                data-client_id="41278678885-60fb3n16bsodd83dnevm9cdg29m5l6j4.apps.googleusercontent.com"
+                 data-context="signin"
+                 data-ux_mode="popup"
+                 data-callback="handleGoogleCredentialResponse"
+                 data-auto_prompt="false">
+            </div>
+            
+            <div class="g_id_signin"
+                 data-type="standard"
+                 data-shape="rectangular"
+                 data-theme="outline"
+                 data-text="continue_with"
+                 data-size="large"
+                 data-logo_alignment="left">
+            </div>
+
+            <div id="loading-spinner" style="display: none; margin-top: 20px; color: #f1c40f; font-weight: bold;">
+                🔄 Авторизация...
+            </div>
+        </div>
+    </div>
+
+    <!-- 🔥 МОДАЛЬНОЕ ОКНО ДЛЯ ПЕРВОГО ВВОДА НИКНЕЙМА -->
+    <div id="first-nickname-modal" class="modal-overlay">
+        <div class="nickname-box">
+            <h2>Добро пожаловать!</h2>
+            <p>Перед тем как сесть за стол, выберите игровой никнейм (макс. 20 символов):</p>
+            <input type="text" id="first-nickname-input" class="nickname-input" maxlength="20" placeholder="Ваш никнейм">
+            <button class="btn-submit-nick" onclick="submitFirstNickname()">СОХРАНИТЬ И ИГРАТЬ</button>
+        </div>
     </div>
 
     <script>
-        // Простенький визуал при нажатии кнопки (пока Питон думает)
-        const loginForm = document.getElementById('loginForm');
-        const submitBtn = document.getElementById('submitBtn');
+        async function handleGoogleCredentialResponse(response) {
+            console.log("✅ Токен от Google получен. Отправляем на бэкенд...");
+            
+            document.querySelector('.g_id_signin').style.display = 'none';
+            document.getElementById('loading-spinner').style.display = 'block';
+            document.getElementById('error-message').style.display = 'none';
+            
+            const idToken = response.credential;
 
-        loginForm.addEventListener('submit', function() {
-            submitBtn.innerText = 'ПРОВЕРКА...';
-            submitBtn.style.opacity = '0.7';
-            // Не делаем e.preventDefault(), чтобы браузер реально отправил POST запрос Питону!
-        });
+            try {
+                const res = await fetch('/api/auth/google', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token: idToken })
+                });
+
+                const data = await res.json();
+
+                if (data.is_new_user) {
+                    // Если пользователь новый, прячем спиннер и активируем модальное окно выбора никнейма
+                    document.getElementById('loading-spinner').style.display = 'none';
+                    document.getElementById('first-nickname-modal').classList.add('active');
+                } else if (data.redirect) {
+                    window.location.href = data.redirect; // Обычный игрок -> Летим в Лобби!
+                } else if (data.error) {
+                    showError(data.error);
+                }
+            } catch (err) {
+                console.error("Ошибка связи с сервером:", err);
+                showError("Ошибка связи с сервером. Попробуйте позже.");
+            }
+        }
+
+        // Функция отправки первого никнейма
+        async function submitFirstNickname() {
+            const input = document.getElementById('first-nickname-input');
+            const newNick = input.value.trim();
+
+            if (!newNick || newNick.length > 20) {
+                alert("Никнейм должен быть заполнен и содержать не более 20 символов!");
+                return;
+            }
+
+            try {
+                // Отправляем первый никнейм на стандартный эндпоинт смены ника в BFF
+                const response = await fetch('/api/profile/nickname', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ new_nickname: newNick })
+                });
+
+                const result = await response.json();
+
+                if (result.redirect) {
+                    window.location.href = result.redirect;
+                    return;
+                }
+
+                if (response.ok && !result.error) {
+                    console.log("✅ Стартовый никнейм успешно сохранен. Перенаправление...");
+                    window.location.href = "/lobby"; // Ник сохранен -> отправляем в лобби
+                } else {
+                    alert("Ошибка при сохранении ника: " + (result.detail || result.error || "Неизвестная ошибка"));
+                }
+            } catch (err) {
+                console.error("Ошибка связи:", err);
+                alert("Ошибка связи при сохранении никнейма.");
+            }
+        }
+
+        function showError(msg) {
+            const errorDiv = document.getElementById('error-message');
+            errorDiv.innerText = msg;
+            errorDiv.style.display = 'block';
+            
+            document.querySelector('.g_id_signin').style.display = 'block';
+            document.getElementById('loading-spinner').style.display = 'none';
+        }
     </script>
 </body>
 </html>

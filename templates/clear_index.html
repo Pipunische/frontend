@@ -4,9 +4,8 @@
     <meta charset="UTF-8" />
     <title>Игра — Стол #{{ table_id[:8] }}</title>
     <link rel="icon" href="data:,">
+    <!-- Все стили, включая аватарки, теперь импортируются отсюда -->
     <link rel="stylesheet" href="{{ url_for('static', path='css/poker_table.css') }}?v={{ v }}">
-    <style>
-    </style>
     <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
   </head>
@@ -57,8 +56,7 @@
           {% endfor %}
         </div>
 
-            <!-- ГЕНЕРАЦИЯ 9 МЕСТ ДЛЯ ОППОНЕНТОВ -->
-      <!-- ВНИМАНИЕ: Используем новый список ordered_others от Питона! -->
+      <!-- ГЕНЕРАЦИЯ 9 МЕСТ ДЛЯ ОППОНЕНТОВ -->
       {% for i in range(9) %}
     
           {% set p = ordered_others[i] %}
@@ -84,11 +82,21 @@
                     <div class="dealer-button">D</div>
                 {% endif %}
 
-                <!-- ИМЯ И ФИШКИ -->
-                <span class="player-name {{ 'active-turn' if p.is_active_turn else '' }}">
-                    {{ p.name }}
-                </span>
-                <span class="player-chips">{{ p.chips }} 💰</span>
+                <!-- АВАТАР, ИМЯ И ФИШКИ -->
+                <div class="seat-profile">
+                    {% if p.avatar_url %}
+                        <img src="{{ p.avatar_url }}" class="seat-avatar" alt="Avatar">
+                    {% else %}
+                        <div class="seat-avatar-default">{{ p.name[0] | upper }}</div>
+                    {% endif %}
+                    
+                    <div class="seat-info">
+                        <span class="player-name {{ 'active-turn' if p.is_active_turn else '' }}">
+                            {{ p.name }}
+                        </span>
+                        <span class="player-chips">{{ p.chips }} 💰</span>
+                    </div>
+                </div>
 
               {% else %}
                 <span class="empty-seat-text">Свободно</span>
@@ -99,8 +107,7 @@
           </div>
       {% endfor %}
 
-              <!-- ТВОЕ МЕСТО (Hero Seat) -->
-              <!-- ТВОЕ МЕСТО (Hero Seat) -->
+      <!-- ТВОЕ МЕСТО (Hero Seat) -->
       <div
           class="player-seat pos-hero status-{{ my_player.status|lower if my_player else 'empty' }}"
           data-userid="{{ user.user_id }}"
@@ -122,19 +129,23 @@
             {% endif %}
           </div>
 
-          {# 4. НИКНЕЙМ С НЕОНОМ #}
-          <span class="player-name {{ 'active-turn' if my_player and my_player.is_active_turn else '' }}">
-              {{ user.name }}
-          </span>
+          <!-- АВАТАР, ИМЯ И ФИШКИ HERO -->
+          <div class="seat-profile">
+              {% if user.avatar_url %}
+                  <img src="{{ user.avatar_url }}" class="seat-avatar" alt="Avatar">
+              {% else %}
+                  <div class="seat-avatar-default">{{ user.name[0] | upper }}</div>
+              {% endif %}
 
-          {# 5. ТВОИ ЧИПСЫ #}
-          <span class="player-chips">
-            {{ my_player.chips if my_player else user.chips }} 💰
-          </span>
-
-          <!-- <span class="player-chips" style="color: #f1c40f; font-size: 12px; opacity: 0.8;">
-            Кошелек: {{ user.wallet_balance }} 🪙
-          </span> -->
+              <div class="seat-info">
+                  <span class="player-name {{ 'active-turn' if my_player and my_player.is_active_turn else '' }}">
+                      {{ user.name }}
+                  </span>
+                  <span class="player-chips">
+                      {{ my_player.chips if my_player else user.chips }} 💰
+                  </span>
+              </div>
+          </div>
 
           <div class="timer-track"><div class="timer-fill"></div></div>
 
@@ -183,7 +194,7 @@
 
       // Сетевые настройки
       const javaHost = "{{ java_host }}";
-      const wsUrl = `http://${javaHost}:8080/ws-poker`;
+      const wsUrl = `https://${javaHost}/ws-poker`;
       let stompClient = null;
       let isIntentionalReload = false;
 
@@ -674,6 +685,11 @@
             const seatElement = document.querySelector(posClass);
 
             if (seatElement) {
+              // Формируем HTML аватара
+              const avatarHtml = p.avatar_url 
+                ? `<img src="${p.avatar_url}" class="seat-avatar" alt="Avatar">`
+                : `<div class="seat-avatar-default">${p.name[0].toUpperCase()}</div>`;
+
               if (seatElement.dataset.userid !== p.user_id) {
                 seatElement.classList.remove('status-empty');
                 seatElement.dataset.userid = p.user_id;
@@ -681,8 +697,13 @@
 
                 seatElement.innerHTML = `
                   <div class="opponent-hand"></div>
-                  <span class="player-name">${p.name}</span>
-                  <span class="player-chips">${p.chips} 💰</span>
+                  <div class="seat-profile">
+                      ${avatarHtml}
+                      <div class="seat-info">
+                          <span class="player-name">${p.name}</span>
+                          <span class="player-chips">${p.chips} 💰</span>
+                      </div>
+                  </div>
                   <div class="timer-track"><div class="timer-fill"></div></div>
                 `;
               } else {
@@ -692,6 +713,12 @@
                 const nameEl = seatElement.querySelector('.player-name');
                 if (nameEl) nameEl.innerText = p.name;
                 seatElement.dataset.seatindex = p.seat_index;
+
+                // Обновляем аватар, если его почему-то нет в профиле
+                const profileEl = seatElement.querySelector('.seat-profile');
+                if (profileEl && !profileEl.querySelector('.seat-avatar, .seat-avatar-default')) {
+                    profileEl.insertAdjacentHTML('afterbegin', avatarHtml);
+                }
               }
 
               refreshSeatStatus(seatElement, p.status);
@@ -922,7 +949,7 @@
       }
 
 
-      // === ГЛАВНЫЙ СЕТЕВОЙ ЦЕНТР (ДИРИЖЕР) ===
+      // === ГЛАВНЫЙ СЕТЕВОЙ ЦЕНТР ===
 
       function connectWebSocket() {
 
@@ -932,29 +959,23 @@
           return;
         }
 
-          // Инициализируем соединение
           let socket = new SockJS(wsUrl);
           stompClient = Stomp.over(socket);
     
-          // Отключаем мусор в консоли (чтобы видеть только наши логи)
           stompClient.debug = null;
 
           const connectHeaders = {
             'Authorization': 'Bearer ' + userToken,
           };
 
-          // Пытаемся подключиться
           stompClient.connect(connectHeaders, function (frame) {
               console.log('🔗 WebSocket Подключен! Связь с Владосом установлена.');
 
-              // ПОДПИСКА НА СТОЛ: Слушаем всё, что происходит в этой "комнате"
               stompClient.subscribe('/topic/table/' + tableId, function (message) {
             
-                  // Вскрываем пакет от Владоса
                   const eventData = JSON.parse(message.body);
                   console.log("⚡ ИВЕНТ:", eventData.event_type, eventData);
 
-                  // МАРШРУТИЗАТОР ИВЕНТОВ (SWITCH)
                   switch (eventData.event_type) {
 
                       case 'TABLE_UPDATE':
@@ -1021,15 +1042,11 @@
 
                       
                       case 'PLAYER_ACTION':
-                          // Обновляем банк (тут он называется total_pot по контракту Владоса)
                           document.getElementById('pot-value').innerText = eventData.total_pot;
                     
-                          // Точечные обновления без перерисовки всего стола
                           updatePlayerBalance(eventData);
                           animateChip(eventData);
                     
-                          // Скорее всего, ход перешел дальше, поэтому обновляем неон
-                          // (Владос должен присылать новый current_turn_seat в этом ивенте!)
                           if (eventData.current_turn_seat !== undefined) {
                               updateActiveTurn(eventData.current_turn_seat);
                               const newTimeToAct = eventData.time_to_act_ms || 15000;
@@ -1037,11 +1054,7 @@
                           }
                           break;
 
-                      // ---------------------------------------------------
-                      // 3. СТАТУС ИГРОКА (Кто-то сел за стол или вышел)
-                      // ---------------------------------------------------
                       case 'PLAYER_STATUS':
-                
                         console.log(`🔄 Игрок ${eventData.nickname} ${eventData.status === 'JOINED' ? 'сел' : 'ушел'}. Обновляем рассадку...`); 
                         fetch(`/table/${tableId}`, {
                           headers: { 'Accept': 'application/json' }
@@ -1056,7 +1069,6 @@
                         .catch(err => console.error("Ошибка обновления рассадки:", err));
                         break;
 
-                      // ---------------------------------------------------
                       default:
                           console.warn("⚠️ Неизвестный тип ивента от Владоса:", eventData.event_type);
                   }

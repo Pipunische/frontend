@@ -57,7 +57,7 @@ body {
   transform: translateY(-5px);
 }
 
-/* 4. МЕСТА ДЛЯ ИГРОКОВ (АРСЕНИЙ, ТВОИ КООРДИНАТЫ) */
+/* 4. МЕСТА ДЛЯ ИГРОКОВ */
 .player-seat {
   position: absolute;
   width: 115px;
@@ -84,14 +84,11 @@ body {
   margin-top: 5px;
 }
 
-/* ТВОЕ МЕСТО (Объединили координаты и визуал) */
+/* ТВОЕ МЕСТО */
 .pos-hero {
-  /* Твои координаты из скрина 1 */
   bottom: -60px;
   left: 50%;
   transform: translateX(-50%);
-
-  /* Твой визуал из скрина 2 */
   border: 4px solid #2ecc71;
   box-shadow: 0 0 15px rgba(46, 204, 113, 0.5);
 }
@@ -161,16 +158,16 @@ body {
   transform: translateX(50%);
 }
 
-/* 5. ПАНЕЛЬ КНОПОК (Финальный фикс позиционирования) */
+/* 5. ПАНЕЛЬ КНОПОК */
 .action-panel {
-  position: absolute; /* ВЫРЫВАЕМ ИЗ ПОТОКА */
-  bottom: 40px; /* ПРИЖИМАЕМ ВНИЗ */
-  right: 40px; /* ПРИЖИМАЕМ ВПРАВО (в самый угол) */
+  position: absolute;
+  bottom: 40px;
+  right: 40px;
   display: flex;
   flex-direction: column;
   gap: 10px;
   width: 220px;
-  z-index: 1000; /* ЧТОБЫ БЫТЬ ПОВЕРХ ВСЕХ ЭЛЕМЕНТОВ */
+  z-index: 1000;
   box-sizing: border-box;
 }
 
@@ -190,13 +187,13 @@ body {
   box-sizing: border-box;
 }
 
-/* Цвета */
+/* Цвета кнопок */
 .btn-allin {
   background-color: #a01919;
 }
 .btn-check {
   background-color: #2ecc71;
-} /* Сделал зеленым, как просили */
+}
 .btn-call {
   background-color: #c1c717;
 }
@@ -210,7 +207,6 @@ body {
   margin: 0;
 }
 
-/* Преукрасить */
 #raise-amount {
   width: 50%;
   padding: 14px 0;
@@ -255,35 +251,35 @@ body {
   color: #f1c40f;
   font-size: 26px;
   font-weight: bold;
-  background: rgba(10, 15, 20, 0.85) !important; /* Матовое стекло */
+  background: rgba(10, 15, 20, 0.85) !important;
   backdrop-filter: blur(5px);
   padding: 8px 25px;
   border-radius: 30px;
-  border: 2px solid #f1c40f !important; /* Золотая рамка */
+  border: 2px solid #f1c40f !important;
   box-shadow:
     0 10px 25px rgba(0, 0, 0, 0.7),
-    0 0 15px rgba(241, 196, 15, 0.3) !important; /* Золотой неон */
+    0 0 15px rgba(241, 196, 15, 0.3) !important;
 }
 
 /* Карты игрока в руках */
 .my-hand {
   position: absolute;
-  top: -45px; /* Выносим над аватаркой */
+  top: -45px;
   display: flex;
   gap: 5px;
   z-index: 10;
 }
 
 .hand-card {
-  width: 50px; /* В руках карты поменьше, чем на столе */
+  width: 50px;
   height: auto;
   border-radius: 4px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
-  transform: rotate(-5deg); /* Немного наклоним для стиля */
+  transform: rotate(-5deg);
 }
 
 .hand-card:last-child {
-  transform: rotate(5deg); /* Вторая карта в другую сторону - веер! */
+  transform: rotate(5deg);
 }
 
 .poker-card {
@@ -298,31 +294,29 @@ body {
   position: absolute;
   top: 30%;
   left: 20%;
-  width: 70px; /* Немного уменьшил, чтобы было аккуратнее */
+  width: 70px;
   height: 100px;
-  background-color: #222; /* Темная подложка для теней */
+  background-color: #222;
   border-radius: 6px;
-  /* Слоистая тень теперь будет работать на "объем" */
   box-shadow:
     1px 1px 0 #ddd,
     2px 2px 0 #333,
     3px 3px 0 #ddd,
     4px 4px 15px rgba(0, 0, 0, 0.8);
   z-index: 5;
-  overflow: hidden; /* МАГИЯ: всё, что не влезет в радиус, будет обрезано! */
+  overflow: hidden;
 }
 
 .deck-pile img {
   width: 100%;
   height: 100%;
-  object-fit: cover; /* Картинка заполнит блок, сохраняя стиль */
+  object-fit: cover;
 }
 
-/* 2. Анимация полета */
+/* Анимация полета */
 @keyframes dealCard {
   0% {
     opacity: 0;
-    /* Карта начинает полет из точки, которую мы укажем для каждого места отдельно */
     transform: translate(var(--deal-x, -400px), var(--deal-y, -150px))
       scale(0.3) rotate(-30deg);
   }
@@ -335,12 +329,12 @@ body {
   }
 }
 
-/* 7. КАРТЫ ПРОТИВНИКОВ (Missing Link!) */
+/* 7. КАРТЫ ПРОТИВНИКОВ */
 .opponent-hand {
   position: absolute;
-  top: -50px; /* Выталкиваем карты НАД кругом игрока */
+  top: -50px;
   left: 50%;
-  transform: translateX(-50%); /* Центрируем по горизонтали */
+  transform: translateX(-50%);
   display: flex;
   gap: 3px;
   z-index: 10;
@@ -352,39 +346,29 @@ body {
   opacity: 0;
 }
 
-/* Индивидуальные векторы полета из колоды (подгони цифры под свой экран) */
-
-/* Игрок сверху (Колода для него слева и СНИЗУ) */
+/* Индивидуальные векторы полета из колоды */
 .pos-1 {
   --deal-x: -320px;
   --deal-y: 250px;
 }
-
-/* Игрок справа (Колода для него ДАЛЕКО слева и чуть выше) */
 .pos-2 {
   --deal-x: -600px;
   --deal-y: -50px;
 }
-
-/* ТЫ снизу (Колода для тебя слева и СВЕРХУ) */
 .pos-3 {
   --deal-x: -320px;
   --deal-y: -350px;
 }
-
-/* Игрок слева (Колода для него СОВСЕМ РЯДОМ и чуть выше) */
 .pos-4 {
   --deal-x: 100px;
   --deal-y: -100px;
 }
-
-/* Карты на столе (Колода слева) */
 .community-cards {
   --deal-x: -250px;
   --deal-y: 0px;
 }
 
-/* ПОРЯДОК РАЗДАЧИ: Сначала тебе в руки */
+/* Порядок раздачи */
 .my-hand .hand-card:nth-child(1) {
   animation-delay: 0s;
   --rotate-final: -8deg;
@@ -403,7 +387,7 @@ body {
   --rotate-final: 8deg;
 }
 
-/* ПОТОМ: Флоп на стол */
+/* Флоп на стол */
 .community-cards .poker-card:nth-child(1) {
   animation-delay: 0;
   --rotate-final: 0deg;
@@ -427,21 +411,20 @@ body {
   --rotate-final: 0deg;
 }
 
-/* Карта, которая уже на столе - никакой анимации, просто стоит */
 .card-static {
   opacity: 1 !important;
   transform: rotate(var(--rotate-final, 0deg)) !important;
   animation: none !important;
 }
 
-/* 8. ФИШКА ДИЛЕРА (Dealer Button - Чистый CSS) */
+/* 8. ФИШКА ДИЛЕРА */
 .dealer-button {
   position: absolute;
   width: 30px;
   height: 30px;
-  background-color: #f8f9fa; /* Почти белый, пластиковый цвет */
-  border: 2px solid #2c3e50; /* Темная окантовка */
-  border-radius: 50%; /* Делаем идеальный круг */
+  background-color: #f8f9fa;
+  border: 2px solid #2c3e50;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -450,66 +433,49 @@ body {
   font-size: 16px;
   box-shadow:
     1px 2px 5px rgba(0, 0, 0, 0.5),
-    /* Тень на столе */ inset 0 -2px 3px rgba(0, 0, 0, 0.2); /* Внутренний объем (3D эффект) */
-  z-index: 15; /* Должна лежать поверх карт и стола */
-
-  /* ВРЕМЕННЫЕ КООРДИНАТЫ (Пока Владос чинит логику) 
-           Бросим её просто на стол для теста */
+    inset 0 -2px 3px rgba(0, 0, 0, 0.2);
+  z-index: 15;
   top: 20%;
   left: -20%;
 }
 
 /* =========================================
-         10. ВИЗУАЛЬНЫЕ СТАТУСЫ ИГРОКОВ
-         ========================================= */
+   10. ВИЗУАЛЬНЫЕ СТАТУСЫ ИГРОКОВ
+   ========================================= */
 
-/* Свободное место (Тусклое, без рамки) */
+/* Свободное место */
 .status-empty {
-  border: 2px dashed rgba(255, 255, 255, 0.2) !important; /* Штриховка */
-  background: rgba(0, 0, 0, 0.15) !important; /* Почти прозрачное */
+  border: 2px dashed rgba(255, 255, 255, 0.2) !important;
+  background: rgba(0, 0, 0, 0.15) !important;
   box-shadow: none !important;
   opacity: 0.6;
 }
 .empty-seat-text {
-  color: rgba(255, 255, 255, 0.3) !important; /* Тусклый текст */
+  color: rgba(255, 255, 255, 0.3) !important;
   font-weight: bold;
 }
 
-/* Если у него остались рубашки карт - прячем их, он же скинул! */
+/* Если сбросил карты - прячем их */
 .status-folded .opponent-hand,
 .status-folded .my-hand {
   display: none !important;
 }
 
-/* Игрок пошел Ва-Банк (ALL-IN) - Красная пульсирующая рамка! */
+/* Игрок пошел Ва-Банк (ALL-IN) - Объединенный чистый класс со свечением */
 .status-all_in {
-  border-color: #e74c3c !important;
+  border-color: #a01919 !important;
   box-shadow:
     0 0 20px rgba(231, 76, 60, 0.8),
     inset 0 0 15px rgba(231, 76, 60, 0.5) !important;
-  animation: pulseAllIn 1.5s infinite alternate;
-}
-
-/* Текст имени для нормальных игроков */
-.player-name {
-  color: #f1c40f;
-  font-weight: bold;
-  text-shadow: 1px 1px 2px #000;
-}
-/* Делаем имя красным при олл-ине */
-/* Игрок пошел Ва-Банк (ALL-IN) - Красное свечение БЕЗ изменения размера */
-.status-all_in {
-  border-color: #a01919 !important;
-  /* Убираем transform: scale отсюда, если он вдруг был */
   animation: pulseAllIn 1.5s infinite alternate ease-in-out;
 }
 
 .status-all_in .player-name {
-  color: #e74c3c;
-  text-shadow: 0 0 5px rgba(231, 76, 60, 0.8); /* Текст тоже "горит" */
+  color: #e74c3c !important;
+  text-shadow: 0 0 5px rgba(231, 76, 60, 0.8) !important;
 }
 
-/* Мягкая пульсация ТОЛЬКО тенями */
+/* Мягкая пульсация теней ALL-IN */
 @keyframes pulseAllIn {
   0% {
     box-shadow:
@@ -520,17 +486,23 @@ body {
     box-shadow:
       0 0 25px rgba(231, 76, 60, 1),
       inset 0 0 20px rgba(231, 76, 60, 0.8);
-    /* УБРАЛИ transform: scale(1.02); */
   }
 }
 
-/* Индикатор активного хода (Неоновое свечение имени) */
+/* Текст имени */
+.player-name {
+  color: #f1c40f;
+  font-weight: bold;
+  text-shadow: 1px 1px 2px #000;
+}
+
+/* Индикатор активного хода */
 .active-turn {
-  color: #fff !important; /* Делаем текст белым, чтобы выделялся */
+  color: #fff !important;
   text-shadow:
     0 0 5px #2ecc71,
     0 0 10px #2ecc71,
-    0 0 20px #2ecc71 !important; /* Зеленый неон */
+    0 0 20px #2ecc71 !important;
   animation: pulseTurn 1s infinite alternate;
 }
 
@@ -557,34 +529,35 @@ body {
   font-weight: bold;
   font-size: 13px;
   z-index: 20;
-  /* Анимация появления фишки */
   animation: bet-pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
 }
 
-/* Маленькая иконка фишки на чистом CSS */
+/* Чистая SVG иконка фишки */
 .chip-icon {
-  width: 14px;
-  height: 14px;
-  background: #e74c3c; /* Красная фишка */
-  border: 2px dashed #fff;
-  border-radius: 50%;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  display: inline-block;
+  width: 1.2em;
+  height: 1.2em;
+  background-image: url("/static/poker_chip.svg");
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  vertical-align: middle;
+  margin-top: -2px;
+  margin-left: 4px;
 }
 
 @keyframes bet-pop {
   0% {
     opacity: 0;
-    /* margin-top: 20px; */
     transform: scale(0.5);
   }
   100% {
     opacity: 1;
-    /* margin-top: 40px; */
     transform: scale(1);
   }
 }
 
-/* Позиционирование ставок для каждого места (чтобы лежали ближе к центру) */
+/* Позиционирование ставок относительно центра */
 .pos-1 .player-bet {
   bottom: 155px;
   left: 145%;
@@ -626,7 +599,6 @@ body {
 }
 .pos-hero .player-bet {
   top: -90px;
-
   left: 0;
   right: 0;
   margin-left: auto;
@@ -636,14 +608,14 @@ body {
 
 .system-panel {
   position: absolute;
-  bottom: 40px; /* На том же уровне, что и action-panel */
-  left: 40px; /* Но прижата к ЛЕВОМУ краю */
+  bottom: 40px;
+  left: 40px;
   z-index: 1000;
 }
 
 .btn-leave-table {
   background-color: transparent;
-  color: #95a5a6; /* Тусклый серый цвет, чтобы не отвлекала */
+  color: #95a5a6;
   border: 2px solid #555;
   border-radius: 8px;
   padding: 10px 20px;
@@ -655,13 +627,13 @@ body {
 }
 
 .btn-leave-table:hover {
-  background-color: #e74c3c; /* При наведении становится красной! */
+  background-color: #e74c3c;
   color: white;
   border-color: #e74c3c;
   box-shadow: 0 0 15px rgba(231, 76, 60, 0.5);
 }
 
-/* 13. МОДАЛЬНОЕ ОКНО REBUY (Финальный фикс верстки) */
+/* 13. МОДАЛЬНОЕ ОКНО REBUY */
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -669,7 +641,7 @@ body {
   width: 100%;
   height: 100%;
   background: rgba(0, 0, 0, 0.85);
-  display: none; /* Скрыто по умолчанию, JS переключит на flex */
+  display: none;
   justify-content: center;
   align-items: center;
   z-index: 9999;
@@ -681,10 +653,8 @@ body {
   border: 2px solid #e74c3c;
   padding: 30px;
   border-radius: 20px;
-  width: 380px; /* Немного расширил для комфорта */
+  width: 380px;
   box-shadow: 0 0 30px rgba(231, 76, 60, 0.4);
-
-  /* МАГИЯ ЦЕНТРОВКИ ВСЕГО ВНУТРИ */
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -702,7 +672,7 @@ body {
 }
 
 .rebuy-input {
-  width: 100%; /* Теперь работает четко вместе с border-box */
+  width: 100%;
   padding: 12px;
   margin-bottom: 20px;
   background: #333;
@@ -716,7 +686,6 @@ body {
   box-sizing: border-box;
 }
 
-/* Стилизуем кнопки внутри модалки, чтобы они были одинаковыми */
 .rebuy-box .btn-play,
 .rebuy-box .btn-leave-table {
   width: 100%;
@@ -751,20 +720,16 @@ body {
   color: #e74c3c;
 }
 
-/* УЛЬТИМАТИВНОЕ ЗАТЕМНЕНИЕ (Для всех, кто не в игре) */
+/* УЛЬТИМАТИВНОЕ ЗАТЕМНЕНИЕ (Для тех, кто вне игры) */
 .status-sitting_out,
 .status-folded {
-  /* Скрин 3 + 4: Глушим яркость и цвет на максимум */
   opacity: 0.5 !important;
   filter: grayscale(100%) brightness(0.4) !important;
-
-  /* Убиваем неон и рамки (чтобы Hero не светился зеленым) */
   border-color: #444 !important;
   box-shadow: none !important;
   transition: all 0.5s ease;
 }
 
-/* Твой идеальный фикс: Прячем карты внутри этих статусов */
 .status-sitting_out .opponent-hand,
 .status-sitting_out .my-hand,
 .status-folded .opponent-hand,
@@ -772,26 +737,12 @@ body {
   display: none !important;
 }
 
-/* Класс для вставки фишки прямо в текст или блоки */
-.chip-icon {
-  display: inline-block;
-  width: 1.2em; /* Масштабируется вместе с размером шрифта! */
-  height: 1.2em;
-  background-image: url("/static/poker_chip.png"); /* Путь к твоему файлу */
-  background-size: contain;
-  background-repeat: no-repeat;
-  background-position: center;
-  vertical-align: middle; /* Центровка по линии текста */
-  margin-top: -2px; /* Микро-корректировка высоты */
-  margin-left: 4px;
-}
-
-/* Трек таймера (Оболочка) */
+/* Трек таймера */
 .timer-track {
   position: absolute;
   top: 10px;
-  right: -16px; /* Вынесли чуть дальше, чтобы не перекрывать рамку */
-  width: 8px; /* Сделали чуть толще для красоты */
+  right: -16px;
+  width: 8px;
   height: calc(100% - 20px);
   background: rgba(0, 0, 0, 0.8);
   border: 1px solid #444;
@@ -801,13 +752,12 @@ body {
   z-index: 25;
 }
 
-/* Бегущая полоска */
 .timer-fill {
   position: absolute;
-  bottom: 0; /* 🔥 ПРИБИВАЕМ К НИЗУ */
+  bottom: 0;
   left: 0;
   width: 100%;
-  height: 100%; /* 🔥 JS будет менять это от 100% до 0% */
+  height: 100%;
   background: #2ecc71;
   box-shadow: 0 0 8px #2ecc71;
   border-radius: 3px;
@@ -822,14 +772,14 @@ body {
   box-shadow: 0 0 10px #e74c3c !important;
 }
 
-/* 1. Прячем всё лишнее (эффект "ночи") */
+/* Шоудаун: Эффект ночи */
 .card-dimmed {
   filter: brightness(0.3) grayscale(90%) !important;
   opacity: 0.5;
   transition: all 0.6s ease;
 }
 
-/* 2. Золотое сияние для РАНГА (Пара, Сет, Стрит) */
+/* Золотое сияние для РАНГА */
 .card-winner-rank {
   filter: brightness(1.2) contrast(1.1) !important;
   box-shadow:
@@ -841,7 +791,7 @@ body {
   transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
-/* 3. Серебряное/мягкое сияние для КИКЕРОВ */
+/* Серебряное сияние для КИКЕРОВ */
 .card-winner-kicker {
   filter: brightness(1) !important;
   box-shadow: 0 0 10px #bdc3c7 !important;
@@ -851,7 +801,7 @@ body {
   opacity: 0.9;
 }
 
-/* 4. Плашка с названием комбинации */
+/* Плашка комбинации */
 .hand-name-badge {
   position: absolute;
   top: -45px;
@@ -879,4 +829,46 @@ body {
     opacity: 1;
     transform: translate(-50%, 0) scale(1);
   }
+}
+
+/* ==========================================================================
+   🔥 ДОБАВЛЕНО: СТИЛИ ДЛЯ АВАТАРОК ИГРОКОВ (ПЕРЕНЕСЕНО ИЗ INDEX.HTML В CSS)
+   ========================================================================== */
+.seat-profile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 5px 0;
+}
+
+.seat-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 2px solid #3498db;
+  object-fit: cover;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
+}
+
+.seat-avatar-default {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #3498db, #8e44ad);
+  border: 2px solid #3498db;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+  font-size: 14px;
+  color: #fff;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
+  text-transform: uppercase;
+}
+
+.seat-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
 }
