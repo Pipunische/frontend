@@ -26,7 +26,7 @@ async def java_request(method: str, url: str, request: Request, json_data=None, 
 
             if res.status_code == 401 and user.get("refresh_token"):
                 logger.info(f"🔄 Access Token для {user['name']} истек. Попытка динамического обновления...")
-                refresh_url = f"https://{settings.JAVA_HOST}/api/auth/refresh"
+                refresh_url = f"{settings.JAVA_AUTH_URL}/refresh"
                 refresh_payload = {"refresh_token": user.get("refresh_token")}
 
                 refresh_res = await client.post(refresh_url, json=refresh_payload)

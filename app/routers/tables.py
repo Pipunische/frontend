@@ -8,6 +8,97 @@ from app.services import templates, java_request, extract_cards
 
 router = APIRouter(tags=["Game Tables"])
 
+@router.get("/dev-table", response_class=HTMLResponse)
+async def dev_page_table(request: Request):
+    """
+    Секретный эндпоинт для тестирования верстки без Java-бэкенда.
+    Доступен по адресу: http://127.0.0.1:8000/dev-table
+    """
+    
+    mock_user = {
+        "user_id": "hero_123",
+        "name": "Arseniy",
+        "wallet_balance": 50000,
+        "token": "fake_token",
+        "avatar_url": "https://api.dicebear.com/7.x/avataaars/svg?seed=Arseniy" # Тестовая крутая аватарка
+    }
+
+    # 2. Фейковые карты на столе
+    mock_community_cards = ["As", "Kh", "10d"]
+
+    # 3. Фейковый статус самого игрока (Hero)
+    mock_my_player = {
+        "user_id": "hero_123",
+        "name": "Arseniy",
+        "seat_index": 0,
+        "chips": 1500,
+        "status": "ACTIVE",
+        "is_dealer": True,
+        "is_active_turn": True,
+        "round_contribution": 100,
+        "avatar_url": mock_user["avatar_url"]
+    }
+
+    mock_ordered_others = []
+    bot_names = ["SiliVal", "Ivan99", "ProGamer", "Kicker", "Loser99", "Shark", "Fish", "Lucky", "Donk"]
+
+    for i in range(9):
+        # Делаем игроков 3 и 7 сбросившими карты (FOLD) для разнообразия
+        status = "FOLDED" if i in [11, 12] else "ACTIVE"
+        cards = [] if status == "FOLDED" else ["card_back", "card_back"]
+        
+        # Чередуем: четным даем аватарку, нечетным - просто букву
+        avatar = f"https://api.dicebear.com/7.x/avataaars/svg?seed={bot_names[i]}" if i % 2 == 0 else ""
+        
+        mock_ordered_others.append({
+            "user_id": f"opp_{i}",
+            "name": bot_names[i],
+            "seat_index": i + 1,
+            "chips": 1000 + (i * 350),
+            "status": status,
+            "is_dealer": False,
+            "is_active_turn": False,
+            "round_contribution": 50 if status == "ACTIVE" else 0,
+            "cards": cards,
+            "avatar_url": avatar
+        })
+
+    # 5. Фейковый стейт всей игры
+    all_players_for_js = [mock_my_player]
+    for p in mock_ordered_others:
+        if p is not None:
+            all_players_for_js.append(p)
+
+    # 5. Фейковый стейт всей игры (Исправленный)
+    mock_game = {
+        "state": "FLOP",
+        "pot": 150,
+        "big_blind": 100,
+        "community_cards": mock_community_cards,
+        "players": all_players_for_js, 
+        "current_turn_seat": 0, 
+        "time_to_act_ms": 15000    
+    }
+
+    # Собираем контекст для шаблона (точно такой же, как в реальном коде)
+    context = {
+        "my_player": mock_my_player,
+        "ordered_others": mock_ordered_others,
+        "game": mock_game,
+        "table_id": "dev_table_777",
+        "table_name": "Тестовый Стол VIP",
+        "user": mock_user,
+        "user_token": mock_user["token"],
+        "my_cards": ["Ah", "Ac"], # У нас пара тузов!
+        "community_cards": mock_community_cards,
+        "java_host": settings.FRONTEND_JAVA_HOST,
+        "v": settings.APP_VERSION
+    }
+
+    return templates.TemplateResponse(name="clear_index.html", context=context, request=request)
+# ==========================================
+# ==========================================
+
 @router.get("/table/{table_id}", response_class=HTMLResponse)
 async def page_table(request: Request, table_id: str, buy_in: int = 0):
 
@@ -15,7 +106,7 @@ async def page_table(request: Request, table_id: str, buy_in: int = 0):
     if not MY_USER:
         return RedirectResponse(url="/login", status_code=303)
 
-    base_table_url = f"{settings.JAVA_URL}/{table_id}"
+    base_table_url = f"{settings.JAVA_TABLES_URL}/{table_id}"
 
     try:
         response = await java_request("GET", base_table_url, request)
@@ -113,7 +204,7 @@ async def page_table(request: Request, table_id: str, buy_in: int = 0):
             "user_token": MY_USER.get("token") or "",
             "my_cards": my_cards,
             "community_cards": community_cards,
-            "java_host": settings.JAVA_HOST,
+            "java_host": settings.FRONTEND_JAVA_HOST,
             "v": settings.APP_VERSION
         }
 
@@ -134,7 +225,7 @@ async def handle_action_(table_id: str, action: ActionRequest, request: Request)
     if not MY_USER:
         return {"error": "unauthorized", "redirect": "/login"} 
 
-    target_url = f"{settings.JAVA_URL}/{table_id}/action"
+    target_url = f"{settings.JAVA_TABLES_URL}/{table_id}/action"
     payload = action.model_dump()
     logger.info(f"📡 ВХОДЯЩИЙ ЭКШЕН: {action.type} от {MY_USER['name']}")
 
@@ -163,7 +254,7 @@ async def rebuy_process(table_id: str, request: Request, amount: int = Form(...)
     user = request.session.get("user")
     if not user: return {"error": "unauthorized", "redirect": "/login"}
 
-    target_url = f"{settings.JAVA_URL}/{table_id}/rebuy" 
+    target_url = f"{settings.JAVA_TABLES_URL}/{table_id}/rebuy" 
     payload = {"user_id": user.get("user_id"), "amount": amount}
 
     logger.info(f"🚀 ШЛЮ РЕБАЙ НА БЕКЕНД: {payload}")
@@ -200,7 +291,7 @@ async def leave_table(request: Request, table_id: str, user_id: str = Form(None)
     if not action_user_id:
         return RedirectResponse(url="/login", status_code=303)   
     
-    target_url= f"{settings.JAVA_URL}/{table_id}/leave"
+    target_url = f"{settings.JAVA_TABLES_URL}/{table_id}/leave"
     payload = {"user_id": action_user_id}
 
     logger.info(f"🏃 Игрок с ником {user_name} запрашивает выход из стола {table_id}")

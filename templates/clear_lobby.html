@@ -430,10 +430,15 @@
         </div>
 
         <a href="/profile" class="avatar-link" title="Перейти в профиль">
-            <div class="default-avatar">
-                <!-- В будущем тут будет img -->
-                {{ user.name[0] | upper }}
-            </div>
+            {% if user.avatar_url %}
+                <img src="{{ user.avatar_url }}" class="seat-avatar" style="width: 55px; height: 55px; border-radius: 50%; border: 2px solid
+         #00f2fe; object-fit: cover; box-shadow: 0 4px 10px rgba(0,0,0,0.5);">
+            {% else %}
+                <div class="default-avatar">
+                    <!-- В будущем тут будет img -->
+                    {{ user.name[0] | upper }}
+                </div>
+            {% endif %}
             <!-- Никнейм прямо под кружком -->
             <div class="user-name-compact">{{ user.name }}</div>
         </a>

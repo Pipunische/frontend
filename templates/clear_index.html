@@ -16,6 +16,8 @@
       <div id="poker-metadata"
         data-players='{{ game.players | tojson | safe }}'
         data-state="{{ game.state }}"
+        data-turn="{{ game.current_turn_seat | default(-1) }}"
+        data-time="{{ game.time_to_act_ms | default(15000) }}"
         style="display: none;">
       </div>
 
@@ -25,7 +27,7 @@
       <div class="poker-table">
 
         <div class="table-pot">
-          <span id="pot-value">{{ game.pot }}</span> 💰
+          <span id="pot-value">{{ game.pot }}</span> <span class="chip-icon"></span>
         </div>
         <div class="deck-pile">
           <img src="/static/card_back.png" alt="Deck">
@@ -81,29 +83,28 @@
                 {% if p.is_dealer %}
                     <div class="dealer-button">D</div>
                 {% endif %}
-
-                <!-- АВАТАР, ИМЯ И ФИШКИ -->
-                <div class="seat-profile">
-                    {% if p.avatar_url %}
-                        <img src="{{ p.avatar_url }}" class="seat-avatar" alt="Avatar">
-                    {% else %}
-                        <div class="seat-avatar-default">{{ p.name[0] | upper }}</div>
-                    {% endif %}
-                    
-                    <div class="seat-info">
-                        <span class="player-name {{ 'active-turn' if p.is_active_turn else '' }}">
-                            {{ p.name }}
-                        </span>
-                        <span class="player-chips">{{ p.chips }} 💰</span>
-                    </div>
+<!--  -->
+                  <!-- АВАТАР И ТАЙМЕР -->
+                <div class="avatar-timer-wrap">
+                  <svg class="timer-svg" viewBox="0 0 80 80">
+                    <circle class="timer-bg" cx="40" cy="40" r="36"></circle>
+                    <circle class="timer-progress" cx="40" cy="40" r="36"></circle>
+                  </svg>
+                  {% if p.avatar_url %}
+                    <img src="{{ p.avatar_url }}" class="seat-avatar" alt="Avatar">
+                  {% else %}
+                    <div class="seat-avatar-default">{{ p.name[0] | upper }}</div>
+                  {% endif %}
                 </div>
 
+                <div class="seat-info-badge">
+                  <span class="player-name {{ 'active-turn' if p.is_active_turn else '' }}">{{ p.name }}</span>
+                  <span class="player-chips">{{ p.chips }} <span class="chip-icon"></span></span>
+                </div>
+<!--  -->
               {% else %}
                 <span class="empty-seat-text">Свободно</span>
               {% endif %}
-
-              <div class="timer-track"><div class="timer-fill"></div></div>
-
           </div>
       {% endfor %}
 
@@ -115,7 +116,7 @@
           
           {# 1. ФИШКА ДИЛЕРА #}
           {% if my_player and my_player.is_dealer %}
-              <div class="dealer-button" style="top: 25px; right: 45px;">D</div>
+            <div class="dealer-button">D</div>
           {% endif %}
 
           {# 3. ТВОИ КАРТЫ #}
@@ -129,25 +130,30 @@
             {% endif %}
           </div>
 
-          <!-- АВАТАР, ИМЯ И ФИШКИ HERO -->
-          <div class="seat-profile">
+          {# 3. АВАТАР И КОЛЬЦЕВОЙ ТАЙМЕР HERO (По центру) #}
+          <div class="avatar-timer-wrap">
+              <svg class="timer-svg" viewBox="0 0 80 80">
+                  <circle class="timer-bg" cx="40" cy="40" r="36"></circle>
+                  <circle class="timer-progress" cx="40" cy="40" r="36"></circle>
+              </svg>
               {% if user.avatar_url %}
                   <img src="{{ user.avatar_url }}" class="seat-avatar" alt="Avatar">
               {% else %}
                   <div class="seat-avatar-default">{{ user.name[0] | upper }}</div>
               {% endif %}
-
-              <div class="seat-info">
-                  <span class="player-name {{ 'active-turn' if my_player and my_player.is_active_turn else '' }}">
-                      {{ user.name }}
-                  </span>
-                  <span class="player-chips">
-                      {{ my_player.chips if my_player else user.chips }} 💰
-                  </span>
-              </div>
           </div>
 
-          <div class="timer-track"><div class="timer-fill"></div></div>
+          {# 4. ПЛАШКА С НИКОМ И ФИШКАМИ HERO (Наползает снизу) #}
+          <div class="seat-info-badge">
+              <span class="player-name {{ 'active-turn' if my_player and my_player.is_active_turn else '' }}">
+                  {{ user.name }}
+              </span>
+              <span class="player-chips">
+                  {{ my_player.chips if my_player else user.chips }} <span class="chip-icon"></span>
+              </span>
+          </div>
+
+          <!-- <div class="timer-track"><div class="timer-fill"></div></div> -->
 
         </div> <!-- Конец Hero Seat -->
       </div>
@@ -520,7 +526,7 @@
           const chipsElement = playerSeat.querySelector('.player-chips');
           if (chipsElement) {
             // Берем новое количество фишек
-            chipsElement.innerText = eventData.player_state.chips + " 🪙";
+            chipsElement.innerHTML = `${eventData.player_state.chips} <span class="chip-icon"></span>`;
           }
           // Если статус FOLDED
           if (eventData.player_state.status === "FOLDED") {
@@ -697,27 +703,30 @@
 
                 seatElement.innerHTML = `
                   <div class="opponent-hand"></div>
-                  <div class="seat-profile">
+                  <div class="avatar-timer-wrap">
+                      <svg class="timer-svg" viewBox="0 0 80 80">
+                          <circle class="timer-bg" cx="40" cy="40" r="36"></circle>
+                          <circle class="timer-progress" cx="40" cy="40" r="36"></circle>
+                      </svg>
                       ${avatarHtml}
-                      <div class="seat-info">
-                          <span class="player-name">${p.name}</span>
-                          <span class="player-chips">${p.chips} 💰</span>
-                      </div>
                   </div>
-                  <div class="timer-track"><div class="timer-fill"></div></div>
+                  <div class="seat-info-badge">
+                      <span class="player-name">${p.name}</span>
+                      <span class="player-chips">${p.chips} <span class="chip-icon"></span></span>
+                  </div>
                 `;
               } else {
                 const chipsEl = seatElement.querySelector('.player-chips');
-                if (chipsEl) chipsEl.innerText = `${p.chips} 💰`;
+                if (chipsEl) chipsEl.innerHTML = `${p.chips} <span class="chip-icon"></span>`;
 
                 const nameEl = seatElement.querySelector('.player-name');
                 if (nameEl) nameEl.innerText = p.name;
                 seatElement.dataset.seatindex = p.seat_index;
 
                 // Обновляем аватар, если его почему-то нет в профиле
-                const profileEl = seatElement.querySelector('.seat-profile');
-                if (profileEl && !profileEl.querySelector('.seat-avatar, .seat-avatar-default')) {
-                    profileEl.insertAdjacentHTML('afterbegin', avatarHtml);
+                const wrapEl = seatElement.querySelector('.avatar-timer-wrap');
+                if (wrapEl && !wrapEl.querySelector('.seat-avatar, .seat-avatar-default')) {
+                  wrapEl.insertAdjacentHTML('beforeend', avatarHtml);
                 }
               }
 
@@ -746,7 +755,7 @@
           const heroNode = document.querySelector('.pos-hero');
           if (heroNode) {
             const chipsEl = heroNode.querySelector('.player-chips');
-            if (chipsEl) chipsEl.innerText = `${myPlayer.chips} 💰`;
+            if (chipsEl) chipsEl.innerHTML = `${myPlayer.chips} <span class="chip-icon"></span>`;
 
             refreshSeatStatus(heroNode, myPlayer.status);
             heroNode.dataset.seatindex = myPlayer.seat_index;
@@ -781,14 +790,11 @@
 
 
       function runTurnTimer(seatIndex, durationMs) {
-        document.querySelectorAll('.timer-track').forEach(track => {
-          track.classList.remove('timer-active');
-          const fill = track.querySelector('.timer-fill');
-          if (fill) {
-            fill.style.transition = 'none';
-            fill.style.height = '100%';
-            fill.classList.remove('timer-danger');
-          }
+        document.querySelectorAll('.timer-progress').forEach(circle => {
+          circle.style.transition = 'none';
+          circle.style.strokeDashoffset = '226'; 
+          circle.style.stroke = '#2ecc71'; 
+          circle.style.opacity = '0';
         });
 
         if (seatIndex === -1) return;
@@ -796,25 +802,27 @@
         const activeSeat = document.querySelector(`.player-seat[data-seatindex="${seatIndex}"]`);
         if (!activeSeat) return;
 
-        const track = activeSeat.querySelector('.timer-track');
-        const fill = activeSeat.querySelector('.timer-fill');
-        if (!track || !fill) return;
+        const circle = activeSeat.querySelector('.timer-progress');
+        if (!circle) return;
 
-        track.classList.add('timer-active');
+        circle.style.opacity = '1';
 
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
-            fill.style.transition = `height ${durationMs}ms linear`;
-            fill.style.height = '0%';
+            circle.style.transition = `stroke-dashoffset ${durationMs}ms linear, stroke 0.3s ease`;
+            circle.style.strokeDashoffset = '0';
           });
         });
 
-        if (durationMs > 3000) {
+        if (durationMs > 5000) {
+          const halfTime = durationMs / 2;
           setTimeout(() => {
-            if (track.classList.contains('timer-active')) {
-              fill.classList.add('timer-danger');
-            }
-          }, durationMs - 3000);
+            if (circle.style.opacity === '1') circle.style.stroke = '#f1c40f'; 
+          }, halfTime);
+
+          setTimeout(() => {
+            if (circle.style.opacity === '1') circle.style.stroke = '#e74c3c'; 
+          }, durationMs - 5000);
         }
       }
 
@@ -934,7 +942,7 @@
           if (winnerSeat) {
             const badge = document.createElement('div');
             badge.className = 'hand-name-badge';
-            badge.innerText = `${payout.hand_name} | ${payout.pot_label} (+${payout.amount} 💰)`;
+            badge.innerHTML = `${payout.hand_name} | ${payout.pot_label} (+${payout.amount} <span class="chip-icon"></span>)`;
             winnerSeat.appendChild(badge);
             playSound('bet');
           }
@@ -1111,6 +1119,7 @@
 
         if (initialPlayers && initialPlayers.length > 0) {
           updateAllPlayers(initialPlayers);
+          renderOpponentCards(initialPlayers);
         }
 
         if (initialPlayers && initialPlayers.length > 0) {
@@ -1121,7 +1130,14 @@
         if (activePhases.includes(initialState)) {
           fetchMyPrivateCards();
         }
-        
+// ------------------------
+        const activeTurnSeat = parseInt(metadataNode.getAttribute('data-turn'));
+        const timeToAct = parseInt(metadataNode.getAttribute('data-time'));
+
+        if (activeTurnSeat !== -1) {
+            runTurnTimer(activeTurnSeat, timeToAct);
+        }
+// --------------------------
         checkRebuy();
         connectWebSocket();
       });

@@ -62,42 +62,109 @@ body {
   position: absolute;
   width: 115px;
   height: 115px;
-  background: rgba(10, 15, 20, 0.8) !important; /* Матовое стекло */
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 3px solid #f1c40f;
-  border-radius: 50%;
+  /* УБРАЛИ background, border, backdrop-filter и box-shadow! */
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  color: white;
-  font-size: 13px;
-  text-align: center;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6) !important;
-  transition: all 0.3s ease !important;
+  justify-content: flex-end; /* Прижимаем всё к низу */
+  z-index: 10;
 }
 
+/* Обертка для аватарки и таймера вокруг нее */
+.avatar-timer-wrap {
+  position: relative;
+  width: 90px; /* Размер SVG кольца */
+  height: 90px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: -15px; /* Стягиваем плашку с ником наверх, чтобы она налезла на аватар */
+}
+
+/* Настройки SVG-таймера */
+.timer-svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+  z-index: 15;
+}
+
+.timer-bg {
+  fill: none;
+  stroke: rgba(0, 0, 0, 0.5); /* Темный фон кольца */
+  stroke-width: 4;
+}
+
+.timer-progress {
+  fill: none;
+  stroke: #2ecc71; /* Зеленый цвет по умолчанию */
+  stroke-width: 4;
+  /* Длина окружности (2 * pi * radius). При радиусе 36 длина ~226 */
+  stroke-dasharray: 226;
+  stroke-dashoffset: 226; /* Полностью скрыто в начале */
+  stroke-linecap: round;
+  transition: stroke 0.3s;
+}
+
+/* Плашка с ником и деньгами (наползает на аватарку) */
+.seat-info-badge {
+  background: rgba(10, 15, 20, 0.95);
+  border: 1px solid #444;
+  border-radius: 8px;
+  padding: 4px 8px;
+  z-index: 15;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 85px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.8);
+}
+
+.seat-avatar,
+.seat-avatar-default {
+  width: 80px !important; /* Чуть меньше кольца, чтобы был зазор */
+  height: 80px !important;
+  margin: 0 !important;
+  border-radius: 50%;
+  border: 2px solid #1a2a3a !important; /* Темная рамка отделяет фото от таймера */
+  z-index: 10;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
+  background-color: #1a2a3a;
+}
+/* ------------------------------------ */
 .player-chips {
   color: #2ecc71;
   font-weight: bold;
-  margin-top: 5px;
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  white-space: nowrap;
 }
 
 /* ТВОЕ МЕСТО */
 .pos-hero {
-  bottom: -60px;
+  bottom: -80px;
   left: 50%;
   transform: translateX(-50%);
-  border: 4px solid #2ecc71;
-  box-shadow: 0 0 15px rgba(46, 204, 113, 0.5);
+  /* Раньше тут была рамка, удаляем её, чтобы не было квадрата */
+  border: none !important;
+  box-shadow: none !important;
 }
 
 /* ОППОНЕНТЫ (По часовой стрелке, начиная слева от тебя) */
 
 /* Низ-Лево */
 .pos-1 {
-  bottom: -20px;
+  bottom: -30px;
   left: 15%;
   transform: translateX(-50%);
 }
@@ -262,12 +329,13 @@ body {
 }
 
 /* Карты игрока в руках */
-.my-hand {
+.my-hand,
+.opponent-hand {
   position: absolute;
-  top: -45px;
+  top: -45px; /* Вылет карт из-за головы */
   display: flex;
   gap: 5px;
-  z-index: 10;
+  z-index: 5; /* Карты ЗА аватаркой (z-index 5 < 10) */
 }
 
 .hand-card {
@@ -332,7 +400,7 @@ body {
 /* 7. КАРТЫ ПРОТИВНИКОВ */
 .opponent-hand {
   position: absolute;
-  top: -50px;
+  top: -20px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
@@ -420,9 +488,9 @@ body {
 /* 8. ФИШКА ДИЛЕРА */
 .dealer-button {
   position: absolute;
-  width: 30px;
-  height: 30px;
-  background-color: #f8f9fa;
+  width: 24px;
+  height: 24px;
+  background-color: #fff;
   border: 2px solid #2c3e50;
   border-radius: 50%;
   display: flex;
@@ -430,13 +498,11 @@ body {
   justify-content: center;
   color: #2c3e50;
   font-weight: 900;
-  font-size: 16px;
-  box-shadow:
-    1px 2px 5px rgba(0, 0, 0, 0.5),
-    inset 0 -2px 3px rgba(0, 0, 0, 0.2);
-  z-index: 15;
-  top: 20%;
-  left: -20%;
+  font-size: 13px;
+  z-index: 20;
+  top: 10px;
+  left: 5px; /* Кнопка дилера будет слева сверху от аватарки */
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
 }
 
 /* =========================================
@@ -735,41 +801,6 @@ body {
 .status-folded .opponent-hand,
 .status-folded .my-hand {
   display: none !important;
-}
-
-/* Трек таймера */
-.timer-track {
-  position: absolute;
-  top: 10px;
-  right: -16px;
-  width: 8px;
-  height: calc(100% - 20px);
-  background: rgba(0, 0, 0, 0.8);
-  border: 1px solid #444;
-  border-radius: 4px;
-  opacity: 0;
-  transition: opacity 0.3s;
-  z-index: 25;
-}
-
-.timer-fill {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: #2ecc71;
-  box-shadow: 0 0 8px #2ecc71;
-  border-radius: 3px;
-}
-
-.timer-active {
-  opacity: 1;
-}
-
-.timer-danger {
-  background: #e74c3c !important;
-  box-shadow: 0 0 10px #e74c3c !important;
 }
 
 /* Шоудаун: Эффект ночи */

@@ -21,7 +21,7 @@ async def page_login(request: Request, error: str = None):
 async def google_auth_process(request: Request, data: GoogleAuthRequest):
     logger.info("🔑 Получен Google Token от фронтенда, передаю ядру...")
 
-    auth_url = f"https://{settings.JAVA_HOST}/api/auth/google"
+    auth_url = f"{settings.JAVA_AUTH_URL}/google"
 
     try:
 
@@ -31,13 +31,15 @@ async def google_auth_process(request: Request, data: GoogleAuthRequest):
             if response.status_code == 200:
                 user_data = response.json()
 
+                avatar_file = user_data.get("avatar_filename")
+
                 request.session["user"] = {
                     "user_id": str(user_data.get("user_id")),
                     "name": user_data.get("nickname"),
                     "wallet_balance": user_data.get("wallet_balance", 0),
                     "token": user_data.get("access_token"),
                     "refresh_token": user_data.get("refresh_token"),
-                    "avatar_url": user_data.get("avatar_filename", "")
+                    "avatar_url": f"/avatars/{avatar_file}" if avatar_file else ""
                 }
 
                 logger.success(f"✅ Google Auth успешен. Зашел юзер: {user_data.get('nickname')}")
@@ -67,7 +69,7 @@ async def upload_avatar(request: Request, avatar: UploadFile = File(...)):
     file_bytes = await avatar.read()
     files = {"file": (avatar.filename, file_bytes, avatar.content_type)}
 
-    target_url = f"https://{settings.JAVA_HOST}/api/auth/avatar"
+    target_url = f"{settings.JAVA_AUTH_URL}/avatar"
 
     logger.info(f"📤 Перемылаю аватарку {user['name']} в Ядро...")
 
@@ -109,7 +111,7 @@ async def update_nickname(request: Request, data: NicknameRequest):
         return {"redirect": "/login?error=session_expired"}
 
     user_id = user.get("user_id")
-    target_url = f"https://{settings.JAVA_HOST}/api/auth/{user_id}/nickname"
+    target_url = f"{settings.JAVA_AUTH_URL}/{user_id}/nickname"
     payload = {"new_nickname": data.new_nickname}
 
     logger.info(f"🔄 Запрос на смену ника: {user['name']} -> {data.new_nickname}")
@@ -153,7 +155,7 @@ async def page_profile(request: Request):
         "rank": "Sucker"
     }
 
-    stats_url = f"https://{settings.JAVA_HOST}/api/user/{user_id}/stats"
+    stats_url = f"{settings.BASE_JAVA_URL}/user/{user_id}/stats"
     stats_res = await java_request("GET", stats_url, request)
 
     if stats_res and stats_res.status_code == 200:
@@ -177,7 +179,7 @@ async def logout(request: Request):
         user_name = user.get('name', 'Unknown')
         logger.info(f"🚪 Игрок с ником {user_name} пытается закончить сессию...")
 
-        logout_url = f"https://{settings.JAVA_HOST}/api/auth/logout"
+        logout_url = f"{settings.JAVA_AUTH_URL}/logout"
 
         try:
             logout_response = await java_request("POST", logout_url, request, json_data={"user_id": user.get('user_id')})

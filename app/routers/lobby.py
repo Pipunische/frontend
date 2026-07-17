@@ -8,8 +8,6 @@ from app.services import templates, java_request
 
 router = APIRouter(tags=["Lobby"])
 
-@router.get("lobby", response_class=HTMLResponse)
-
 @router.get("/lobby", response_class=HTMLResponse)
 async def page_lobby(request: Request, error: str = None):
 
@@ -17,7 +15,7 @@ async def page_lobby(request: Request, error: str = None):
     if not current_user:
         return RedirectResponse(url="/login", status_code=303)
 
-    balance_url = f"https://{settings.JAVA_HOST}/api/auth/{current_user['user_id']}/balance"
+    balance_url = f"{settings.JAVA_AUTH_URL}/{current_user['user_id']}/balance"
     balance_res = await java_request("GET", balance_url, request)
 
     if not balance_res or balance_res.status_code == 401:
@@ -35,7 +33,7 @@ async def page_lobby(request: Request, error: str = None):
     is_down = False
     tables_data = []
 
-    tables_res = await java_request("GET", settings.JAVA_URL, request)
+    tables_res = await java_request("GET", settings.JAVA_TABLES_URL, request)
 
     if tables_res and tables_res.status_code == 200:
         tables_data = tables_res.json()
@@ -49,7 +47,7 @@ async def page_lobby(request: Request, error: str = None):
         "user": current_user,
         "user_token": current_user.get("token") or "",
         "error": error,
-        "java_host": settings.JAVA_HOST,
+        "java_host": settings.FRONTEND_JAVA_HOST,
         "v": settings.APP_VERSION
     }
 
@@ -62,7 +60,7 @@ async def create_table(request: Request, data: CreateTableRequest):
         return {"redirect": "/login?error=session_expired"}
 
     user_id = user.get("user_id")
-    target_url = settings.JAVA_URL
+    target_url = settings.JAVA_TABLES_URL
 
     payload = {
         "name": data.name,
