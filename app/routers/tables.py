@@ -137,7 +137,8 @@ async def page_table(request: Request, table_id: str, buy_in: int = 0):
 
                     if join_res and join_res.status_code == 200:
                         logger.success("✅ Успешная посадка")
-                        game_state = await java_request("GET", base_table_url, request).json()
+                        java_res = await java_request("GET", base_table_url, request)
+                        game_state = java_res.json()
                     else:
                         return RedirectResponse(url="/lobby?error=join_failed", status_code=303)
 
@@ -264,7 +265,7 @@ async def rebuy_process(table_id: str, request: Request, amount: int = Form(...)
     if not response or response.status_code == 401:
         return {"redirect": "/login?error=session_expired"}
 
-    if response.ok:
+    if response and response.status_code == 200:
         data = response.json()
         user["wallet_balance"] = data.get("wallet_balance")
         user["chips"] = data.get("chips", user.get("chips", 0))
@@ -298,7 +299,7 @@ async def leave_table(request: Request, table_id: str, user_id: str = Form(None)
 
     response = await java_request("POST", target_url, request, json_data=payload)
 
-    if response and response.ok:
+    if response and response.status_code == 200:
         logger.success(f"✅ Игрок с ником {user_name} успешно вышел со стола {table_id} в lobby")
     else:
         status = response.status_code if response else "No response"
