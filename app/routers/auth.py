@@ -161,7 +161,9 @@ async def page_profile(request: Request):
     if stats_res and stats_res.status_code == 200:
         stats_data = stats_res.json()
     else:
-        logger.error("🚫 НЕ УДАЛОСЬ ПОЛУЧИТЬ СТАТИСТИКУ - НАПРАВИЛЬНЫЙ СТАТУС ИЛИ ОТСУТСВУЕТ ОТВЕТ.")
+        err_msg = stats_res.text if stats_res else "No Response"
+        status = stats_res.status_code if stats_res else "N/A"
+        logger.error(f"Failed to fetch stats from Java | Status: {status} | URL: {stats_url} | Error: {err_msg}")
 
     context = {
         "user": current_user,
