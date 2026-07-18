@@ -790,11 +790,17 @@
 
 
       function runTurnTimer(seatIndex, durationMs) {
-        document.querySelectorAll('.timer-progress').forEach(circle => {
-          circle.style.transition = 'none';
-          circle.style.strokeDashoffset = '226'; 
-          circle.style.stroke = '#2ecc71'; 
-          circle.style.opacity = '0';
+
+        document.querySelectorAll('.timer-svg').forEach(svg => {
+          svg.style.transition = 'none';
+          svg.style.opacity = '0'; // Скрываем у всех!
+
+          const circle = svg.querySelector('.timer-progress');
+          if (circle) {
+            circle.style.transition = 'none';
+            circle.style.strokeDashoffset = '0'; // Сброс в полное кольцо
+            circle.style.stroke = '#2ecc71'; // Сброс в зеленый цвет
+          }
         });
 
         if (seatIndex === -1) return;
@@ -802,26 +808,26 @@
         const activeSeat = document.querySelector(`.player-seat[data-seatindex="${seatIndex}"]`);
         if (!activeSeat) return;
 
+        const svg = activeSeat.querySelector('.timer-svg');
         const circle = activeSeat.querySelector('.timer-progress');
         if (!circle) return;
 
-        circle.style.opacity = '1';
+        svg.style.transition = 'opacity 0.3s ease';
+        svg.style.opacity = '1';
 
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            circle.style.transition = `stroke-dashoffset ${durationMs}ms linear, stroke 0.3s ease`;
-            circle.style.strokeDashoffset = '0';
-          });
-        });
+        void circle.offsetWidth;
+
+        circle.style.transition = `stroke-dashoffset ${durationMs}ms linear, stroke 0.3s ease`;
+        circle.style.strokeDashoffset = '226'; 
 
         if (durationMs > 5000) {
           const halfTime = durationMs / 2;
           setTimeout(() => {
-            if (circle.style.opacity === '1') circle.style.stroke = '#f1c40f'; 
+            if (svg.style.opacity === '1') circle.style.stroke = '#f1c40f'; 
           }, halfTime);
 
           setTimeout(() => {
-            if (circle.style.opacity === '1') circle.style.stroke = '#e74c3c'; 
+            if (svg.style.opacity === '1') circle.style.stroke = '#e74c3c'; 
           }, durationMs - 5000);
         }
       }
