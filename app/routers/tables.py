@@ -166,6 +166,8 @@ async def page_table(request: Request, table_id: str, buy_in: int = 0):
             p["is_active_turn"] = (seat == active_idx)
             p["round_contribution"] = p.get("round_contribution", 0)
 
+            p["avatar_url"] = p.get("avatar_url", "")
+
             real_cards = extract_cards(p)
 
             if str(p.get("user_id")) == my_id:

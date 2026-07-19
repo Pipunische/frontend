@@ -31,7 +31,7 @@ async def google_auth_process(request: Request, data: GoogleAuthRequest):
             if response.status_code == 200:
                 user_data = response.json()
 
-                avatar_file = user_data.get("avatar_filename")
+                avatar_file = user_data.get("avatar_url", "")
 
                 request.session["user"] = {
                     "user_id": str(user_data.get("user_id")),
@@ -39,7 +39,7 @@ async def google_auth_process(request: Request, data: GoogleAuthRequest):
                     "wallet_balance": user_data.get("wallet_balance", 0),
                     "token": user_data.get("access_token"),
                     "refresh_token": user_data.get("refresh_token"),
-                    "avatar_url": f"/avatars/{avatar_file}" if avatar_file else ""
+                    "avatar_url": avatar_file
                 }
 
                 logger.success(f"✅ Google Auth успешен. Зашел юзер: {user_data.get('nickname')}")
