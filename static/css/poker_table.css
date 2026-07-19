@@ -112,7 +112,7 @@ body {
   stroke-dasharray: 226;
   stroke-dashoffset: 226; /* Полностью скрыто в начале */
   stroke-linecap: round;
-  transition: stroke 0.3s;
+  /* transition: stroke 0.3s; */
 }
 
 /* Плашка с ником и деньгами (наползает на аватарку) */
@@ -154,7 +154,7 @@ body {
 
 /* ТВОЕ МЕСТО */
 .pos-hero {
-  bottom: -80px;
+  bottom: -90px;
   left: 50%;
   transform: translateX(-50%);
   /* Раньше тут была рамка, удаляем её, чтобы не было квадрата */
@@ -174,7 +174,7 @@ body {
 
 /* Центр-Лево (Нижний) */
 .pos-2 {
-  top: 65%;
+  top: 70%;
   left: -60px;
   transform: translateY(-50%);
 }
@@ -216,7 +216,7 @@ body {
 
 /* Центр-Право (Нижний) */
 .pos-8 {
-  top: 65%;
+  top: 70%;
   right: -60px;
   transform: translateY(-50%);
 }
@@ -319,23 +319,27 @@ body {
   top: 27%;
   left: 50%;
   transform: translateX(-50%);
-  color: #f1c40f;
-  font-size: 26px;
+  color: #ffffff;
+  font-size: 24px;
   font-weight: bold;
-  background: rgba(10, 15, 20, 0.85) !important;
+  background: rgba(8, 28, 48, 0.9) !important;
   backdrop-filter: blur(5px);
   padding: 8px 25px;
   border-radius: 30px;
-  border: 2px solid #f1c40f !important;
+  border: 1.5px solid rgba(241, 196, 15, 0.7) !important;
   box-shadow:
-    0 10px 25px rgba(0, 0, 0, 0.7),
-    0 0 15px rgba(241, 196, 15, 0.3) !important;
+    0 10px 30px rgba(0, 0, 0, 0.8),
+    0 0 15px rgba(241, 196, 15, 0.2) !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 
 /* Карты игрока в руках */
 .my-hand {
   position: absolute;
-  top: -65px; /* Вылет карт из-за головы */
+  top: -75px; /* Вылет карт из-за головы */
   display: flex;
   gap: 5px;
   z-index: 5; /* Карты ЗА аватаркой (z-index 5 < 10) */
@@ -403,7 +407,7 @@ body {
 /* 7. КАРТЫ ПРОТИВНИКОВ */
 .opponent-hand {
   position: absolute;
-  top: -45px;
+  top: -70px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
@@ -503,8 +507,8 @@ body {
   font-weight: 900;
   font-size: 13px;
   z-index: 20;
-  top: 10px;
-  left: 5px; /* Кнопка дилера будет слева сверху от аватарки */
+  top: -50px;
+  left: 37%; /* Кнопка дилера будет слева сверху от аватарки */
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
 }
 
@@ -590,14 +594,15 @@ body {
   display: flex;
   align-items: center;
   gap: 5px;
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(10, 19, 78, 0.85);
   padding: 2px 8px;
   border-radius: 12px;
-  border: 1px solid #f1c40f;
+  border: 1px solid rgba(241, 196, 15, 0.4);
   color: #f1c40f;
   font-weight: bold;
-  font-size: 13px;
+  font-size: 18px;
   z-index: 20;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
   animation: bet-pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
 }
 
@@ -610,9 +615,10 @@ body {
   background-size: contain;
   background-repeat: no-repeat;
   background-position: center;
-  vertical-align: middle;
+  flex-shrink: 0;
+  /* vertical-align: middle;
   margin-top: -2px;
-  margin-left: 4px;
+  margin-left: 4px; */
 }
 
 @keyframes bet-pop {
@@ -628,12 +634,12 @@ body {
 
 /* Позиционирование ставок относительно центра */
 .pos-1 .player-bet {
-  bottom: 165px;
+  bottom: 180px;
   left: 145%;
   transform: translateX(-50%);
 }
 .pos-2 .player-bet {
-  bottom: 70px;
+  bottom: 90px;
   left: 140px;
 }
 .pos-3 .player-bet {
@@ -658,16 +664,16 @@ body {
   right: 140px;
 }
 .pos-8 .player-bet {
-  bottom: 70px;
+  bottom: 90px;
   right: 140px;
 }
 .pos-9 .player-bet {
-  bottom: 165px;
+  bottom: 178px;
   right: 145%;
   transform: translateX(50%);
 }
 .pos-hero .player-bet {
-  top: -110px;
+  top: -118px;
   left: 0;
   right: 0;
   margin-left: auto;
@@ -905,4 +911,9 @@ body {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+}
+
+.state-SHOWDOWN .opponent-hand,
+.state-SHOWDOWN .my-hand {
+  z-index: 25 !important;
 }

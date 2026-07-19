@@ -24,7 +24,7 @@
       <!-- поменять переменную для имени стола -->
       <h1 class="table-title">{{ table_name }}</h1> 
       <!-- ИГРОВОЙ СТОЛ -->
-      <div class="poker-table">
+      <div class="poker-table state-{{ game.state }}">
 
         <div class="table-pot">
           <span id="pot-value">{{ game.pot }}</span> <span class="chip-icon"></span>
@@ -815,10 +815,13 @@
         svg.style.transition = 'opacity 0.3s ease';
         svg.style.opacity = '1';
 
-        void circle.offsetWidth;
-
-        circle.style.transition = `stroke-dashoffset ${durationMs}ms linear, stroke 0.3s ease`;
-        circle.style.strokeDashoffset = '226'; 
+        circle.style.transition = 'none';
+        circle.style.strokeDashoffset = '0';
+        
+        setTimeout(() => {
+          circle.style.transition = `stroke-dashoffset ${durationMs}ms linear, stroke 0.3s ease`;
+          circle.style.strokeDashoffset = '226'; 
+        }, 50);
 
         if (durationMs > 5000) {
           const halfTime = durationMs / 2;
