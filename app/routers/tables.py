@@ -100,7 +100,7 @@ async def dev_page_table(request: Request):
 # ==========================================
 
 @router.get("/table/{table_id}", response_class=HTMLResponse)
-async def page_table(request: Request, table_id: str, buy_in: int = 0):
+async def page_table(request: Request, table_id: str, buy_in: int = 0, passcode: str = ""):
 
     MY_USER = request.session.get("user")
     if not MY_USER:
@@ -132,7 +132,7 @@ async def page_table(request: Request, table_id: str, buy_in: int = 0):
                     logger.info(f"🚀 Игрок {MY_USER['name']} пытается сесть за стол с buy_in: {buy_in}")
 
                     final_buy_in = buy_in if buy_in >= min_required else min_required
-                    join_data = {"user_id": my_id, "chips": final_buy_in, "token": MY_USER.get("token")}
+                    join_data = {"user_id": my_id, "chips": final_buy_in, "token": MY_USER.get("token"), "passcode": passcode}
                     join_res = await java_request("POST", f"{base_table_url}/join", request, json_data=join_data)
 
                     if join_res and join_res.status_code == 200:

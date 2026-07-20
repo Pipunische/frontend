@@ -976,7 +976,11 @@
           return;
         }
 
-          let socket = new SockJS(wsUrl);
+        const wsProtocol = window.location.protocol === "https:" ? "wss" : "ws";
+        const wsUrlRaw = `${wsProtocol}://${javaHost}/ws-poker/websocket`;
+
+
+          let socket = new WebSocket(wsUrlRaw);
           stompClient = Stomp.over(socket);
     
           stompClient.debug = null;

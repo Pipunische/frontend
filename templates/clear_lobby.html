@@ -526,9 +526,15 @@
                                     class="buyin-input-field">
                 
                         <!-- КНОПКА ОТПРАВКИ -->
-                                <button onclick="joinTableWithBuyIn('{{ table.table_id }}')" class="btn-play" style="flex-grow: 1; border: none;">
-                                    СЕСТЬ
-                                </button>
+                                {% if table.is_private %}
+                                    <button onclick="joinTableWithBuyIn('{{ table.table_id }}', true)" class="btn-play" style="flex-grow: 1; border: none;">
+                                        СЕСТЬ
+                                    </button>
+                                {% else %}
+                                    <button onclick="joinTableWithBuyIn('{{ table.table_id }}', false)" class="btn-play" style="flex-grow: 1; border: none;">
+                                        СЕСТЬ
+                                    </button>
+                                {% endif %}
                             </div>
                         </div>
                     {% endif %}
@@ -630,7 +636,7 @@
     }
 
 
-    function joinTableWithBuyIn(tableId) {
+    function joinTableWithBuyIn(tableId, hasPasscode = 'false') {
         const input = document.getElementById(`buyin-${tableId}`);
         if (!input) {
            return alert("Не удалось найти поле суммы входа.");
@@ -655,13 +661,27 @@
             return;
         }
 
-        window.location.href = `/table/${tableId}?buy_in=${buyIn}`;
+        let passcode = "";
+        if (hasPasscode === 'true' || hasPasscode === true) {
+            passcode = prompt("🔒 Введите пароль для кастомного стола:")
+            if (passcode === null) return;
+            if (passcode.trim() === "") {
+                alert("Пароль не может быть пустым!")
+                return;
+            }
+        }
+
+        window.location.href = `/table/${tableId}?buy_in=${buyIn}&passcode=${encodeURIComponent(passcode)}`;
     }
 
     const wsUrl = "https://{{ java_host }}/ws-poker";
     
     function connectLobbySocket() {
-        let socket = new SockJS(wsUrl);
+
+        const wsProtocol = window.location.protocol === "https:" ? "wss" : "ws";
+        const wsUrlRaw = `${wsProtocol}://{{ java_host }}/ws-poker/websocket`;
+
+        let socket = new WebSocket(wsUrlRaw);
         let stompClient = Stomp.over(socket);
         stompClient.debug = null;
 
