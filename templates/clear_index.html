@@ -18,6 +18,7 @@
         data-state="{{ game.state }}"
         data-turn="{{ game.current_turn_seat | default(-1) }}"
         data-time="{{ game.time_to_act_ms | default(15000) }}"
+        data-bb="{{ game.big_blind | default(100) }}"
         style="display: none;">
       </div>
 
@@ -788,50 +789,102 @@
         });
       }
 
+      let timerTimeouts = [];
+
 
       function runTurnTimer(seatIndex, durationMs) {
+
+        console.log(`🎬 [Timer] runTurnTimer вызван. Место: ${seatIndex}, Время: ${durationMs}ms`); // снести нахуй
+
+        timerTimeouts.forEach(t => clearTimeout(t));
+        timerTimeouts = [];
 
         document.querySelectorAll('.timer-svg').forEach(svg => {
           svg.style.transition = 'none';
           svg.style.opacity = '0'; // Скрываем у всех!
 
-          const circle = svg.querySelector('.timer-progress');
-          if (circle) {
-            circle.style.transition = 'none';
-            circle.style.strokeDashoffset = '0'; // Сброс в полное кольцо
-            circle.style.stroke = '#2ecc71'; // Сброс в зеленый цвет
+          const progressCircle = svg.querySelector('.timer-progress');
+          if (progressCircle) {
+            progressCircle.style.transition = 'none';
+            progressCircle.style.strokeDashoffset = '0'; // Сброс в полное кольцо
+            progressCircle.style.stroke = '#2ecc71'; // Сброс в зеленый цвет
           }
         });
 
-        if (seatIndex === -1) return;
+        if (seatIndex === -1) {
+          console.log("⏹️ [Timer] seatIndex равен -1. Сбрасываем таймеры и выходим.");
+          return;
+        } 
 
         const activeSeat = document.querySelector(`.player-seat[data-seatindex="${seatIndex}"]`);
-        if (!activeSeat) return;
+        if (!activeSeat) {
+          console.error(`❌ [Timer] ОШИБКА: Не найден контейнер .player-seat с data-seatindex="${seatIndex}"!`);
+          return;
+        }
 
         const svg = activeSeat.querySelector('.timer-svg');
         const circle = activeSeat.querySelector('.timer-progress');
-        if (!circle) return;
+        if (!circle || !svg) {
+          console.error(`❌ [Timer] ОШИБКА: Внутри .player-seat не найдены .timer-svg или .timer-progress!`, {svg, circle});
+          return;
+        }
+
+        console.log(`🎯 [Timer] Элементы успешно найдены в DOM!`, {activeSeat, svg, circle});
+
+        const maxOffset = 226;
+        const totalDurationMs = 15000;
+
+        const timeLeft = Math.min(durationMs, totalDurationMs);
+        const spentTime = totalDurationMs - timeLeft;
+        const startOffset = (spentTime / totalDurationMs) * maxOffset;
+
+        console.log(`📐 [Timer] Математика: timeLeft: ${timeLeft}ms, spentTime: ${spentTime}ms, startOffset: ${startOffset}`);
+
+        let startColor = '#2ecc71';
+        if (timeLeft <= 5000) {
+          circle.style.stroke = '#e74c3c'; // Красный, если осталось мало времени
+        } else if (timeLeft <= totalDurationMs / 2) {
+          circle.style.stroke = '#f1c40f'; // Желтый, если прошла половина
+        } else {
+          circle.style.stroke = '#2ecc71'; // Зеленый, если времени много
+        }
 
         svg.style.transition = 'opacity 0.3s ease';
         svg.style.opacity = '1';
 
         circle.style.transition = 'none';
-        circle.style.strokeDashoffset = '0';
-        
-        setTimeout(() => {
-          circle.style.transition = `stroke-dashoffset ${durationMs}ms linear, stroke 0.3s ease`;
-          circle.style.strokeDashoffset = '226'; 
+        circle.style.strokeDashoffset = startOffset;
+
+        console.log(`🎨 [Timer] Стартовое состояние установлено. Цвет: ${startColor}, Смещение: ${startOffset}. Запускаем 50мс таймаут анимации...`);
+
+        const mainAnimTimeout = setTimeout(() => {
+          console.log(`🚀 [Timer] Таймаут 50мс сработал! Запускаем плавное таяние до 226 за время: ${timeLeft}ms`);
+          circle.style.transition = `stroke-dashoffset ${timeLeft}ms linear, stroke 0.3s ease`;
+          circle.style.strokeDashoffset = '226'; // Поехало таять!
         }, 50);
+        timerTimeouts.push(mainAnimTimeout);
 
-        if (durationMs > 5000) {
-          const halfTime = durationMs / 2;
-          setTimeout(() => {
-            if (svg.style.opacity === '1') circle.style.stroke = '#f1c40f'; 
-          }, halfTime);
+        if (timeLeft > 5000) {
+          const timeToYellow = timeLeft - (totalDurationMs / 2);
+          const timeToRed = timeLeft - 5000;
 
-          setTimeout(() => {
-            if (svg.style.opacity === '1') circle.style.stroke = '#e74c3c'; 
-          }, durationMs - 5000);
+          console.log(`⏱️ [Timer] Планируем смену цветов. До желтого: ${timeToYellow}ms, До красного: ${timeToRed}ms`);
+
+          if (timeToYellow > 0) {
+            const t1 = setTimeout(() => {
+              console.log(`🟡 [Timer] Сработал таймаут смены цвета на ЖЕЛТЫЙ`);
+              if (svg.style.opacity === '1') circle.style.stroke = '#f1c40f'; // Становится желтым
+            }, timeToYellow);
+            timerTimeouts.push(t1);
+          }
+
+          if (timeToRed > 0) {
+            const t2 = setTimeout(() => {
+              console.log(`🔴 [Timer] Сработал таймаут смены цвета на КРАСНЫЙ`);
+              if (svg.style.opacity === '1') circle.style.stroke = '#e74c3c'; // Становится красным
+            }, timeToRed);
+            timerTimeouts.push(t2);
+          }
         }
       }
 
@@ -1146,9 +1199,20 @@
 // ------------------------
         const activeTurnSeat = parseInt(metadataNode.getAttribute('data-turn'));
         const timeToAct = parseInt(metadataNode.getAttribute('data-time'));
+        const bigBlind = parseInt(metadataNode.getAttribute('data-bb') || 100);
 
         if (activeTurnSeat !== -1) {
             runTurnTimer(activeTurnSeat, timeToAct);
+        }
+
+        if (initialPlayers && initialPlayers.length > 0) {
+            const myId = String("{{ user.user_id }}");
+            const me = initialPlayers.find(p => String(p.user_id) === myId);
+            
+            // Если мы нашли себя в списке игроков, проверяем - не наш ли сейчас ход?
+            if (me) {
+                updateActionPanel(me, activeTurnSeat, bigBlind);
+            }
         }
 // --------------------------
         checkRebuy();
