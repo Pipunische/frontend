@@ -907,31 +907,45 @@
         // 3. Берем данные от Владоса (он уже всё посчитал!)
         const toCall = myPlayer.amount_to_call || 0;
         const myChips = myPlayer.chips || 0;
-        const minRaise = toCall > 0 ? toCall * 2 : bigBlind;
+        const myContribution = myPlayer.round_contribution || 0;
+        const currentHighestBet = myContribution + toCall;
+        const minRaise = currentHighestBet + Math.max(bigBlind, toCall);
+
+        const totalMoneyForRound = myChips + myContribution;
 
         const isCallAllIn = (toCall >= myChips);
+        const canMakeLegalRaise = (totalMoneyForRound >= minRaise) && (myChips > toCall);
 
-        // 4. Рендерим кнопки (Сравни со своим старым Jinja-кодом)
-        panel.innerHTML = `
-          <button class="btn btn-fold" onclick="sendPokerAction('FOLD')">FOLD</button>
+        let html = '';
 
-          ${toCall === 0
-            ? `<button class="btn btn-check" onclick="sendPokerAction('CHECK')">CHECK</button>
-              <button class="btn" style="background-color: #555; cursor: not-allowed;" disabled>CALL</button>`
-            : `<button class="btn btn-call" onclick="sendPokerAction('CALL')" ${isCallAllIn ? 'style="background-color: #e74c3c;"' : ''}>
-              ${isCallAllIn ? 'CALL (ALL-IN)' : `CALL (${toCall})`}
-              </button>`
-          }
+        html += `<button class="btn btn-fold" onclick="sendPokerAction('FOLD')">FOLD</button>`
 
-          <div class="raise-group">
-            <input type="number" id="raise-amount" value="${minRaise}" step="50" min="${toCall > 0 ? toCall : bigBlind}" />
-            <button class="btn btn-raise-action" onclick="sendPokerAction('RAISE')">RAISE</button>
-          </div>
+        if (toCall === 0) {
+          html += `<button class="btn btn-check" onclick="sendPokerAction('CHECK')">CHECK</button>`;
+        } else {
+          html += `<button class="btn btn-call" onclick="sendPokerAction('CALL')" ${isCallAllIn ? 'style="background-color: #e74c3c;"' : ''}>
+                      ${isCallAllIn ? 'CALL (ALL-IN)' : `CALL (${toCall})`}
+                    </button>`;
+        }
 
-          <button class="btn btn-allin" onclick="sendPokerAction('ALL_IN')">
-            ALL-IN (${myChips})
-          </button>
-        `;
+        if (canMakeLegalRaise) {
+          html += `
+            <div class="raise-group">
+              <input type="number" id="raise-amount"
+                    value="${minRaise}"
+                    step="${bigBlind}"
+                    min="${minRaise}"
+                    max="${totalMoneyForRound}" />
+              <button class="btn btn-raise-action" onclick="sendPokerAction('RAISE')">RAISE</button>
+            </div>
+          `;
+        }
+        
+        if (myChips > 0) {
+          html += `<button class="btn btn-allin" onclick="sendPokerAction('ALL_IN')">ALL-IN (${myChips})</button>`;
+        }
+
+        panel.innerHTML = html
       }
 
 
