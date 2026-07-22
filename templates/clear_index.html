@@ -4,7 +4,6 @@
     <meta charset="UTF-8" />
     <title>Игра — Стол #{{ table_id[:8] }}</title>
     <link rel="icon" href="data:,">
-    <!-- Все стили, включая аватарки, теперь импортируются отсюда -->
     <link rel="stylesheet" href="{{ url_for('static', path='css/poker_table.css') }}?v={{ v }}">
     <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
@@ -22,7 +21,6 @@
         style="display: none;">
       </div>
 
-      <!-- поменять переменную для имени стола -->
       <h1 class="table-title">{{ table_name }}</h1> 
       <!-- ИГРОВОЙ СТОЛ -->
       <div class="poker-table state-{{ game.state }}">
@@ -59,20 +57,17 @@
           {% endfor %}
         </div>
 
-      <!-- ГЕНЕРАЦИЯ 9 МЕСТ ДЛЯ ОППОНЕНТОВ -->
       {% for i in range(9) %}
     
           {% set p = ordered_others[i] %}
           {% set has_player = p is not none %}
           {% set p_status = p.status|lower if has_player else 'empty' %}
 
-          <!-- Рассаживаем на pos-1, pos-2... -->
           <div class="player-seat pos-{{ i + 1 }} status-{{ p_status }}"
               data-seatindex="{{ p.seat_index if has_player else -1 }}"
               data-userid="{{ p.user_id if has_player else '' }}">
         
               {% if has_player %}
-                 <!-- КАРТЫ ПРОТИВНИКА -->
                 <div class="opponent-hand">
                     {% for card in p.cards %}
                         {% set opp_static = (game.state != 'PRE_FLOP' and game.state != 'WAITING_FOR_PLAYERS') %}
@@ -80,12 +75,10 @@
                     {% endfor %}
                 </div>
 
-                <!-- ДИЛЕР -->
                 {% if p.is_dealer %}
                     <div class="dealer-button">D</div>
                 {% endif %}
-<!--  -->
-                  <!-- АВАТАР И ТАЙМЕР -->
+
                 <div class="avatar-timer-wrap">
                   <svg class="timer-svg" viewBox="0 0 80 80">
                     <circle class="timer-bg" cx="40" cy="40" r="36"></circle>
@@ -102,14 +95,13 @@
                   <span class="player-name {{ 'active-turn' if p.is_active_turn else '' }}">{{ p.name }}</span>
                   <span class="player-chips">{{ p.chips }} <span class="chip-icon"></span></span>
                 </div>
-<!--  -->
+
               {% else %}
                 <span class="empty-seat-text">Свободно</span>
               {% endif %}
           </div>
       {% endfor %}
 
-      <!-- ТВОЕ МЕСТО (Hero Seat) -->
       <div
           class="player-seat pos-hero status-{{ my_player.status|lower if my_player else 'empty' }}"
           data-userid="{{ user.user_id }}"
@@ -144,7 +136,7 @@
               {% endif %}
           </div>
 
-          {# 4. ПЛАШКА С НИКОМ И ФИШКАМИ HERO (Наползает снизу) #}
+          {# 4. ПЛАШКА С НИКОМ И ФИШКАМИ HERO #}
           <div class="seat-info-badge">
               <span class="player-name {{ 'active-turn' if my_player and my_player.is_active_turn else '' }}">
                   {{ user.name }}
@@ -154,31 +146,20 @@
               </span>
           </div>
 
-          <!-- <div class="timer-track"><div class="timer-fill"></div></div> -->
-
-        </div> <!-- Конец Hero Seat -->
+        </div> 
       </div>
-    
-
-              <!-- Конец стола -->
-
-              <!-- ПАНЕЛЬ УПРАВЛЕНИЯ -->
       
       <div class="action-panel" id="dynamic-action-panel" style="display: none;">
 
       </div>
 
-      <!-- СЛУЖЕБНАЯ НАВИГАЦИЯ (В левом нижнем углу) -->
 
-            <!-- выход со стола  -->
       <div class="system-panel">
-              <!-- Убираем класс .btn-fold и стиль, даем свой класс -->
         <button class="btn-leave-table" onclick="leaveCurrentTable()">
             Встать из-за стола
         </button>
       </div>
 
-              <!-- Окно докупки (Modal) -->
         <div id="rebuy-modal" class="modal-overlay">
           <div class="rebuy-box">
               <h2>⚠️ Недостаточно фишек </h2>
@@ -192,8 +173,37 @@
           </div>
         </div>
 
+        <div id="toast-container" class="toast-container"></div>
+
 
     <script>
+
+      function showToast(type, errorType, message) {
+          const container = document.getElementById('toast-container')
+          if (!container) return;
+
+          const toast = document.createElement('div');
+          let icon = '⚠️'; let colorClass = 'toast-warning';
+
+          if (type === 'error') { icon = '❌'; colorClass = 'toast-error'; }
+          else if (type === 'success') { icon = '✅'; colorClass = 'toast-success'; }
+
+          toast.className =  `poker-toast ${colorClass}`;
+          toast.innerHTML = `
+              <div class="toast-icon">${icon}</div>
+              <div class="toast-content">
+                  <span class="toast-title">${errorType || 'Уведомление'}</span>
+                  <span>${message}</span>
+              </div>
+          `;
+
+          container.appendChild(toast);
+          setTimeout(() => toast.classList.add('show'), 10);
+          // setTimeout(() => {
+          //     toast.classList.remove('show');
+          //     setTimeout(() => toast.remove(), 400);
+          // }, 4000);
+      }
 
       // Идентификация
       const tableId = window.location.pathname.split("/").pop();
@@ -219,12 +229,9 @@
 
 
       function playSound(effect) {
-        // Поиск в кэше
         const sound = audioCache[effect];
         if (sound) {
-          // Перемотка на начало
           sound.currentTime = 0;
-          // Запуск воспроизведения
           sound.play().catch(e => {
             console.log("Звук заблокирован: нужно кликнуть по странице", e);
           });
@@ -232,16 +239,12 @@
       }
 
 
-      // Функция сбрасывает все визуальные эффекты и ставит актуальный статус
       function refreshSeatStatus(playerSeat, status) {
-        // Удаляем все возможные "плохие" статусы
         playerSeat.classList.remove('status-sitting_out', 'status-folded', 'status-waiting', 'status-empty', 'status-all_in');
     
-        // Добавляем текущий статус от Владоса
         const lowerStatus = status.toLowerCase();
         playerSeat.classList.add(`status-${lowerStatus}`);
     
-        // Если статус НЕ "вне игры" — возвращаем яркость!
         if (status !== 'FOLDED' && status !== 'SITTING_OUT' && status !== 'WAITING') {
             playerSeat.style.opacity = "1";
             playerSeat.style.filter = "none";
@@ -250,7 +253,6 @@
 
 
       async function sendPokerAction(actionType) {
-        // Подготовка суммы - для RAISE
         let betAmount = 0;
         if (actionType === "RAISE") {
           const input = document.getElementById("raise-amount");
@@ -285,14 +287,14 @@
 
           if (result.redirect) {
             if (result.redirect.includes('session_expired')) {
-              alert("⚠️ Сессия завершена. БЭМ БЭМ БЭМ. Требуется перезайти в аккаунт.");
+              alert("⚠️ Сессия завершена. Требуется перезайти в аккаунт.");
             }
             window.location.href = result.redirect;
             return;
           }
 
           if (result.error) {
-            alert("Ошибка: " + (result.detail || result.error || "Действие отклонено"));
+            showToast('error', result.errorType, result.message || "Действие отклонено")
           } else {
             console.log("Команда принята. Ждем WebSocket-обновление...");
           }
@@ -415,6 +417,8 @@
           if (response.ok && !result.error) {
             console.log("Докупка одобрена. Закрывая окно.");
 
+            showToast('success', 'Успех', 'Докупка прошла успешно!');
+
             clearShowdownUI(); 
 
             if (rebuyCountdownInterval) {
@@ -424,7 +428,7 @@
 
             document.getElementById('rebuy-modal').style.display = 'none';
           } else {
-            alert(result.error || "Недостаточно средств");
+            showToast('error', result.errorType, result.message || "Недостаточно средств");
           }
         } catch (err) {
           console.error("Ошибка при ребае:", err);
@@ -1200,9 +1204,6 @@
         if (initialPlayers && initialPlayers.length > 0) {
           updateAllPlayers(initialPlayers);
           renderOpponentCards(initialPlayers);
-        }
-
-        if (initialPlayers && initialPlayers.length > 0) {
           renderStaticBets(initialPlayers);
         }
 
@@ -1210,7 +1211,7 @@
         if (activePhases.includes(initialState)) {
           fetchMyPrivateCards();
         }
-// ------------------------
+
         const activeTurnSeat = parseInt(metadataNode.getAttribute('data-turn'));
         const timeToAct = parseInt(metadataNode.getAttribute('data-time'));
         const bigBlind = parseInt(metadataNode.getAttribute('data-bb') || 100);
@@ -1223,12 +1224,10 @@
             const myId = String("{{ user.user_id }}");
             const me = initialPlayers.find(p => String(p.user_id) === myId);
             
-            // Если мы нашли себя в списке игроков, проверяем - не наш ли сейчас ход?
             if (me) {
                 updateActionPanel(me, activeTurnSeat, bigBlind);
             }
         }
-// --------------------------
         checkRebuy();
         connectWebSocket();
       });

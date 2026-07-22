@@ -140,7 +140,19 @@ async def page_table(request: Request, table_id: str, buy_in: int = 0, passcode:
                         java_res = await java_request("GET", base_table_url, request)
                         game_state = java_res.json()
                     else:
-                        return RedirectResponse(url="/lobby?error=join_failed", status_code=303)
+                        try:
+                            resp_json = join_res.json()
+                            error_message = resp_json.get("message", "Ошибка посадки")
+                            error_type = resp_json.get("errorType", "JoinError")
+                        except Exception:
+                            error_message = "Сервер отклонил посадку"
+                            error_type = "JoinError"
+                        
+                        logger.error(f"❌ Ошибка посадки: {error_type} - {error_message}")
+                        import urllib.parse
+                        safe_msg = urllib.parse.quote(error_message)
+                        safe_type = urllib.parse.quote(error_type)
+                        return RedirectResponse(url=f"/lobby?errorType={safe_type}&message={safe_msg}", status_code=303)
 
                 else:
                     logger.warning(f"⚠️ У игрока {MY_USER['name']} недостаточно средств для данного стола.")
@@ -241,13 +253,16 @@ async def handle_action_(table_id: str, action: ActionRequest, request: Request)
         return {"redirect": "/login?error=session_expired"}
 
     if response.status_code != 200:
-        error_text = "Unknown error"
         try:
-            error_text = response.json().get("error", response.text) 
-        except:
-            error_text = response.text
-        logger.error(f"🚨 ОТКАЗ ЯДРА НА ДЕЙСТВИЕ ({response.status_code}): {error_text}")
-        return {"error": f"java error {response.status_code}", "detail": error_text}
+            resp_json = response.json()
+            error_message = resp_json.get("message", response.text)
+            error_type = resp_json.get("errorType", "UnknownError") 
+        except Exception:
+            error_message = response.text
+            error_type = "UnknownError"
+            
+        logger.error(f"🚨 ОТКАЗ ЯДРА НА ДЕЙСТВИЕ ({response.status_code}): {error_type} - {error_message}")
+        return {"error": True, "errorType": error_type, "message": error_message}
 
     logger.success(f"✅ Действие {action.type} успешно обработано Ядром")
     return response.json()
@@ -277,13 +292,16 @@ async def rebuy_process(table_id: str, request: Request, amount: int = Form(...)
         return {"status": "success"}
 
     else:
-        error_text = "Unknown error"
         try:
-            error_text = response.json().get("error", response.text)
-        except:
-            error_text = response.text
-        logger.error(f"❌ БЕКЕНД ОТКАЗАЛ В РЕБАЕ: {error_text}")
-        return {"error": error_text}
+            resp_json = response.json()
+            error_message = resp_json.get("message", response.text)
+            error_type = resp_json.get("errorType", "UnknownError")
+        except Exception:
+            error_message = response.text
+            error_type = "UnknownError"
+
+        logger.error(f"❌ БЕКЕНД ОТКАЗАЛ В РЕБАЕ: {error_type} - {error_message}")
+        return {"error": True, "errorType": error_type, "message": error_message}
 # -----------------------------------
 @router.post("/table/{table_id}/leave")
 async def leave_table(request: Request, table_id: str, user_id: str = Form(None)):
@@ -303,8 +321,17 @@ async def leave_table(request: Request, table_id: str, user_id: str = Form(None)
 
     if response and response.status_code == 200:
         logger.success(f"✅ Игрок с ником {user_name} успешно вышел со стола {table_id} в lobby")
+        return {"status": "success", "redirect": "/lobby"}
     else:
-        status = response.status_code if response else "No response"
-        logger.error(f"🚫 БЕКЕНД НЕ ПОДТВЕРДИЛ ВЫХОД ИГРОКА С НИКОМ {user_name}. (Статус {status}), но игрок все равно был перемещен в lobby")
+        try:
+            resp_json = response.json()
+            error_message = resp_json.get("message", "No response")
+            error_type = resp_json.get("errorType", "UnknownError")
+        except Exception:
+            error_message = response.text if response else "No response"
+            error_type = "UnknownError"
 
-    return {"status": "success", "redirect": "/lobby"}
+        logger.error(f"🚫 БЕКЕНД НЕ ПОДТВЕРДИЛ ВЫХОД ИГРОКА С НИКОМ {user_name}. ({error_type}): {error_message}")
+
+    return {"error": True, "errorType": error_type, "message": error_message, "redirect": "/lobby"}
+    

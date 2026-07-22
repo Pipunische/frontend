@@ -416,6 +416,76 @@
             box-shadow: 0 0 15px rgba(231, 76, 60, 0.5);
         }
 
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            z-index: 9999; /* Поверх всех элементов стола и модалок */
+            pointer-events: none; /* Пропускаем клики сквозь пустой контейнер */
+        }
+        
+        .poker-toast {
+            background: rgba(15, 23, 42, 0.95); /* Глубокое темное стекло */
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-left: 4px solid #f1c40f; /* По дефолту желтая полоска */
+            color: #ecf0f1;
+            padding: 12px 18px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-width: 260px;
+            max-width: 380px;
+            pointer-events: auto; /* Разрешаем взаимодействовать с тостом */
+  
+            /* Анимация вылета справа за экран */
+            transform: translateX(120%);
+            opacity: 0;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .poker-toast.show {
+            transform: translateX(0); /* Залетает на экран */
+            opacity: 1;
+        }
+
+        /* Модификаторы цветов под разные типы ошибок */
+        .toast-error { border-left-color: #e74c3c; }
+        .toast-error .toast-icon { color: #e74c3c; }
+
+        .toast-warning { border-left-color: #f39c12; }
+        .toast-warning .toast-icon { color: #f39c12; }
+
+        .toast-success { border-left-color: #2ecc71; }
+        .toast-success .toast-icon { color: #2ecc71; }
+
+        .toast-icon {
+            font-size: 20px;
+            flex-shrink: 0;
+        }
+
+        .toast-content {
+            display: flex;
+            flex-direction: column;
+            text-align: left;
+        }
+
+        .toast-title {
+            font-weight: 800;
+            font-size: 11px;
+            color: #bdc3c7;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 2px;
+        }
+
     </style>
 </head>
 
@@ -572,10 +642,39 @@
         </div>
     </div>
 
+    <div id="toast-container" class="toast-container"></div>
+
 </body>
 
 
 <script>
+
+    function showToast(type, errorType, message) {
+        const container = document.getElementById('toast-container')
+        if (!container) return;
+
+        const toast = document.createElement('div');
+        let icon = '⚠️'; let colorClass = 'toast-warning';
+
+        if (type === 'error') { icon = '❌'; colorClass = 'toast-error'; }
+        else if (type === 'success') { icon = '✅'; colorClass = 'toast-success'; }
+
+        toast.className =  `poker-toast ${colorClass}`;
+        toast.innerHTML = `
+            <div class="toast-icon">${icon}</div>
+            <div class="toast-content">
+                <span class="toast-title">${errorType || 'Уведомление'}</span>
+                <span>${message}</span>
+            </div>
+        `;
+
+        container.appendChild(toast);
+        setTimeout(() => toast.classList.add('show'), 10);
+        setTimeout(() => {
+            toast.classList.remove('show');
+            setTimeout(() => toast.remove(), 400);
+        }, 4000);
+    }
 
     const userToken = "{{ user_token if user else '' }}";
 
@@ -750,8 +849,20 @@
         });
     }
 
-    // Запускаем при загрузке
-    document.addEventListener('DOMContentLoaded', connectLobbySocket);
+    document.addEventListener('DOMContentLoaded', () => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const errorType = urlParams.get('errorType');
+        const message = urlParams.get('message');
+
+        if (errorType && message) {
+            showToast('error', errorType, message);
+
+            const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+            window.history.replaceState({path: cleanUrl}, '', cleanUrl)
+        }
+
+        connectLobbySocket();
+    })
 
 
 </script>
