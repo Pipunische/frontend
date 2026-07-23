@@ -179,6 +179,19 @@
     <script>
 
       function showToast(type, errorType, message) {
+
+          const errorTitles = {
+            'IllegalRaiseException': 'Ошибка при поднятия ставки',
+            'IllegalCallException': 'Ошибка при уравнивании ставки',
+            'IllegalCheckException': 'Ошибка при пропуске хода',
+            'NotYourTurnException': 'Не ваш ход',
+            'TableFullException': 'Стол заполнен',
+            'ChipAmountException': 'Ошибка фишек',
+            'PlayerAlreadyJoinedException': 'Вы уже за столом'
+          };
+
+          const titleText = errorTitles[errorType] || errorType || 'Уведомление';
+
           const container = document.getElementById('toast-container')
           if (!container) return;
 
@@ -192,7 +205,7 @@
           toast.innerHTML = `
               <div class="toast-icon">${icon}</div>
               <div class="toast-content">
-                  <span class="toast-title">${errorType || 'Уведомление'}</span>
+                  <span class="toast-title">${titleText}</span>
                   <span>${message}</span>
               </div>
           `;

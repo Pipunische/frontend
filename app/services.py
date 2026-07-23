@@ -18,7 +18,10 @@ async def java_request(method: str, url: str, request: Request, json_data=None, 
     if not user:
         return None
     
-    headers = {"Authorization": f"Bearer {user.get('token')}"}
+    headers = {
+        "Authorization": f"Bearer {user.get('token')}",
+        "Accept-Language": "ru-RU"
+     }
 
     async with httpx.AsyncClient(timeout=10.0) as client:
         try:
