@@ -21,7 +21,15 @@
         style="display: none;">
       </div>
 
-      <h1 class="table-title">{{ table_name }}</h1> 
+      <div class="table-header-bar">
+        <h1 class="table-title">{{ table_name }}</h1> 
+        
+        <div id="ping-indicator" class="ping-indicator signal-good" title="Подключение стабильное">
+            <div class="bar bar-1"></div>
+            <div class="bar bar-2"></div>
+            <div class="bar bar-3"></div>
+        </div>
+      </div> 
       <!-- ИГРОВОЙ СТОЛ -->
       <div class="poker-table state-{{ game.state }}">
 
@@ -216,6 +224,30 @@
           toast.classList.remove('show');
            setTimeout(() => toast.remove(), 400);
            }, 4000);
+      }
+
+      function updatePingIndicator(pingMs) {
+        const indicator = document.getElementById('ping-indicator');
+        if (!indicator) return;
+
+        indicator.classList.remove('signal-good', 'signal-medium', 'signal-bad');
+
+        if (pingMs < 150) {
+          indicator.classList.add('signal-good');
+          indicator.setAttribute('title', `Пинг: ${pingMs} мс (Отлично)`); // возможно убрать
+        }
+        else if (pingMs >= 150 && pingMs < 500) {
+          indicator.classList.add('signal-medium');
+          indicator.setAttribute('title', `Пинг: ${pingMs} мс (Средне)`);
+        }
+        else {
+          indicator.classList.add('signal-bad');
+          if (pingMs === 9999) {
+            indicator.setAttribute('title', 'Связь с сервером потеряна!');
+          } else {
+            indicator.setAttribute('title', `Пинг: ${pingMs} мс (Плохо)`);
+          }
+        }
       }
 
       // Идентификация
@@ -1052,6 +1084,8 @@
 
       // === ГЛАВНЫЙ СЕТЕВОЙ ЦЕНТР ===
 
+      let pingInterval = null;
+
       function connectWebSocket() {
 
         if (!userToken || userToken === "None" || userToken.trim() === "") {
@@ -1063,7 +1097,6 @@
         const wsProtocol = window.location.protocol === "https:" ? "wss" : "ws";
         const wsUrlRaw = `${wsProtocol}://${javaHost}/ws-poker/websocket`;
 
-
           let socket = new WebSocket(wsUrlRaw);
           stompClient = Stomp.over(socket);
     
@@ -1074,7 +1107,23 @@
           };
 
           stompClient.connect(connectHeaders, function (frame) {
-              console.log('🔗 WebSocket Подключен! Связь с Владосом установлена.');
+              console.log('🔗 WebSocket Подключен!');
+
+              stompClient.subscribe('/user/queue/pong', function (message) {
+
+                const receiveTime = Date.now();
+                const data = JSON.parse(message.body);
+                const pingMs = receiveTime - data.clientTime;
+                console.log(`🛜 Пинг: ${pingMs} мс`);
+                updatePingIndicator(pingMs);
+              });
+
+              pingInterval = setInterval(() => {
+                if (stompClient && stompClient.connected) {
+                  const sendTime = Data.now();
+                  stompClient.send("/app/ping", {}, JSON.stringify({ clientTime: sendTime }));
+                }
+              }, 3000);
 
               stompClient.subscribe('/topic/table/' + tableId, function (message) {
             
@@ -1180,6 +1229,13 @@
               });
 
           }, function(error) {
+
+              updatePingIndicator(9999);
+
+              if (pingInterval) {
+                clearInterval(pingInterval);
+              }
+
               console.error("❌ Ошибка WebSocket (Связь оборвана):", error);
 
               const errorStr = String(error).toLowerCase();

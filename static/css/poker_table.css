@@ -304,17 +304,6 @@ body {
   filter: brightness(1.1);
 }
 
-/* 6. ИНФО-ПАНЕЛИ */
-.table-title {
-  position: absolute;
-  top: 20px;
-  left: 30px;
-  margin: 0;
-  font-size: 22px;
-  color: #26b86a;
-  text-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
-}
-
 .table-pot {
   position: absolute;
   top: 27%;
@@ -997,4 +986,93 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin-bottom: 2px;
+}
+
+.table-title {
+  margin: 0;
+  font-size: 22px;
+  color: #26b86a;
+  text-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
+  font-family:
+    "Times New Roman", Times, serif; /* Винтажный шрифт для названия */
+}
+
+.table-header-bar {
+  position: absolute;
+  top: 20px;
+  left: 30px;
+  display: flex;
+  align-items: flex-end; /* Выравниваем антенну по нижней линии текста */
+  gap: 15px; /* Расстояние между названием стола и антенной */
+  z-index: 1000;
+}
+
+.ping-indicator {
+  display: flex;
+  align-items: flex-end; /* Палочки стоят на одной линии снизу */
+  justify-content: center;
+  gap: 3px;
+  height: 20px;
+  margin-top: calc(
+    (45px - 20px) / 2
+  ); /* Центрируем относительно виджета баланса */
+  cursor: help; /* Показываем вопрос при наведении */
+}
+
+.ping-indicator .bar {
+  width: 4px;
+  background-color: rgba(255, 255, 255, 0.2); /* По дефолту серые/отключенные */
+  border-radius: 2px;
+  transition:
+    background-color 0.3s ease,
+    box-shadow 0.3s ease;
+}
+
+.ping-indicator .bar-1 {
+  height: 8px;
+}
+.ping-indicator .bar-2 {
+  height: 14px;
+}
+.ping-indicator .bar-3 {
+  height: 20px;
+}
+
+.ping-indicator.signal-good .bar-1,
+.ping-indicator.signal-good .bar-2,
+.ping-indicator.signal-good .bar-3 {
+  background-color: #2ecc71;
+  box-shadow: 0 0 5px #2ecc71;
+}
+
+.ping-indicator.signal-medium .bar-1,
+.ping-indicator.signal-medium .bar-2 {
+  background-color: #f1c40f;
+  box-shadow: 0 0 5px #f1c40f;
+}
+
+.ping-indicator.signal-medium .bar-3 {
+  background-color: rgba(255, 255, 255, 0.2); /* Третья палочка тухнет */
+  box-shadow: none;
+}
+
+.ping-indicator.signal-bad .bar-1 {
+  background-color: #e74c3c;
+  box-shadow: 0 0 5px #e74c3c;
+  animation: ping-pulse 1s infinite alternate; /* Красная палочка мигает! */
+}
+
+.ping-indicator.signal-bad .bar-2,
+.ping-indicator.signal-bad .bar-3 {
+  background-color: rgba(255, 255, 255, 0.2); /* Две другие тухнут */
+  box-shadow: none;
+}
+
+@keyframes ping-pulse {
+  0% {
+    opacity: 0.4;
+  }
+  100% {
+    opacity: 1;
+  }
 }
