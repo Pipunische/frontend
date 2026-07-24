@@ -753,6 +753,7 @@
 
                 seatElement.innerHTML = `
                   <div class="opponent-hand"></div>
+                  ${dealerHtml}
                   <div class="avatar-timer-wrap">
                       <svg class="timer-svg" viewBox="0 0 80 80">
                           <circle class="timer-bg" cx="40" cy="40" r="36"></circle>
@@ -761,22 +762,43 @@
                       ${avatarHtml}
                   </div>
                   <div class="seat-info-badge">
-                      <span class="player-name">${p.name}</span>
+                      <span class="player-name ${p.is_active_turn ? 'active_turn' : ''}">${p.name}</span>
                       <span class="player-chips">${p.chips} <span class="chip-icon"></span></span>
                   </div>
                 `;
               } else {
+
                 const chipsEl = seatElement.querySelector('.player-chips');
                 if (chipsEl) chipsEl.innerHTML = `${p.chips} <span class="chip-icon"></span>`;
 
                 const nameEl = seatElement.querySelector('.player-name');
-                if (nameEl) nameEl.innerText = p.name;
+                if (nameEl) {
+                  nameEl.innerText = p.name;
+                  if (p.is_active_turn) {
+                    nameEl.classList.add('active_turn');
+                  } else {
+                    nameEl.classList.remove('active-turn');
+                  }
+                } 
                 seatElement.dataset.seatindex = p.seat_index;
 
                 // Обновляем аватар, если его почему-то нет в профиле
                 const wrapEl = seatElement.querySelector('.avatar-timer-wrap');
                 if (wrapEl && !wrapEl.querySelector('.seat-avatar, .seat-avatar-default')) {
                   wrapEl.insertAdjacentHTML('beforeend', avatarHtml);
+                }
+
+                let dealerBtn = seatElement.querySelector('.dealer-button');
+
+                if (p.is_dealer) {
+                  if (!dealerBtn) {
+                    dealerBtn = document.createElement('div');
+                    dealerBtn.className = 'dealer-button';
+                    dealerBtn.innerText = 'D';
+                    seatElement.insertBefore(dealerBtn, seatElement.querySelector('.avatar-timer-wrap'));
+                  }
+                } else {
+                  if (dealerBtn) dealerBtn.remove();
                 }
               }
 
@@ -806,6 +828,18 @@
           if (heroNode) {
             const chipsEl = heroNode.querySelector('.player-chips');
             if (chipsEl) chipsEl.innerHTML = `${myPlayer.chips} <span class="chip-icon"></span>`;
+
+            let heroDealerBtn = heroNode.querySelector('.dealer-button');
+            if (myPlayer.is_dealer) {
+              if (!heroDealerBtn) {
+                heroDealerBtn = document.createElement('div');
+                heroDealerBtn.className = ('dealer-button');
+                heroDealerBtn.innerText = 'D';
+                heroNode.insertBefore(heroDealerBtn, heroNode.querySelector('.avatar-timer-wrap'));
+              }
+            } else {
+              if (heroDealerBtn) heroDealerBtn.remove();
+            }
 
             refreshSeatStatus(heroNode, myPlayer.status);
             heroNode.dataset.seatindex = myPlayer.seat_index;

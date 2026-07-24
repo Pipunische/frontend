@@ -1002,7 +1002,7 @@ body {
   top: 20px;
   left: 30px;
   display: flex;
-  align-items: flex-end; /* Выравниваем антенну по нижней линии текста */
+  align-items: center; /* Выравниваем антенну по нижней линии текста */
   gap: 15px; /* Расстояние между названием стола и антенной */
   z-index: 1000;
 }
@@ -1013,9 +1013,6 @@ body {
   justify-content: center;
   gap: 3px;
   height: 20px;
-  margin-top: calc(
-    (45px - 20px) / 2
-  ); /* Центрируем относительно виджета баланса */
   cursor: help; /* Показываем вопрос при наведении */
 }
 
