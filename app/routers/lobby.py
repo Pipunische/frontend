@@ -97,3 +97,77 @@ async def create_table(request: Request, data: CreateTableRequest):
             error_text = response.text
         logger.error(f"🚫 Java ОТКАЗАЛ В СОЗДАНИИ СТОЛА ({status}): {error_text}")
         return {"error": error_text}
+
+
+
+
+@router.get("/dev-lobby", response_class=HTMLResponse)
+async def dev_page_lobby(request: Request):
+    """
+    Секретный эндпоинт для тестирования верстки Лобби без Java-бэкенда.
+    Доступен по адресу: http://127.0.0.1:8000/dev-lobby
+    """
+    # 1. Фейковый юзер с ограниченным бюджетом (чтобы протестить блокировку VIP стола)
+    mock_user = {
+        "user_id": "hero_123",
+        "name": "Arseniy",
+        "wallet_balance": 1500, # Денег мало!
+        "token": "fake_token",
+        "avatar_url": "https://api.dicebear.com/7.x/avataaars/svg?seed=Arseniy"
+    }
+
+    # 2. Фейковые столы всех возможных типов
+    mock_tables = [
+        {
+            "table_id": "table_1",
+            "table_name": "Новички (Low Stake)",
+            "blinds": "10/20",
+            "min_buy_in": 200, 
+            "current_players": 5,
+            "max_players": 10
+        },
+        {
+            "table_id": "table_2",
+            "table_name": "Стандарт (Standard)",
+            "blinds": "50/100",
+            "min_buy_in": 1000, 
+            "current_players": 9,
+            "max_players": 9 # Стол заполнен (МЕСТ НЕТ)
+        },
+        {
+            "table_id": "table_3",
+            "table_name": "Хайроллеры (VIP Stake)",
+            "blinds": "500/1000",
+            "min_buy_in": 10000, # У юзера нет таких денег (Блокировка)
+            "current_players": 2,
+            "max_players": 6
+        },
+        {
+            "table_id": "table_4",
+            "table_name": "Один на один (Heads Up)",
+            "blinds": "100/200",
+            "min_buy_in": 2000, 
+            "current_players": 1,
+            "max_players": 2
+        },
+        {
+            "table_id": "table_4",
+            "table_name": "Один на один (Heads Up)",
+            "blinds": "100/200",
+            "min_buy_in": 2000, 
+            "current_players": 1,
+            "max_players": 2
+        }
+    ]
+
+    context = {
+        "tables": mock_tables,
+        "is_server_down": False, # Измени на True, чтобы протестить красную плашку "Сервер упал"
+        "user": mock_user,
+        "user_token": mock_user["token"],
+        "error": None,
+        "java_host": settings.FRONTEND_JAVA_HOST,
+        "v": settings.APP_VERSION
+    }
+
+    return templates.TemplateResponse(request=request, name="clear_lobby.html", context=context)

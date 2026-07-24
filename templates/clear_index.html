@@ -243,7 +243,7 @@
         else {
           indicator.classList.add('signal-bad');
           if (pingMs === 9999) {
-            indicator.setAttribute('title', 'Связь с сервером потеряна!');
+            indicator.setAttribute('title', 'Нет связи с сервером...');
           } else {
             indicator.setAttribute('title', `Пинг: ${pingMs} мс (Плохо)`);
           }
