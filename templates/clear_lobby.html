@@ -9,7 +9,6 @@
     <style>
         body {
             color: #f1c40f;
-            /* font-family: 'Segoe UI', Arial, sans-serif; */
             margin: 0;
             padding: 40px;
             text-align: center;
@@ -38,8 +37,8 @@
 
         /* === 2. СЕТКА СТОЛОВ === */
         .lobby-grid {
-            display: flex;
-            grid-template-columns: repeat(5, 1fr);
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 380px));
             width: 95%;
             max-width: 1800px;
             margin: 0 auto;
@@ -50,7 +49,8 @@
 
         /* === 3. СТЕКЛЯННЫЕ КАРТОЧКИ (Glassmorphism 2.0) === */
         .table-card {
-            background: rgb(0 43 255 / 14%) !important;
+            background: rgb(8 0 0 / 0%) !important;
+
             backdrop-filter: blur(15px);
             -webkit-backdrop-filter: blur(15px);
             border-radius: 20px !important;
@@ -60,11 +60,31 @@
             justify-content: space-between;
             box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5) !important;
             border: 2px solid rgba(255, 255, 255, 0.08) !important;
-            box-sizing: border-box;
-            width: 280px;
+            /* box-sizing: border-box; */
+            /* width: 280px; */
             flex-grow: 1;
             max-width: 320px;
-            padding: 39px;
+            padding: 30px; /* Увеличили внутренние отступы (было 25) */
+            min-height: 280px; /* Задали минимальную высоту, чтобы они не казались сплющенными */
+            background: 
+            radial-gradient(rgb(0 43 255 / 8%) 2px, transparent 2px),
+            radial-gradient(rgb(0 43 255 / 8%) 2px, transparent 2px),
+            rgba(10, 15, 25, 0.8) !important;
+            background-position: 0 0, 10px 10px !important;
+            background-size: 20px 20px !important;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .table-card::after {
+            content: '♠'; /* Можно поменять на ♥, ♦ или ♣ */
+            position: absolute;
+            bottom: -20px;
+            right: -10px;
+            font-size: 150px;
+            color: rgba(255, 255, 255, 0.03); /* Едва заметный белый цвет */
+            z-index: -1; /* Прячем ПОД текстом и кнопками */
+            transform: rotate(-15deg);
         }
 
         .table-name {
@@ -125,6 +145,10 @@
             text-shadow: 0 0 12px rgba(46, 204, 113, 0.4);
         }
 
+        .table-card.stake-low {
+            background: linear-gradient(180deg, #16974db8 60%, rgba(46,204,113,0.1) 100%) !important;
+        }
+
         /* === 🔵 КАТЕГОРИЯ 2: STANDARD STAKES (Синий неон) === */
         .stake-standard:hover {
             transform: translateY(-8px);
@@ -134,6 +158,10 @@
         .stake-standard .blinds-text {
             color: #3498db;
             text-shadow: 0 0 12px rgba(52, 152, 219, 0.4);
+        }
+
+        .table-card.stake-standard {
+            background: linear-gradient(180deg, rgb(48 71 117 / 50%) 60%, rgba(52,152,219,0.1) 100%) !important;
         }
 
         /* === 🟡 КАТЕГОРИЯ 3: VIP STAKES (Золотой неон + Свечение) === */
@@ -147,6 +175,10 @@
             text-shadow: 0 0 15px rgba(241, 196, 15, 0.4);
         }
 
+        .table-card.stake-vip {
+            background: linear-gradient(180deg, rgb(12 12 0 / 41%) 60%, rgba(241,196,15,0.1) 100%) !important;
+        }
+
 
         /* === 4. КНОПКИ, ИНПУТЫ И СТАТУСЫ === */
         .buy-in-section {
@@ -154,12 +186,13 @@
         }
 
         .buy-in-label {
-            font-size: 11px;
+            font-size: 12px;
             color: #25f300;
             display: block;
             text-align: left;
             margin-bottom: 5px;
             text-transform: uppercase;
+            margin-left: -9px;
             /* letter-spacing: 0.5px; */
         }
 
@@ -167,14 +200,15 @@
             width: 90px;
             padding: 12px;
             border-radius: 10px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            /* border: 1px solid rgba(255, 255, 255, 0.1); */
             background: rgba(0, 0, 0, 0.4);
             color: #fff;
             font-weight: bold;
             font-size: 14px;
             outline: none;
-            box-sizing: border-box;
+            /* box-sizing: border-box; */
             transition: border-color 0.3s, box-shadow 0.3s;
+            margin-left: -14px;
         }
         .buyin-input-field:focus {
             border-color: #3498db;
@@ -193,6 +227,7 @@
             text-align: center;
             box-shadow: 0 4px 15px rgba(46, 204, 113, 0.3);
             cursor: pointer;
+            margin-left: 20px;
         }
 
         .btn-play:hover {
@@ -280,7 +315,7 @@
             font-size: 16px;
             font-weight: bold;
             color: #f1c40f;
-            margin-top: calc((45px - 34px) / 2);
+            /* margin-top: calc((45px - 34px) / 2); */
         }
 
         .user-info {
@@ -367,7 +402,7 @@
             top: 50% !important;
             transform: translateY(-50%) !important; /* Центровка по вертикали */
             
-            background: linear-gradient(107deg, #01090e 0%, rgb(0 43 255 / 14%) 100%) !important;
+            background: linear-gradient(107deg, #01090e 0%, rgb(57 75 163) 100%) !important;
             color: white !important;
             padding: 12px 20px;
             border-radius: 10px;
@@ -401,7 +436,7 @@
 
         /* Контейнер формы внутри оверлея */
         .modal-overlay .rebuy-box {
-            background: #222;
+            background: rgb(57 75 163);
             border: 2px solid #3498db;
             padding: 30px;
             border-radius: 20px;
@@ -509,7 +544,7 @@
             justify-content: space-between; /* Мин.вход СЛЕВА, Игроки СПРАВА */
             align-items: center;
             padding: 12px 0;
-            margin-bottom: 15px;
+            margin-bottom: 5px;
     
         /* Тонкие полупрозрачные линии сверху и снизу для визуального порядка */
             border-top: 1px solid rgba(255, 255, 255, 0.1);
@@ -517,11 +552,14 @@
         }
 
         .card-stats-row .stat-item {
-            font-size: 19px;
-            color: #bdc3c7;
-            display: flex;
+            font-size: 20px;
+            color: #ffffff;
+            /* display: flex; */
             align-items: center;
             gap: 5px;
+            white-space: nowrap;
+            flex-wrap: nowrap; 
+            overflow: hidden; 
         }
 
         .card-stats-row strong {
@@ -530,18 +568,18 @@
 
         .table-name-title {
             margin: 0 0 10px 0;
-            font-size: 17px;
+            font-size: 22px;
             font-weight: 700;
-            color: #f1c40f;
+            color: #ffffff;
             letter-spacing: 0.5px;
             text-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
         }
 
         .blinds-display {
-            display: flex;
+            /* display: flex; */
             align-items: center;
             gap: 8px;
-            font-size: 26px; /* Крупные, сочные цифры */
+            font-size: 30px; /* Крупные, сочные цифры */
             font-weight: 900;
         }
 
@@ -680,7 +718,7 @@
 
     <div id="create-table-modal" class="modal-overlay">
         <div class="rebuy-box" style="width: 420px; border-color: #3498db; box-shadow: 0 0 30px rgba(52, 152, 219, 0.4);">
-            <h2 style="color: #3498db; margin-bottom: 20px;">Настройка стола</h2>
+            <h2 style="margin-bottom: 20px;">Настройка стола</h2>
             
             <input type="text" id="create-name" placeholder="Название стола" class="buyin-input-field" style="width: 100%; margin-bottom: 15px;">
             <input type="password" id="create-passcode" placeholder="Пароль (необязательно)" class="buyin-input-field" style="width: 100%; margin-bottom: 15px;">

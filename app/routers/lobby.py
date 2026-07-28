@@ -144,6 +144,22 @@ async def dev_page_lobby(request: Request):
         },
         {
             "table_id": "table_4",
+            "table_name": "ОДИН НА ОДИН",
+            "blinds": "100/200",
+            "min_buy_in": 2000, 
+            "current_players": 1,
+            "max_players": 2
+        },
+        {
+            "table_id": "table_4",
+            "table_name": "Один на один (Heads Up)",
+            "blinds": "100/200",
+            "min_buy_in": 2000, 
+            "current_players": 1,
+            "max_players": 2
+        },
+        {
+            "table_id": "table_4",
             "table_name": "Один на один (Heads Up)",
             "blinds": "100/200",
             "min_buy_in": 2000, 
