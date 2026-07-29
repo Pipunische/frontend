@@ -1119,6 +1119,7 @@
       // === ГЛАВНЫЙ СЕТЕВОЙ ЦЕНТР ===
 
       let pingInterval = null;
+      let isFirstConnect = true;
 
       function connectWebSocket() {
 
@@ -1132,8 +1133,7 @@
         const wsUrlRaw = `${wsProtocol}://${javaHost}/ws-poker/websocket`;
 
           let socket = new WebSocket(wsUrlRaw);
-          stompClient = Stomp.over(socket);
-    
+          stompClient = Stomp.over(socket);    
           stompClient.debug = null;
 
           const connectHeaders = {
@@ -1143,19 +1143,25 @@
           stompClient.connect(connectHeaders, function (frame) {
               console.log('🔗 WebSocket Подключен!');
 
-              fetch(window.location.pathname, {
-                  headers: { 'Accept': 'application/json' }
-              })
-
-              .then(response => response.json())
-              .then(data => {
-                if (data.redirect) return;
+              if (!isFirstConnect) {
+                fetch(window.location.pathname, { headers: { 'Accept': 'application/json' } })
+                .then(response => response.json())
+                .then(data => {
+                  if (data.redirect) return;
                   if (data.game) {
-                    console.log("🔄 Синхронизация после реконнекта: Стейт обновлен.");
+                    console.log("🔄 Реконнект: Синхронизируем стейт стола...");
 
                     if (data.game.players) {
-                          updateAllPlayers(data.game.players);
-                          renderStaticBets(data.game.players);
+                      updateAllPlayers(data.game.players);
+                      renderOpponentCards(data.game.players);
+                      renderStaticBets(data.game.players);
+
+                      const myId = String("{{ user.user_id }}");
+                      const me = data.game.players.find(p => String(p.user_id) === myId);
+
+                      if (me) {
+                        updateActionPanel(me, data.game.current_turn_seat, data.game.big_blind);
+                      }
                     }
 
                     redrawCommunityCards(data.game);
@@ -1166,21 +1172,24 @@
                           runTurnTimer(activeTurnSeat, timeToAct);
                     }
                   }
-              })
-              .catch(err => console.error("Ошибка синхронизации:", err));
+                })
+                .catch(err => console.error("Ошибка синхронизации:", err));
+              }
+
+              isFirstConnect = false;
 
               stompClient.subscribe('/user/queue/pong', function (message) {
 
                 const receiveTime = Date.now();
                 const data = JSON.parse(message.body);
                 const pingMs = receiveTime - data.clientTime;
-                console.log(`🛜 Пинг: ${pingMs} мс`);
+                // console.log(`🛜 Пинг: ${pingMs} мс`);
                 updatePingIndicator(pingMs);
               });
 
               pingInterval = setInterval(() => {
                 if (stompClient && stompClient.connected) {
-                  const sendTime = Data.now();
+                  const sendTime = Date.now();
                   stompClient.send("/app/ping", {}, JSON.stringify({ clientTime: sendTime }));
                 }
               }, 3000);
