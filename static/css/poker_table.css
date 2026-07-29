@@ -1074,3 +1074,115 @@ body {
     opacity: 1;
   }
 }
+
+.hero-emote-wrapper {
+  position: absolute; /* Вытаскиваем из общего потока! Она больше не будет двигать плашки */
+
+  /* Размещаем справа и чуть выше центра аватарки */
+  right: -35px;
+  top: 15px;
+
+  z-index: 40; /* Поверх всех плашек */
+}
+
+/* Сама кнопка (Круглая, темное стекло) */
+.btn-emote {
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: white;
+  font-size: 16px;
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.6);
+  transition: all 0.2s;
+  padding: 0;
+}
+.btn-emote:hover {
+  transform: scale(1.15);
+  box-shadow: 0 0 15px rgba(255, 255, 255, 0.3);
+  border-color: #fff;
+}
+
+/* Всплывающая панель со стикерами */
+.emote-panel {
+  position: absolute;
+  /* Панель всплывает ВВЕРХ и ВПРАВО от кнопки */
+  bottom: 45px;
+  left: 0;
+
+  background: rgba(10, 15, 20, 0.95);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid #444;
+  border-radius: 12px;
+  padding: 10px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr); /* 2 ряда по 3 эмодзи */
+  gap: 8px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.8);
+
+  /* Скрыта по дефолту */
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(10px) scale(0.9);
+  transform-origin: bottom left; /* Растет из кнопки */
+  transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.emote-panel.show {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0) scale(1);
+}
+
+.emote-panel button {
+  background: transparent;
+  border: none;
+  font-size: 26px;
+  cursor: pointer;
+  transition: transform 0.1s;
+}
+.emote-panel button:hover {
+  transform: scale(1.3);
+}
+
+/* --- АНИМАЦИЯ САМОГО ВЫЛЕТАЮЩЕГО СТИКЕРА НАД ГОЛОВОЙ (ЛЮБОГО ИГРОКА) --- */
+.player-emote {
+  position: absolute;
+  top: -40px; /* Появляется высоко над головой */
+  left: 50%;
+  margin-left: -22px; /* Центрируем */
+  font-size: 45px; /* Огромный стикер! */
+  z-index: 50;
+  pointer-events: none;
+
+  /* Магия появления и покачивания */
+  animation: emote-pop 3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+@keyframes emote-pop {
+  0% {
+    transform: scale(0) translateY(20px);
+    opacity: 0;
+  }
+  15% {
+    transform: scale(1.2) translateY(0);
+    opacity: 1;
+  }
+  25% {
+    transform: scale(1) translateY(0);
+  }
+  75% {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.5) translateY(-30px);
+    opacity: 0;
+  } /* Улетает вверх и тает */
+}

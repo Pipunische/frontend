@@ -154,7 +154,19 @@
               </span>
           </div>
 
-        </div> 
+          <div class="hero-emote-wrapper">
+            <button class="btn-emote" onclick="toggleEmotePanel()">💬</button>
+
+            <div id="emote-panel" class="emote-panel">
+              <button onclick="sendEmote('fire')">🔥</button>
+              <button onclick="sendEmote('cry')">😭</button>
+              <button onclick="sendEmote('angry')">🤬</button>
+              <button onclick="sendEmote('poop')">💩</button>
+              <button onclick="sendEmote('beer')">🍻</button>
+              <button onclick="sendEmote('clown')">🤡</button>
+            </div>
+          </div>
+        </div>
       </div>
       
       <div class="action-panel" id="dynamic-action-panel" style="display: none;">
@@ -225,6 +237,29 @@
            setTimeout(() => toast.remove(), 400);
            }, 4000);
       }
+
+      function toggleEmotePanel() {
+        document.getElementById('emote-panel').classList.toggle('show');
+      }
+
+      function sendEmote(emoteId) {
+        toggleEmotePanel();
+
+        if (stompClient && stompClient.connected) {
+          const payload = {
+            "event_type": "EMOTE",
+            "user_id": "{{ user.user_id }}",
+            "emote_id": emoteId
+          };
+          // Отправляем точно по инструкции Влада
+          stompClient.send('/app/table/' + tableId + '/emote', {}, JSON.stringify(payload));
+        }
+      }
+
+      const emotesDict = {
+        'fire': '🔥', 'cry': '😭', 'angry': '🤬',
+        'poop': '💩', 'beer': '🍻', 'clown': '🤡'
+      };
 
       function updatePingIndicator(pingMs) {
         const indicator = document.getElementById('ping-indicator');
@@ -1292,6 +1327,21 @@
                         .catch(err => console.error("Ошибка обновления рассадки:", err));
                         break;
 
+                        case 'EMOTE':
+                          const emoteUserId = eventData.user_id;
+                          const emoteIcon = emotesDict[eventData.emote_id] || '💬';
+
+                          const emoteSeat = document.querySelector(`.player-seat[data-userid="${emoteUserId}"]`);
+                          if (emoteSeat) {
+                            const emoteEl = document.createElement('div');
+                              emoteEl.className = 'player-emote';
+                              emoteEl.innerText = emoteIcon;
+
+                              emoteSeat.appendChild(emoteEl);
+
+                              setTimeout(() => emoteEl.remove(), 3000);
+                          }
+                          break;
                       default:
                           console.warn("⚠️ Неизвестный тип ивента от Владоса:", eventData.event_type);
                   }
