@@ -1,6 +1,7 @@
 /* 1. КОМНАТА И ОБЩИЙ ФОН */
 body {
   /* Глубокий радиальный фон (эффект освещенного стола в темной комнате) */
+  /* font-family: "Montserrat", sans-serif !important; */
   background: radial-gradient(
     circle at center,
     #1a2a3a 0%,
@@ -21,7 +22,7 @@ body {
   justify-content: center;
   position: relative;
   color: white;
-  /* font-family: "Segoe UI", Arial, sans-serif; */
+  font-family: "Segoe UI", Arial, sans-serif;
 }
 
 /* 2. ЗЕЛЕНЫЙ СТОЛ */

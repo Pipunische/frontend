@@ -4,11 +4,17 @@
 <head>
     <meta charset="UTF-8">
     <title>Лобби Казино — Выбор стола</title>
+    <link href="https://fonts.googleapis.com/css2?family=Play:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
     <style>
         body {
-            color: #f1c40f;
+            font-family: "Segoe UI", Arial, sans-serif; 
+            /* 'Oswald', sans-serif !important; */
+            /* 'Rajdhani', sans-serif !important; */
+            color: #ecf0f1;
             margin: 0;
             padding: 40px;
             text-align: center;
@@ -146,7 +152,7 @@
         }
 
         .table-card.stake-low {
-            background: linear-gradient(180deg, #16974db8 60%, rgba(46,204,113,0.1) 100%) !important;
+            background: linear-gradient(180deg, #000000 60%, rgba(46,204,113,0.1) 100%) !important;
         }
 
         /* === 🔵 КАТЕГОРИЯ 2: STANDARD STAKES (Синий неон) === */
@@ -161,7 +167,7 @@
         }
 
         .table-card.stake-standard {
-            background: linear-gradient(180deg, rgb(48 71 117 / 50%) 60%, rgba(52,152,219,0.1) 100%) !important;
+            background: linear-gradient(180deg, rgb(0 0 0) 60%, rgba(52,152,219,0.1) 100%) !important;
         }
 
         /* === 🟡 КАТЕГОРИЯ 3: VIP STAKES (Золотой неон + Свечение) === */
@@ -176,7 +182,7 @@
         }
 
         .table-card.stake-vip {
-            background: linear-gradient(180deg, rgb(12 12 0 / 41%) 60%, rgba(241,196,15,0.1) 100%) !important;
+            background: linear-gradient(180deg, rgb(0 0 0) 60%, rgba(241,196,15,0.1) 100%) !important;
         }
 
 
@@ -227,7 +233,7 @@
             text-align: center;
             box-shadow: 0 4px 15px rgba(46, 204, 113, 0.3);
             cursor: pointer;
-            margin-left: 20px;
+            /* margin-left: 20px; */
         }
 
         .btn-play:hover {
@@ -398,7 +404,7 @@
 
         #create-table-btn {
             position: absolute !important;
-            left: 0 !important;
+            left: 210px !important;
             top: 50% !important;
             transform: translateY(-50%) !important; /* Центровка по вертикали */
             
@@ -436,15 +442,15 @@
 
         /* Контейнер формы внутри оверлея */
         .modal-overlay .rebuy-box {
-            background: rgb(57 75 163);
-            border: 2px solid #3498db;
+            /* background: rgb(57 75 163); */
+            /* border: 2px solid #3498db; */
             padding: 30px;
             border-radius: 20px;
             box-shadow: 0 0 30px rgba(52, 152, 219, 0.4);
             display: flex;
             flex-direction: column;
-            align-items: center;
-            box-sizing: border-box;
+            /* align-items: center;
+            box-sizing: border-box; */
         }
 
         /* Стилизуем кнопку отмены внутри модалки */
@@ -582,12 +588,6 @@
             font-size: 30px; /* Крупные, сочные цифры */
             font-weight: 900;
         }
-
-        .blinds-display .chip-icon {
-            width: 24px;
-            height: 24px;
-        }
-
         
 
     </style>
@@ -605,8 +605,10 @@
 
         <a href="/profile" class="avatar-link" title="Перейти в профиль">
             {% if user.avatar_url %}
-                <img src="{{ user.avatar_url }}" class="seat-avatar" style="width: 55px; height: 55px; border-radius: 50%; border: 2px solid
-         #00f2fe; object-fit: cover; box-shadow: 0 4px 10px rgba(0,0,0,0.5);">
+                <img src="{{ user.avatar_url }}" class="seat-avatar" style="width: 55px; height: 55px;
+                 /* border-radius: 50%; */
+                  border: 2px solid
+         #e000fe; object-fit: cover; box-shadow: 0 4px 10px rgba(0,0,0,0.5);">
             {% else %}
                 <div class="default-avatar">
                     <!-- В будущем тут будет img -->
