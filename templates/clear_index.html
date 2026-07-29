@@ -1143,6 +1143,32 @@
           stompClient.connect(connectHeaders, function (frame) {
               console.log('🔗 WebSocket Подключен!');
 
+              fetch(window.location.pathname, {
+                  headers: { 'Accept': 'application/json' }
+              })
+
+              .then(response => response.json())
+              .then(data => {
+                if (data.redirect) return;
+                  if (data.game) {
+                    console.log("🔄 Синхронизация после реконнекта: Стейт обновлен.");
+
+                    if (data.game.players) {
+                          updateAllPlayers(data.game.players);
+                          renderStaticBets(data.game.players);
+                    }
+
+                    redrawCommunityCards(data.game);
+
+                    const activeTurnSeat = data.game.current_turn_seat;
+                    const timeToAct = data.game.time_to_act_ms || 15000;
+                    if (activeTurnSeat !== -1) {
+                          runTurnTimer(activeTurnSeat, timeToAct);
+                    }
+                  }
+              })
+              .catch(err => console.error("Ошибка синхронизации:", err));
+
               stompClient.subscribe('/user/queue/pong', function (message) {
 
                 const receiveTime = Date.now();
