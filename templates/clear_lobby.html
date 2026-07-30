@@ -588,6 +588,40 @@
             font-size: 30px; /* Крупные, сочные цифры */
             font-weight: 900;
         }
+
+        .online-counter {
+            position: absolute;
+            top: 100px; /* Опускаем под виджет профиля */
+            right: 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(10, 15, 20, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 700;
+            color: #bdc3c7;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+            transition: all 0.3s ease;
+        }
+
+        .online-dot {
+            width: 10px;
+            height: 10px;
+            background-color: #2ecc71;
+            border-radius: 50%;
+            /* Эффект сердцебиения (пульсации) зеленого цвета */
+            box-shadow: 0 0 8px #2ecc71;
+            animation: pulse-dot 2s infinite;
+        }
+
+        @keyframes pulse-dot {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(46, 204, 113, 0.7); }
+            70% { transform: scale(1.1); box-shadow: 0 0 0 6px rgba(46, 204, 113, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(46, 204, 113, 0); }
+        }
         
 
     </style>
@@ -618,6 +652,13 @@
             <!-- Никнейм прямо под кружком -->
             <div class="user-name-compact">{{ user.name }}</div>
         </a>
+
+        <div class="user-profile-widget">
+            <div class="online-counter" title="Игроков онлайн">
+                <span class="online-dot"></span>
+                <span id="online-count">0</span>
+            </div>
+        </div>
     </div>
 
     <!-- КНОПКА СОЗДАНИЯ КАСТОМНОГО СТОЛА -->
@@ -935,6 +976,14 @@
                         }
                     }
                 }
+                else if (data.event_type === 'ONLINE_UPDATE') {
+                    const countEl = document.getElementById('online-count');
+                    if (countEl) {
+                        countEl.innerText = data.online_count;
+                        countEl.style.color = '#2ecc71';
+                        setTimeout(() => { countEl.style.color = '#bdc3c7'; }, 500);
+                    }
+                }
             });
 
             stompClient.subscribe('/user/queue/wallet', function (message) {
@@ -942,7 +991,7 @@
                 console.log("💰 Кошелек обновлен сервером!", data);
                 const walletElements = document.querySelectorAll('.wallet-balance-display');
                 walletElements.forEach(el => {
-                    el.innerText = `${data.new_balance} 🪙`;
+                    el.innerHTML = `<span class="chip-icon"></span> ${data.new_balance}`;
                     el.style.color = '#2ecc71';
                     el.style.transform = 'scale(1.1)';
                     setTimeout(() => {
