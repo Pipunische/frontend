@@ -239,10 +239,17 @@
       }
 
       function toggleEmotePanel() {
-        document.getElementById('emote-panel').classList.toggle('show');
+        console.log("🔘 Клик по кнопке эмодзи!");
+        const panel = document.getElementById('emote-panel');
+        if (panel) {
+            panel.classList.toggle('show');
+        } else {
+            console.error("❌ Панель эмодзи не найдена в HTML!");
+        }
       }
 
       function sendEmote(emoteId) {
+        console.log("🚀 Отправляю эмодзи:", emoteId);
         toggleEmotePanel();
 
         if (stompClient && stompClient.connected) {
@@ -253,6 +260,8 @@
           };
           // Отправляем точно по инструкции Влада
           stompClient.send('/app/table/' + tableId + '/emote', {}, JSON.stringify(payload));
+        } else {
+          console.error("❌ STOMP-клиент не подключен! Эмодзи не отправлено.");
         }
       }
 
