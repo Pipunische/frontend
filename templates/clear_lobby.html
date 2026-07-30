@@ -925,8 +925,15 @@
     }
 
     const wsUrl = "https://{{ java_host }}/ws-poker";
+
+    let pingInterval = null;
     
     function connectLobbySocket() {
+
+        if (!userToken || userToken === "None" || userToken.trim() === "") {
+            console.log("Без токена сокеты лобби не подключаем.");
+            return;
+        }
 
         const wsProtocol = window.location.protocol === "https:" ? "wss" : "ws";
         const wsUrlRaw = `${wsProtocol}://{{ java_host }}/ws-poker/websocket`;
@@ -942,39 +949,48 @@
         stompClient.connect(connectHeaders, function (frame) {
             console.log('🔗 Лобби подключено к сети Владоса!');
 
+            stompClient.subscribe('/user/queue/pong', function (message) {
+                // В лобби нам пинг-индикатор пока не нужен, просто поддерживаем коннект
+            });
+
+            pingInterval = setInterval(() => {
+                if (stompClient && stompClient.connected) {
+                    stompClient.send("/app/ping", {}, JSON.stringify({ clientTime: Date.now() }));
+                }
+            }, 3000);
+
             // ПОДПИСКА НА ОБЩИЙ КАНАЛ КАЗИНО
             stompClient.subscribe('/topic/lobby', function (message) {
                 const data = JSON.parse(message.body);
                 console.log("📢 Новости Лобби:", data);
 
-                if (data.event_type === 'LOBBY_UPDATE') {
+                if (data.event_type === 'LOBBY_UPDATE' && data.tables) {
                     // Ищем счетчик игроков для этого стола на экране
-                    const countEl = document.getElementById(`count-${data.table_id}`);
-                    if (countEl) {
+                    data.tables.forEach(table => {
+                        const countEl = document.getElementById(`count-${table.table_id}`);
+                        if (countEl) {
+                            countEl.innerText = `${table.current_players} / ${table.max_players}`;
+                            countEl.style.color = '#2ecc71';
+                            setTimeout(() => { countEl.style.color = '#f1c40f'; }, 1000);
 
-                        countEl.innerText = `${data.current_players} / ${data.max_players}`;
-                        countEl.style.color = '#2ecc71';
-                        setTimeout(() => { countEl.style.color = 'white'; }, 1000);
+                            const buySection = document.getElementById(`buy-section-${table.table_id}`);
+                            const tableCard = countEl.closest('.table-card');
 
-                        const buySection = document.getElementById(`buy-section-${data.table_id}`);
-                        const tableCard = countEl.closest('.table-card');
-
-                        if (data.current_players >= data.max_players) {
-                            if (buySection) buySection.style.display = 'none';
-
-                            if (!tableCard.querySelector('.status-full-dynamic')) {
-                                const badge = document.createElement('div');
-                                badge.className = 'status-full status-full-dynamic';
-                                badge.innerText = 'МЕСТ НЕТ';
-                                tableCard.appendChild(badge);
+                            if (table.current_players >= table.max_players) {
+                                if (buySection) buySection.style.display = 'none';
+                                if (!tableCard.querySelector('.status-full-dynamic')) {
+                                    const badge = document.createElement('div');
+                                    badge.className = 'status-full status-full-dynamic';
+                                    badge.innerText = 'МЕСТ НЕТ';
+                                    tableCard.querySelector('.card-action')?.appendChild(badge);
+                                }
+                            } else {
+                                if (buySection) buySection.style.display = 'flex';
+                                const badge = tableCard.querySelector('.status-full-dynamic');
+                                if (badge) badge.remove();
                             }
-                        } else {
-                            // Если ктото вышел - возвращаем инпут
-                            if (buySection) buySection.style.display = 'block';
-                            const badge = tableCard.querySelector('.status-full-dynamic');
-                            if (badge) badge.remove();
                         }
-                    }
+                    });
                 }
                 else if (data.event_type === 'ONLINE_UPDATE') {
                     const countEl = document.getElementById('online-count');
@@ -1004,6 +1020,7 @@
 
         }, function(error) {
             console.error("Ошибка связи лобби:", error);
+            if (pingInterval) clearInterval(pingInterval);
             setTimeout(connectLobbySocket, 5000);
         });
     }
