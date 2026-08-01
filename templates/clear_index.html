@@ -37,6 +37,8 @@
         <div class="table-pot">
           <span id="pot-value">{{ game.pot }}</span> <span class="chip-icon"></span>
         </div>
+
+        <div id="chip-animation-layer" aria-hidden="true"></div>
         <div class="deck-pile">
           <img src="/static/card_back.png" alt="Deck">
         </div>  
@@ -179,6 +181,18 @@
         <button class="btn-leave-table" onclick="leaveCurrentTable()">
             Встать из-за стола
         </button>
+
+        <div id="dev-controls" class="dev-controls" hidden>
+          <button type="button" class="btn-dev-action" onclick="simulateDevStreetEnd()">
+            Test STREET_END
+          </button>
+          <button type="button" class="btn-dev-action btn-dev-secondary" onclick="simulateDevAutoCollect()">
+            Test auto-collect
+          </button>
+          <button type="button" class="btn-dev-action btn-dev-secondary" onclick="resetDevTableBets()">
+            Reset ставки
+          </button>
+        </div>
       </div>
 
         <div id="rebuy-modal" class="modal-overlay">
@@ -1106,6 +1120,212 @@
       const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
       let isShowdownRunning = false;
 
+      const CHIP_COLLECT_DURATION_MS = 650;
+      const CHIP_COLLECT_STAGGER_MS = 90;
+      let isCollectingBets = false;
+      let streetEndInProgress = false;
+      let pendingTableUpdateState = null;
+
+      function getElementCenter(el) {
+        const rect = el.getBoundingClientRect();
+        return {
+          x: rect.left + rect.width / 2,
+          y: rect.top + rect.height / 2,
+        };
+      }
+
+      function spawnFlyingChip(fromCenter, toCenter, amount, delayMs = 0) {
+        const layer = document.getElementById('chip-animation-layer');
+        if (!layer) return Promise.resolve();
+
+        const chip = document.createElement('div');
+        chip.className = 'chip-flying';
+        chip.style.left = `${fromCenter.x}px`;
+        chip.style.top = `${fromCenter.y}px`;
+        chip.style.setProperty('--fly-dx', `${toCenter.x - fromCenter.x}px`);
+        chip.style.setProperty('--fly-dy', `${toCenter.y - fromCenter.y}px`);
+        chip.style.setProperty('--fly-duration', `${CHIP_COLLECT_DURATION_MS}ms`);
+        chip.style.setProperty('--fly-delay', `${delayMs}ms`);
+        chip.innerHTML = `<div class="chip-icon"></div>${amount}`;
+
+        layer.appendChild(chip);
+
+        return new Promise(resolve => {
+          const done = () => {
+            chip.removeEventListener('animationend', done);
+            chip.remove();
+            resolve();
+          };
+          chip.addEventListener('animationend', done);
+        });
+      }
+
+      /**
+       * Анимирует сбор ставок игроков в банк.
+       * @param {Array<{user_id: string, amount: number}>} contributions
+       * @param {number} [newPot] — новое значение банка после сбора
+       * @returns {Promise<void>}
+       */
+      async function collectBetsToPot(contributions, newPot) {
+        if (!contributions?.length || isCollectingBets) return;
+
+        const activeContributions = contributions.filter(c => c.amount > 0);
+        if (!activeContributions.length) return;
+
+        isCollectingBets = true;
+
+        const potEl = document.querySelector('.table-pot');
+        const potValueEl = document.getElementById('pot-value');
+        if (!potEl) {
+          isCollectingBets = false;
+          return;
+        }
+
+        const potCenter = getElementCenter(potEl);
+
+        document.querySelectorAll('.player-bet').forEach(bet => {
+          bet.style.transition = 'opacity 150ms ease';
+          bet.style.opacity = '0';
+        });
+
+        const flights = activeContributions.map((entry, index) => {
+          const seat = document.querySelector(`.player-seat[data-userid="${entry.user_id}"]`);
+          if (!seat) return Promise.resolve();
+
+          const betEl = seat.querySelector('.player-bet');
+          const sourceCenter = betEl
+            ? getElementCenter(betEl)
+            : getElementCenter(seat);
+
+          return spawnFlyingChip(
+            sourceCenter,
+            potCenter,
+            entry.amount,
+            index * CHIP_COLLECT_STAGGER_MS
+          );
+        });
+
+        await Promise.all(flights);
+
+        document.querySelectorAll('.player-bet').forEach(bet => bet.remove());
+
+        if (newPot !== undefined && potValueEl) {
+          potValueEl.innerText = newPot;
+        }
+
+        potEl.classList.remove('pot-collect-pulse');
+        void potEl.offsetWidth;
+        potEl.classList.add('pot-collect-pulse');
+        potEl.addEventListener('animationend', () => {
+          potEl.classList.remove('pot-collect-pulse');
+        }, { once: true });
+
+        playSound('bet');
+        isCollectingBets = false;
+      }
+
+      function isStreetTransitionBusy() {
+        return isCollectingBets || streetEndInProgress;
+      }
+
+      const STREET_ORDER = ['WAITING_FOR_PLAYERS', 'PRE_FLOP', 'FLOP', 'TURN', 'RIVER', 'SHOWDOWN'];
+
+      function isStreetAdvanced(previousState, nextState) {
+        const prevIdx = STREET_ORDER.indexOf(previousState);
+        const nextIdx = STREET_ORDER.indexOf(nextState);
+        return prevIdx >= 0 && nextIdx > prevIdx;
+      }
+
+      function getContributionsFromDom() {
+        const contributions = [];
+
+        document.querySelectorAll('.player-seat[data-userid]').forEach(seat => {
+          const userId = seat.dataset.userid;
+          if (!userId) return;
+
+          const betEl = seat.querySelector('.player-bet');
+          if (!betEl) return;
+
+          const amount = parseInt(betEl.textContent.replace(/[^\d]/g, ''), 10) || 0;
+          if (amount > 0) {
+            contributions.push({ user_id: userId, amount });
+          }
+        });
+
+        return contributions;
+      }
+
+      function shouldAutoCollectOnStateUpdate(state, shouldSkipCollect) {
+        if (shouldSkipCollect) return false;
+        if (!state?.state || !currentGameState) return false;
+        if (!isStreetAdvanced(currentGameState, state.state)) return false;
+        if (!document.querySelectorAll('.player-bet').length) return false;
+        if (state.players?.some(p => p.round_contribution > 0)) return false;
+        return true;
+      }
+
+      function cancelCollectAnimation() {
+        document.querySelectorAll('#chip-animation-layer .chip-flying').forEach(chip => chip.remove());
+        isCollectingBets = false;
+        streetEndInProgress = false;
+      }
+
+      function enqueueTableUpdate(state) {
+        pendingTableUpdateState = state;
+        console.log('⏸️ TABLE_UPDATE отложен — идёт сбор фишек');
+      }
+
+      function flushPendingTableUpdate() {
+        if (!pendingTableUpdateState) return;
+
+        const state = pendingTableUpdateState;
+        pendingTableUpdateState = null;
+        console.log('▶️ Применяем отложенный TABLE_UPDATE');
+        applyFullTableState(state, { skipCollectAnimation: true, afterCollect: true });
+      }
+
+      function applyPartialStateAfterStreetEnd(eventData) {
+        if (eventData.state) {
+          currentGameState = eventData.state;
+          updateTableStateClass(eventData.state);
+        }
+
+        if (eventData.community_cards?.length) {
+          redrawCommunityCards({ community_cards: eventData.community_cards });
+        }
+
+        if (eventData.current_turn_seat !== undefined) {
+          updateActiveTurn(eventData.current_turn_seat);
+          runTurnTimer(eventData.current_turn_seat, getTurnTimeMs(eventData));
+        }
+      }
+
+      async function handleStreetEnd(eventData) {
+        console.log(
+          `🏦 STREET_END: ${eventData.previous_state || '?'} → ${eventData.state || '?'}`
+        );
+
+        const contributions = eventData.contributions || [];
+        const hasContributions = contributions.some(c => c.amount > 0);
+
+        if (hasContributions) {
+          await collectBetsToPot(contributions, eventData.pot);
+        } else {
+          document.querySelectorAll('.player-bet').forEach(bet => bet.remove());
+          if (eventData.pot !== undefined) {
+            const potEl = document.getElementById('pot-value');
+            if (potEl) potEl.innerText = eventData.pot;
+          }
+        }
+
+        const hadPendingUpdate = Boolean(pendingTableUpdateState);
+        flushPendingTableUpdate();
+
+        if (!hadPendingUpdate) {
+          applyPartialStateAfterStreetEnd(eventData);
+        }
+      }
+
       async function playShowdownSequence(showdownDetails) {
         if (!showdownDetails || !showdownDetails.payouts || isShowdownRunning) return;
 
@@ -1292,7 +1512,8 @@
               console.log('🛡️ Periodic snapshot: синхронизация стола');
               applyFullTableState(result.data.game, {
                 myCards: result.data.my_cards,
-                skipShowdownAnimation: true
+                skipShowdownAnimation: true,
+                skipCollectAnimation: true,
               });
             }
           } catch (err) {
@@ -1365,7 +1586,7 @@
         tableEl.classList.add(`state-${state}`);
       }
 
-      function applyFullTableState(state, options = {}) {
+      function applyFullTableStateCore(state, options = {}) {
         const { myCards = null, skipShowdownAnimation = false } = options;
         const myId = String("{{ user.user_id }}");
         let me = null;
@@ -1385,7 +1606,9 @@
         const potEl = document.getElementById('pot-value');
         if (potEl && state.pot !== undefined) potEl.innerText = state.pot;
 
-        redrawCommunityCards(state);
+        if (state.community_cards !== undefined) {
+          redrawCommunityCards(state);
+        }
 
         if (state.players) {
           me = state.players.find(p => String(p.user_id) === myId);
@@ -1415,8 +1638,10 @@
           }
         }
 
-        updateActiveTurn(state.current_turn_seat);
-        runTurnTimer(state.current_turn_seat, getTurnTimeMs(state));
+        if (state.current_turn_seat !== undefined) {
+          updateActiveTurn(state.current_turn_seat);
+          runTurnTimer(state.current_turn_seat, getTurnTimeMs(state));
+        }
 
         const activePhases = ['PRE_FLOP', 'FLOP', 'TURN', 'RIVER'];
         if (activePhases.includes(state.state)) {
@@ -1428,12 +1653,51 @@
           }
         }
 
-        if (state.state === 'SHOWDOWN') {
+        if (state.state === 'SHOWDOWN' && state.players) {
           renderAllHoleCards(state.players);
           if (!skipShowdownAnimation && state.showdown_details) {
             playShowdownSequence(state.showdown_details);
           }
         }
+      }
+
+      async function applyFullTableState(state, options = {}) {
+        const {
+          myCards = null,
+          skipShowdownAnimation = false,
+          skipCollectAnimation = false,
+          afterCollect = false,
+        } = options;
+
+        const shouldSkipCollect = skipCollectAnimation || state.skip_animations === true;
+
+        if (shouldSkipCollect && isStreetTransitionBusy()) {
+          cancelCollectAnimation();
+          pendingTableUpdateState = null;
+        }
+
+        if (isStreetTransitionBusy() && !afterCollect) {
+          enqueueTableUpdate(state);
+          return;
+        }
+
+        if (!afterCollect && shouldAutoCollectOnStateUpdate(state, shouldSkipCollect)) {
+          streetEndInProgress = true;
+          try {
+            console.log(`🏦 Auto-collect: ${currentGameState} → ${state.state}`);
+            const contributions = getContributionsFromDom();
+            await collectBetsToPot(contributions, state.pot);
+            applyFullTableStateCore(state, {
+              myCards,
+              skipShowdownAnimation,
+            });
+          } finally {
+            streetEndInProgress = false;
+          }
+          return;
+        }
+
+        applyFullTableStateCore(state, { myCards, skipShowdownAnimation });
       }
 
       async function resyncTableFromServer() {
@@ -1447,7 +1711,8 @@
           console.log("🔄 Реконнект: полная синхронизация стола...");
           applyFullTableState(data.game, {
             myCards: data.my_cards,
-            skipShowdownAnimation: true
+            skipShowdownAnimation: true,
+            skipCollectAnimation: true,
           });
         }
       }
@@ -1504,7 +1769,18 @@
         switch (eventData.event_type) {
 
           case 'TABLE_UPDATE':
+            if (isStreetTransitionBusy()) {
+              enqueueTableUpdate(eventData);
+              break;
+            }
             applyFullTableState(eventData);
+            break;
+
+          case 'STREET_END':
+            streetEndInProgress = true;
+            handleStreetEnd(eventData).finally(() => {
+              streetEndInProgress = false;
+            });
             break;
 
           case 'PLAYER_ACTION':
@@ -1567,7 +1843,14 @@
           clearSnapshotFallback();
           const eventData = JSON.parse(message.body);
           console.log('📸 TABLE_SNAPSHOT от Java');
-          applyFullTableState(eventData, { skipShowdownAnimation: isReconnect });
+          if (isStreetTransitionBusy()) {
+            enqueueTableUpdate(eventData);
+            return;
+          }
+          applyFullTableState(eventData, {
+            skipShowdownAnimation: isReconnect,
+            skipCollectAnimation: true,
+          });
         });
 
         // 2) Подписка на топик триггерит отправку snapshot в queue выше
@@ -1651,6 +1934,192 @@
       }
 
 
+      // === DEV-TABLE: локальное тестирование анимации сбора фишек ===
+
+      let devMockPlayers = null;
+      let devInitialPot = 150;
+      let devInitialCommunityCards = ['As', 'Kh', '10d'];
+
+      const DEV_NEXT_STREET = {
+        FLOP: {
+          previous_state: 'PRE_FLOP',
+          next_state: 'TURN',
+          community_cards: ['As', 'Kh', '10d', '2c'],
+        },
+        TURN: {
+          previous_state: 'FLOP',
+          next_state: 'RIVER',
+          community_cards: ['As', 'Kh', '10d', '2c', '5s'],
+        },
+        RIVER: {
+          previous_state: 'TURN',
+          next_state: 'SHOWDOWN',
+          community_cards: ['As', 'Kh', '10d', '2c', '5s', '9h'],
+        },
+      };
+
+      function initDevMockState() {
+        const metadataNode = document.getElementById('poker-metadata');
+        if (!metadataNode) return;
+
+        devMockPlayers = JSON.parse(metadataNode.getAttribute('data-players'));
+
+        const potEl = document.getElementById('pot-value');
+        if (potEl) devInitialPot = parseInt(potEl.innerText, 10) || 150;
+
+        const cardsOnBoard = Array.from(document.querySelectorAll('.community-cards img.poker-card'))
+          .map(img => {
+            const match = img.src.match(/\/([2-9TJQKA][shdc])\.png/i);
+            return match ? match[1] : null;
+          })
+          .filter(Boolean);
+
+        devInitialCommunityCards = cardsOnBoard.length
+          ? cardsOnBoard
+          : ['As', 'Kh', '10d'];
+      }
+
+      function getDevContributions() {
+        if (!devMockPlayers) return [];
+        return devMockPlayers
+          .filter(p => p.round_contribution > 0)
+          .map(p => ({ user_id: p.user_id, amount: p.round_contribution }));
+      }
+
+      function buildDevTableUpdate(state, newPot, communityCards, nextTurnSeat) {
+        devMockPlayers = devMockPlayers.map(p => ({
+          ...p,
+          round_contribution: 0,
+          is_active_turn: p.seat_index === nextTurnSeat,
+        }));
+
+        return {
+          event_type: 'TABLE_UPDATE',
+          state,
+          pot: newPot,
+          big_blind: 100,
+          community_cards: communityCards,
+          dealer_seat: 0,
+          current_turn_seat: nextTurnSeat,
+          time_to_act_ms: 15000,
+          players: devMockPlayers,
+        };
+      }
+
+      function addDevRoundBets() {
+        if (!devMockPlayers) return;
+
+        devMockPlayers = devMockPlayers.map(p => {
+          if (p.status !== 'ACTIVE') {
+            return { ...p, round_contribution: 0 };
+          }
+          const bet = p.user_id === 'hero_123' ? 100 : 50;
+          return { ...p, round_contribution: bet };
+        });
+
+        renderStaticBets(devMockPlayers);
+      }
+
+      function simulateDevStreetEnd() {
+        const config = DEV_NEXT_STREET[currentGameState];
+        if (!config) {
+          showToast('error', null, `Нет следующей улицы для ${currentGameState}`);
+          return;
+        }
+
+        const contributions = getDevContributions();
+        if (!contributions.length) {
+          showToast('error', null, 'Нет ставок для сбора — нажми Reset ставки');
+          return;
+        }
+
+        const collectedAmount = contributions.reduce((sum, c) => sum + c.amount, 0);
+        const currentPot = parseInt(document.getElementById('pot-value')?.innerText, 10) || 0;
+        const newPot = currentPot + collectedAmount;
+        const nextTurnSeat = 1;
+
+        handleTableEvent({
+          event_type: 'STREET_END',
+          previous_state: config.previous_state,
+          state: config.next_state,
+          pot: newPot,
+          contributions,
+          community_cards: config.community_cards,
+          current_turn_seat: nextTurnSeat,
+          time_to_act_ms: 15000,
+        });
+
+        setTimeout(() => {
+          handleTableEvent(buildDevTableUpdate(
+            config.next_state,
+            newPot,
+            config.community_cards,
+            nextTurnSeat
+          ));
+          setTimeout(addDevRoundBets, 800);
+        }, 50);
+      }
+
+      function simulateDevAutoCollect() {
+        const config = DEV_NEXT_STREET[currentGameState];
+        if (!config) {
+          showToast('error', null, `Нет следующей улицы для ${currentGameState}`);
+          return;
+        }
+
+        const contributions = getDevContributions();
+        if (!contributions.length) {
+          showToast('error', null, 'Нет ставок для сбора — нажми Reset ставки');
+          return;
+        }
+
+        const collectedAmount = contributions.reduce((sum, c) => sum + c.amount, 0);
+        const currentPot = parseInt(document.getElementById('pot-value')?.innerText, 10) || 0;
+        const newPot = currentPot + collectedAmount;
+        const nextTurnSeat = 1;
+
+        applyFullTableState(buildDevTableUpdate(
+          config.next_state,
+          newPot,
+          config.community_cards,
+          nextTurnSeat
+        ));
+      }
+
+      function resetDevTableBets() {
+        const metadataNode = document.getElementById('poker-metadata');
+        if (!metadataNode || !devMockPlayers) return;
+
+        devMockPlayers = JSON.parse(metadataNode.getAttribute('data-players'));
+        currentGameState = metadataNode.getAttribute('data-state') || 'FLOP';
+
+        cancelCollectAnimation();
+        pendingTableUpdateState = null;
+
+        document.getElementById('pot-value').innerText = devInitialPot;
+        updateTableStateClass(currentGameState);
+        renderStaticBets(devMockPlayers);
+        redrawCommunityCards({ community_cards: devInitialCommunityCards });
+
+        const activeTurnSeat = parseInt(metadataNode.getAttribute('data-turn'), 10);
+        const timeToAct = parseInt(metadataNode.getAttribute('data-time'), 10);
+        updateActiveTurn(activeTurnSeat);
+        runTurnTimer(activeTurnSeat, timeToAct);
+
+        console.log('🛠️ Dev-table: ставки и борд сброшены');
+      }
+
+      function initDevTableControls() {
+        if (!isDevTableMode()) return;
+
+        const devControls = document.getElementById('dev-controls');
+        if (devControls) devControls.hidden = false;
+
+        initDevMockState();
+        console.log('🛠️ Dev-table: панель тестирования STREET_END активна');
+      }
+
+
       window.addEventListener('DOMContentLoaded', () => {
         console.log("Интерфейс загружен. Все запускаем...");
 
@@ -1699,6 +2168,7 @@
         checkRebuy();
         setupNetworkWatchers();
         if (isDevTableMode()) {
+          initDevTableControls();
           console.log("🛠️ Dev-table: стол загружен без сети, карты из mock-данных.");
         } else {
           connectWebSocket();
