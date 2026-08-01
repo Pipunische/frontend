@@ -1,11 +1,11 @@
 import httpx
 from fastapi import APIRouter, FastAPI, Request, Form, UploadFile, File
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from loguru import logger
 
 from app.config import settings
 from app.models import GoogleAuthRequest, NicknameRequest
-from app.services import templates, java_request
+from app.services import templates, java_request, core_unreachable_json, is_core_unreachable
 
 router = APIRouter(tags=["Authentication & Profile"])
 
@@ -16,7 +16,8 @@ async def page_login(request: Request, error: str = None):
 
     context = {"v": settings.APP_VERSION, "error": error}
     return templates.TemplateResponse(request=request, name="login.html", context=context)
-# -----------------------------------
+
+
 @router.post("/api/auth/google")
 async def google_auth_process(request: Request, data: GoogleAuthRequest):
     logger.info("🔑 Получен Google Token от фронтенда, передаю ядру...")
@@ -56,7 +57,8 @@ async def google_auth_process(request: Request, data: GoogleAuthRequest):
     except Exception as e:
         logger.error(f"❌ Бекенд упал при Google Auth: {e}")
         return {"error": "Сервер не доступен"}
-# -----------------------------------
+
+
 @router.post("/api/upload-avatar")
 async def upload_avatar(request: Request, avatar: UploadFile = File(...)):
     user = request.session.get("user")
@@ -103,7 +105,8 @@ async def upload_avatar(request: Request, avatar: UploadFile = File(...)):
     except Exception as e:
         logger.error(f"❌ Ошибка связи с ядром при отправке файла: {e}")
         return RedirectResponse(url="/profile?error=server_down", status_code=303)
-# -----------------------------------
+
+
 @router.post("/api/profile/nickname")
 async def update_nickname(request: Request, data: NicknameRequest):
     user = request.session.get("user")
@@ -138,7 +141,8 @@ async def update_nickname(request: Request, data: NicknameRequest):
             error_text = response.text
         logger.error(f"❌ При смене ника произошла ошибка: {error_text}")
         return {"error": error_text}
-# -----------------------------------
+
+
 @router.get("/profile", response_class=HTMLResponse)
 async def page_profile(request: Request):
     current_user = request.session.get("user")
@@ -172,7 +176,45 @@ async def page_profile(request: Request):
     }
 
     return templates.TemplateResponse(request=request, name="profile.html", context=context)
-# -----------------------------------
+
+
+@router.get("/api/session/token")
+async def get_session_token(request: Request):
+    user = request.session.get("user")
+    if not user:
+        return JSONResponse(
+            status_code=401,
+            content={"redirect": "/login?error=session_expired"}
+        )
+
+    balance_url = f"{settings.JAVA_AUTH_URL}/{user['user_id']}/balance"
+    balance_res = await java_request("GET", balance_url, request)
+
+    if is_core_unreachable(balance_res):
+        return core_unreachable_json()
+
+    if balance_res.status_code == 401:
+        request.session.clear()
+        return JSONResponse(
+            status_code=401,
+            content={"redirect": "/login?error=session_expired"}
+        )
+
+    user = request.session.get("user")
+    wallet_balance = user.get("wallet_balance", 0)
+    if balance_res.status_code == 200:
+        new_balance = balance_res.json().get("wallet_balance")
+        if new_balance is not None:
+            wallet_balance = new_balance
+            user["wallet_balance"] = new_balance
+            request.session["user"] = user
+
+    return {
+        "token": user.get("token"),
+        "wallet_balance": wallet_balance
+    }
+
+
 @router.get("/logout")
 async def logout(request: Request):
     user = request.session.get("user")

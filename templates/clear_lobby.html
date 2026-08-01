@@ -629,6 +629,10 @@
 
 <body>
 
+    <div id="lobby-metadata"
+         data-wallet-balance="{{ user.wallet_balance | int if user else 0 }}"
+         hidden></div>
+
     <div class="user-profile-widget">
 
         <div class="wallet-badge-compact">
@@ -675,7 +679,7 @@
         </div>
         {% endif %}
 
-    <div class="lobby-grid">    
+    <div class="lobby-grid" id="lobby-grid">
 
         <!-- СЦЕНАРИЙ 1: ВЛАДОС УПАЛ -->
         {% if is_down %}
@@ -827,7 +831,432 @@
         }, 4000);
     }
 
-    const userToken = "{{ user_token if user else '' }}";
+    const javaHost = "{{ java_host }}";
+    let userToken = "{{ user_token if user else '' }}";
+    const lobbyMeta = document.getElementById('lobby-metadata');
+    let walletBalance = lobbyMeta
+        ? parseInt(lobbyMeta.dataset.walletBalance || '0', 10)
+        : 0;
+    let stompClient = null;
+    let isIntentionalReload = false;
+
+    function updateWalletDisplay(balance) {
+        walletBalance = parseInt(balance, 10) || 0;
+        document.querySelectorAll('.wallet-balance-display').forEach(el => {
+            el.innerHTML = `<span class="chip-icon"></span> ${walletBalance}`;
+        });
+    }
+
+    async function fetchFreshToken() {
+        try {
+            const response = await fetch('/api/session/token');
+            const data = await response.json();
+
+            if (response.status === 401 || data.redirect) {
+                window.location.href = data.redirect || '/login?error=session_expired';
+                return false;
+            }
+
+            if (data.token) {
+                userToken = data.token;
+            }
+            if (data.wallet_balance !== undefined) {
+                updateWalletDisplay(data.wallet_balance);
+            }
+            return Boolean(userToken && userToken !== "None" && userToken.trim() !== "");
+        } catch (err) {
+            console.error("Не удалось получить актуальный токен:", err);
+            return false;
+        }
+    }
+
+    function getStakeClass(minBuyIn) {
+        const min = parseInt(minBuyIn, 10) || 0;
+        if (min >= 10000) return 'stake-vip';
+        if (min >= 1000) return 'stake-standard';
+        return 'stake-low';
+    }
+
+    function renderTableCard(table) {
+        const tableId = table.table_id;
+        const minBuyIn = parseInt(table.min_buy_in, 10) || 0;
+        const currentPlayers = table.current_players || 0;
+        const maxPlayers = table.max_players || 10;
+        const isFull = currentPlayers >= maxPlayers;
+        const insufficientChips = walletBalance < minBuyIn;
+        const stakeClass = getStakeClass(minBuyIn);
+        const blinds = table.blinds || '0/0';
+        const minBuyInFormatted = table.min_buy_in_formatted || table.min_buy_in;
+        const joinArg = table.is_private ? 'true' : 'false';
+
+        let actionHtml = '';
+        if (isFull) {
+            actionHtml = '<div class="status-full">МЕСТ НЕТ</div>';
+        } else if (insufficientChips) {
+            actionHtml = '<div class="status-full" style="border-color: #f39c12; color: #f39c12;">Недостаточно фишек</div>';
+        } else {
+            actionHtml = `
+                <div class="buy-in-section" id="buy-section-${tableId}">
+                    <label class="buy-in-label">Сумма для игры:</label>
+                    <div style="display: flex; gap: 10px; margin-top: 5px; width: 100%;">
+                        <input type="number" id="buyin-${tableId}"
+                            value="${minBuyIn}"
+                            min="${minBuyIn}"
+                            max="${walletBalance}"
+                            step="10"
+                            class="buyin-input-field">
+                        <button onclick="joinTableWithBuyIn('${tableId}', ${joinArg})" class="btn-play" style="flex-grow: 1; border: none;">
+                            СЕСТЬ
+                        </button>
+                    </div>
+                </div>`;
+        }
+
+        return `
+            <div class="table-card ${stakeClass}">
+                <h3 class="table-name-title">${table.table_name}</h3>
+                <div class="blinds-display">
+                    <span class="chip-icon"></span>
+                    <span class="blinds-text">${blinds}</span>
+                </div>
+                <div class="card-stats-row">
+                    <span class="stat-item">Мин. вход: <strong>${minBuyInFormatted} <span class="chip-icon"></span></strong></span>
+                    <span class="stat-item">🤵‍♂️ <strong><span id="count-${tableId}">${currentPlayers} / ${maxPlayers}</span></strong></span>
+                </div>
+                ${actionHtml}
+            </div>`;
+    }
+
+    function applyLobbyState(data) {
+        if (data.token) {
+            userToken = data.token;
+        }
+        if (data.user && data.user.wallet_balance !== undefined) {
+            updateWalletDisplay(data.user.wallet_balance);
+        }
+
+        const grid = document.getElementById('lobby-grid');
+        if (!grid) return;
+
+        if (data.is_server_down) {
+            grid.innerHTML = `
+                <div class="alert-banner" style="border: 2px dashed #e74c3c; background: rgba(231, 76, 60, 0.1);">
+                    <h2 style="color: #e74c3c;">🚧 КАЗИНО НА ТЕХОБСЛУЖИВАНИИ 🚧</h2>
+                    <p style="color: #bdc3c7; font-size: 18px;">Наши крупье ушли пересчитывать фишки. Вернитесь через пару минут!</p>
+                    <button onclick="location.reload()" class="btn-play"
+                        style="background: #e74c3c; margin-top: 15px; border: none; cursor: pointer;">ОБНОВИТЬ</button>
+                </div>`;
+            return;
+        }
+
+        if (!data.tables || data.tables.length === 0) {
+            grid.innerHTML = `
+                <div class="alert-banner" style="border: 2px solid #f1c40f; background: rgba(241, 196, 15, 0.1);">
+                    <h2 style="color: #f1c40f;">СВОБОДНЫХ СТОЛОВ ПОКА НЕТ</h2>
+                    <p style="color: #bdc3c7; font-size: 18px;">Администратор еще не открыл новые столы. Подождите немного!</p>
+                    <button onclick="location.reload()" class="btn-play"
+                        style="background: #f1c40f; color: black; margin-top: 15px; border: none; cursor: pointer;">ПРОВЕРИТЬ СНОВА</button>
+                </div>`;
+            return;
+        }
+
+        grid.innerHTML = data.tables.map(renderTableCard).join('');
+    }
+
+    async function resyncLobbyFromServer() {
+        const result = await fetchWithRetry('/api/lobby/state');
+        if (!result) return;
+
+        console.log("🔄 Реконнект: полная синхронизация лобби...");
+        applyLobbyState(result.data);
+    }
+
+    const PING_INTERVAL_MS = 3000;
+    const PONG_TIMEOUT_MS = PING_INTERVAL_MS * 2;
+    const RECONNECT_DELAYS = [500, 1000, 2000, 5000];
+    const FAST_RECONNECT_DELAY_MS = 500;
+    const RESYNC_RETRY_DELAYS = [500, 1000, 2000];
+    const LOBBY_POLL_INTERVAL_MS = 30000;
+
+    let pingInterval = null;
+    let lobbyPollInterval = null;
+    let isFirstConnect = true;
+    let lastPongTime = 0;
+    let reconnectAttempt = 0;
+    let reconnectTimer = null;
+    let isReconnectScheduled = false;
+
+    function lobbySleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    async function fetchWithRetry(url, options = {}, retries = 3) {
+        let lastError = null;
+
+        for (let attempt = 0; attempt < retries; attempt++) {
+            try {
+                const response = await fetch(url, options);
+                let data = {};
+                try {
+                    data = await response.json();
+                } catch (_) {
+                    data = {};
+                }
+
+                if (response.status === 401 || data.redirect) {
+                    window.location.href = data.redirect || '/login?error=session_expired';
+                    return null;
+                }
+
+                if (response.status === 503 && data.retry) {
+                    throw new Error(data.message || 'Сервис временно недоступен');
+                }
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+
+                return { response, data };
+            } catch (err) {
+                lastError = err;
+                if (attempt < retries - 1) {
+                    const delay = RESYNC_RETRY_DELAYS[attempt] || 2000;
+                    console.warn(`🔁 Retry ${attempt + 1}/${retries - 1} для ${url} через ${delay}ms`);
+                    await lobbySleep(delay);
+                }
+            }
+        }
+
+        throw lastError || new Error('Запрос не удался');
+    }
+
+    function isLobbySocketConnected() {
+        return Boolean(stompClient && stompClient.connected);
+    }
+
+    function startLobbyPolling() {
+        stopLobbyPolling();
+        lobbyPollInterval = setInterval(async () => {
+            if (isIntentionalReload || document.hidden) return;
+            if (!isLobbySocketConnected()) return;
+
+            try {
+                const result = await fetchWithRetry('/api/lobby/state');
+                if (result?.data) {
+                    console.log('🛡️ Periodic snapshot: синхронизация лобби');
+                    applyLobbyState(result.data);
+                }
+            } catch (err) {
+                console.warn('Periodic lobby snapshot failed:', err);
+            }
+        }, LOBBY_POLL_INTERVAL_MS);
+    }
+
+    function stopLobbyPolling() {
+        if (lobbyPollInterval) {
+            clearInterval(lobbyPollInterval);
+            lobbyPollInterval = null;
+        }
+    }
+
+    function setupLobbyNetworkWatchers() {
+        window.addEventListener('online', () => {
+            if (isIntentionalReload) return;
+            if (!isLobbySocketConnected()) {
+                console.log('🌐 Сеть восстановлена — быстрый реконнект лобби');
+                scheduleLobbyReconnect('Сеть восстановлена (online)', true);
+            }
+        });
+
+        document.addEventListener('visibilitychange', () => {
+            if (isIntentionalReload || document.hidden) return;
+
+            if (!isLobbySocketConnected()) {
+                console.log('👁️ Вкладка активна — reconnect лобби');
+                scheduleLobbyReconnect('Вкладка снова активна', true);
+                return;
+            }
+
+            if (!isFirstConnect) {
+                resyncLobbyFromServer().catch(err => {
+                    console.warn('Soft resync лобби при возврате на вкладку:', err);
+                });
+            }
+        });
+    }
+
+    function cleanupLobbySocket() {
+        if (pingInterval) {
+            clearInterval(pingInterval);
+            pingInterval = null;
+        }
+
+        stopLobbyPolling();
+
+        if (stompClient) {
+            try {
+                if (stompClient.connected) {
+                    stompClient.disconnect();
+                }
+            } catch (err) {
+                console.warn("Ошибка при закрытии STOMP лобби:", err);
+            }
+            stompClient = null;
+        }
+    }
+
+    function scheduleLobbyReconnect(reason, fast = false) {
+        if (isIntentionalReload || isReconnectScheduled) return;
+
+        cleanupLobbySocket();
+
+        const delay = fast
+            ? FAST_RECONNECT_DELAY_MS
+            : RECONNECT_DELAYS[Math.min(reconnectAttempt, RECONNECT_DELAYS.length - 1)];
+
+        reconnectAttempt++;
+        isReconnectScheduled = true;
+
+        console.log(`⏳ ${reason}. Переподключение лобби через ${delay} мс (попытка ${reconnectAttempt})...`);
+
+        reconnectTimer = setTimeout(() => {
+            isReconnectScheduled = false;
+            reconnectTimer = null;
+            connectLobbySocket();
+        }, delay);
+    }
+
+    function applyLobbyUpdateTables(tables) {
+        tables.forEach(table => {
+            const countEl = document.getElementById(`count-${table.table_id}`);
+            if (!countEl) return;
+
+            countEl.innerText = `${table.current_players} / ${table.max_players}`;
+            countEl.style.color = '#2ecc71';
+            setTimeout(() => { countEl.style.color = '#f1c40f'; }, 1000);
+
+            const buySection = document.getElementById(`buy-section-${table.table_id}`);
+            const tableCard = countEl.closest('.table-card');
+
+            if (table.current_players >= table.max_players) {
+                if (buySection) buySection.style.display = 'none';
+                if (tableCard && !tableCard.querySelector('.status-full-dynamic')) {
+                    const badge = document.createElement('div');
+                    badge.className = 'status-full status-full-dynamic';
+                    badge.innerText = 'МЕСТ НЕТ';
+                    tableCard.querySelector('.card-action')?.appendChild(badge);
+                }
+            } else {
+                if (buySection) buySection.style.display = 'flex';
+                const badge = tableCard?.querySelector('.status-full-dynamic');
+                if (badge) badge.remove();
+            }
+        });
+    }
+
+    function setupLobbySubscriptions() {
+        lastPongTime = Date.now();
+
+        stompClient.subscribe('/user/queue/pong', function () {
+            lastPongTime = Date.now();
+        });
+
+        pingInterval = setInterval(() => {
+            if (!stompClient || !stompClient.connected) return;
+
+            if (Date.now() - lastPongTime > PONG_TIMEOUT_MS) {
+                console.warn(`🛜 Pong timeout (${PONG_TIMEOUT_MS} мс) — принудительный реконнект лобби`);
+                scheduleLobbyReconnect('Соединение не отвечает (pong timeout)', true);
+                return;
+            }
+
+            stompClient.send("/app/ping", {}, JSON.stringify({ clientTime: Date.now() }));
+        }, PING_INTERVAL_MS);
+
+        stompClient.subscribe('/topic/lobby', function (message) {
+            const data = JSON.parse(message.body);
+            console.log("📢 Новости Лобби:", data);
+
+            if (data.event_type === 'LOBBY_UPDATE' && data.tables) {
+                applyLobbyUpdateTables(data.tables);
+            } else if (data.event_type === 'ONLINE_UPDATE') {
+                const countEl = document.getElementById('online-count');
+                if (countEl) {
+                    countEl.innerText = data.online_count;
+                    countEl.style.color = '#2ecc71';
+                    setTimeout(() => { countEl.style.color = '#bdc3c7'; }, 500);
+                }
+            }
+        });
+
+        stompClient.subscribe('/user/queue/wallet', function (message) {
+            const data = JSON.parse(message.body);
+            console.log("💰 Кошелек обновлен сервером!", data);
+            updateWalletDisplay(data.new_balance);
+            document.querySelectorAll('.wallet-balance-display').forEach(el => {
+                el.style.color = '#2ecc71';
+                el.style.transform = 'scale(1.1)';
+                setTimeout(() => {
+                    el.style.color = '#f1c40f';
+                    el.style.transform = 'scale(1)';
+                }, 500);
+            });
+        });
+    }
+
+    async function connectLobbySocket() {
+        if (isIntentionalReload) return;
+
+        if (!await fetchFreshToken()) {
+            console.log("Без токена сокеты лобби не подключаем.");
+            return;
+        }
+
+        cleanupLobbySocket();
+
+        const wsProtocol = window.location.protocol === "https:" ? "wss" : "ws";
+        const wsUrlRaw = `${wsProtocol}://${javaHost}/ws-poker`;
+
+        const socket = new WebSocket(wsUrlRaw);
+        stompClient = Stomp.over(socket);
+        stompClient.debug = null;
+
+        const connectHeaders = {
+            'Authorization': 'Bearer ' + userToken
+        };
+
+        stompClient.connect(connectHeaders, async function () {
+            console.log('🔗 Лобби подключено к сети Владоса!');
+            reconnectAttempt = 0;
+            isReconnectScheduled = false;
+
+            if (!isFirstConnect) {
+                try {
+                    await resyncLobbyFromServer();
+                } catch (err) {
+                    console.error("Ошибка синхронизации лобби:", err);
+                }
+            }
+
+            isFirstConnect = false;
+            setupLobbySubscriptions();
+            startLobbyPolling();
+
+        }, function(error) {
+            console.error("Ошибка связи лобби:", error);
+
+            const errorStr = String(error).toLowerCase();
+            if (errorStr.includes('unauthorized') || errorStr.includes('401') || errorStr.includes('access denied')) {
+                cleanupLobbySocket();
+                fetch('/logout', { method: 'GET' }).then(() => {
+                    window.location.href = "/login?error=session_expired";
+                });
+                return;
+            }
+
+            scheduleLobbyReconnect('Ошибка WebSocket лобби');
+        });
+    }
 
     function toggleCreateTableModal() {
         const modal = document.getElementById('create-table-modal');
@@ -924,107 +1353,6 @@
         window.location.href = `/table/${tableId}?buy_in=${buyIn}&passcode=${encodeURIComponent(passcode)}`;
     }
 
-    const wsUrl = "https://{{ java_host }}/ws-poker";
-
-    let pingInterval = null;
-    
-    function connectLobbySocket() {
-
-        if (!userToken || userToken === "None" || userToken.trim() === "") {
-            console.log("Без токена сокеты лобби не подключаем.");
-            return;
-        }
-
-        const wsProtocol = window.location.protocol === "https:" ? "wss" : "ws";
-        const wsUrlRaw = `${wsProtocol}://{{ java_host }}/ws-poker/websocket`;
-
-        let socket = new WebSocket(wsUrlRaw);
-        let stompClient = Stomp.over(socket);
-        stompClient.debug = null;
-
-        const connectHeaders = {
-            'Authorization': 'Bearer ' + userToken
-        };
-
-        stompClient.connect(connectHeaders, function (frame) {
-            console.log('🔗 Лобби подключено к сети Владоса!');
-
-            stompClient.subscribe('/user/queue/pong', function (message) {
-                // В лобби нам пинг-индикатор пока не нужен, просто поддерживаем коннект
-            });
-
-            pingInterval = setInterval(() => {
-                if (stompClient && stompClient.connected) {
-                    stompClient.send("/app/ping", {}, JSON.stringify({ clientTime: Date.now() }));
-                }
-            }, 3000);
-
-            // ПОДПИСКА НА ОБЩИЙ КАНАЛ КАЗИНО
-            stompClient.subscribe('/topic/lobby', function (message) {
-                const data = JSON.parse(message.body);
-                console.log("📢 Новости Лобби:", data);
-
-                if (data.event_type === 'LOBBY_UPDATE' && data.tables) {
-                    // Ищем счетчик игроков для этого стола на экране
-                    data.tables.forEach(table => {
-                        const countEl = document.getElementById(`count-${table.table_id}`);
-                        if (countEl) {
-                            countEl.innerText = `${table.current_players} / ${table.max_players}`;
-                            countEl.style.color = '#2ecc71';
-                            setTimeout(() => { countEl.style.color = '#f1c40f'; }, 1000);
-
-                            const buySection = document.getElementById(`buy-section-${table.table_id}`);
-                            const tableCard = countEl.closest('.table-card');
-
-                            if (table.current_players >= table.max_players) {
-                                if (buySection) buySection.style.display = 'none';
-                                if (!tableCard.querySelector('.status-full-dynamic')) {
-                                    const badge = document.createElement('div');
-                                    badge.className = 'status-full status-full-dynamic';
-                                    badge.innerText = 'МЕСТ НЕТ';
-                                    tableCard.querySelector('.card-action')?.appendChild(badge);
-                                }
-                            } else {
-                                if (buySection) buySection.style.display = 'flex';
-                                const badge = tableCard.querySelector('.status-full-dynamic');
-                                if (badge) badge.remove();
-                            }
-                        }
-                    });
-                }
-                else if (data.event_type === 'ONLINE_UPDATE') {
-                    const countEl = document.getElementById('online-count');
-                    if (countEl) {
-                        countEl.innerText = data.online_count;
-                        countEl.style.color = '#2ecc71';
-                        setTimeout(() => { countEl.style.color = '#bdc3c7'; }, 500);
-                    }
-                }
-            });
-
-            stompClient.subscribe('/user/queue/wallet', function (message) {
-                const data = JSON.parse(message.body);
-                console.log("💰 Кошелек обновлен сервером!", data);
-                const walletElements = document.querySelectorAll('.wallet-balance-display');
-                walletElements.forEach(el => {
-                    el.innerHTML = `<span class="chip-icon"></span> ${data.new_balance}`;
-                    el.style.color = '#2ecc71';
-                    el.style.transform = 'scale(1.1)';
-                    setTimeout(() => {
-                        el.style.color = '#f1c40f';
-                        el.style.transform = 'scale(1)';
-                    }, 500);
-                });
-            });
-                
-
-        }, function(error) {
-            console.error("Ошибка связи лобби:", error);
-            if (pingInterval) clearInterval(pingInterval);
-            setTimeout(connectLobbySocket, 5000);
-        });
-    }
-
     document.addEventListener('DOMContentLoaded', () => {
         const urlParams = new URLSearchParams(window.location.search);
         const errorType = urlParams.get('errorType');
@@ -1038,6 +1366,7 @@
         }
 
         connectLobbySocket();
+        setupLobbyNetworkWatchers();
     })
 
 

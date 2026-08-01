@@ -1,27 +1,30 @@
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from loguru import logger
 
 from app.config import settings
 from app.models import CreateTableRequest
-from app.services import templates, java_request
+from app.services import templates, java_request, core_unreachable_json, is_core_unreachable
 
 router = APIRouter(tags=["Lobby"])
 
-@router.get("/lobby", response_class=HTMLResponse)
-async def page_lobby(request: Request, error: str = None):
 
+async def load_lobby_context(request: Request):
     current_user = request.session.get("user")
     if not current_user:
-        return RedirectResponse(url="/login", status_code=303)
+        return None
 
     balance_url = f"{settings.JAVA_AUTH_URL}/{current_user['user_id']}/balance"
     balance_res = await java_request("GET", balance_url, request)
 
-    if not balance_res or balance_res.status_code == 401:
+    if is_core_unreachable(balance_res):
+        logger.error("🛑 Ядро недоступно при загрузке лобби")
+        return {"error": "core_unreachable"}
+
+    if balance_res.status_code == 401:
         logger.error("🚨 При обновлении сессии возникли ошибки. Отправляю в login...")
         request.session.clear()
-        return RedirectResponse(url="/login?error=session_expired", status_code=303)
+        return {"redirect": "/login?error=session_expired"}
 
     if balance_res.status_code == 200:
         new_balance = balance_res.json().get("wallet_balance")
@@ -29,7 +32,7 @@ async def page_lobby(request: Request, error: str = None):
             current_user["wallet_balance"] = new_balance
             request.session["user"] = current_user
             logger.success(f"💰 Баланс успешно получен: {new_balance}")
-    
+
     is_down = False
     tables_data = []
 
@@ -41,18 +44,94 @@ async def page_lobby(request: Request, error: str = None):
         logger.error(f"🛑 При получении столов произошла ошибка: {tables_res.status_code if tables_res else 'No response'}")
         is_down = True
 
-    context = {
+    return {
         "tables": tables_data,
         "is_server_down": is_down,
         "user": current_user,
         "user_token": current_user.get("token") or "",
-        "error": error,
         "java_host": settings.FRONTEND_JAVA_HOST,
-        "v": settings.APP_VERSION
+        "v": settings.APP_VERSION,
+    }
+
+
+def _lobby_state_payload(lobby_data: dict) -> dict:
+    return {
+        "tables": lobby_data["tables"],
+        "is_server_down": lobby_data["is_server_down"],
+        "user": {
+            "wallet_balance": lobby_data["user"].get("wallet_balance"),
+            "name": lobby_data["user"].get("name"),
+        },
+        "token": lobby_data["user_token"],
+    }
+
+
+def _respond_lobby_result(lobby_data, *, json_mode: bool = False):
+    if lobby_data is None:
+        if json_mode:
+            return JSONResponse(
+                status_code=401,
+                content={"redirect": "/login?error=session_expired"},
+            )
+        return RedirectResponse(url="/login", status_code=303)
+
+    if lobby_data.get("error") == "core_unreachable":
+        if json_mode:
+            return core_unreachable_json()
+        return RedirectResponse(url="/lobby?error=server_down", status_code=303)
+
+    if lobby_data.get("redirect"):
+        if json_mode:
+            return JSONResponse(status_code=401, content={"redirect": lobby_data["redirect"]})
+        return RedirectResponse(url=lobby_data["redirect"], status_code=303)
+
+    return _lobby_state_payload(lobby_data)
+
+
+@router.get("/lobby", response_class=HTMLResponse)
+async def page_lobby(request: Request, error: str = None):
+    lobby_data = await load_lobby_context(request)
+    json_mode = request.headers.get("accept") == "application/json"
+
+    if lobby_data is None:
+        return RedirectResponse(url="/login", status_code=303)
+
+    if lobby_data.get("error") == "core_unreachable":
+        if json_mode:
+            return core_unreachable_json()
+        lobby_data = {
+            "tables": [],
+            "is_server_down": True,
+            "user": request.session.get("user") or {},
+            "user_token": "",
+            "java_host": settings.FRONTEND_JAVA_HOST,
+            "v": settings.APP_VERSION,
+        }
+    elif lobby_data.get("redirect"):
+        return RedirectResponse(url=lobby_data["redirect"], status_code=303)
+
+    if json_mode:
+        return JSONResponse(content=_lobby_state_payload(lobby_data))
+
+    context = {
+        **lobby_data,
+        "error": error,
     }
 
     return templates.TemplateResponse(request=request, name="clear_lobby.html", context=context)
-# -----------------------------------
+
+
+@router.get("/api/lobby/state")
+async def api_lobby_state(request: Request):
+    lobby_data = await load_lobby_context(request)
+    response = _respond_lobby_result(lobby_data, json_mode=True)
+
+    if isinstance(response, dict):
+        return response
+
+    return response
+
+
 @router.post("/api/tables")
 async def create_table(request: Request, data: CreateTableRequest):
     user = request.session.get("user")

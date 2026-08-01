@@ -296,7 +296,7 @@
 
       // Идентификация
       const tableId = window.location.pathname.split("/").pop();
-      const userToken = "{{ user_token }}";
+      let userToken = "{{ user_token }}";
 
       // Сетевые настройки
       const javaHost = "{{ java_host }}";
@@ -397,9 +397,14 @@
       async function leaveCurrentTable(force = false) {
         if (!force && !confirm("Вы уверены?")) return;
 
-        if (stompClient && stompClient.connected) {
-          stompClient.disconnect();
+        isIntentionalReload = true;
+        stopSnapshotPolling();
+        if (reconnectTimer) {
+          clearTimeout(reconnectTimer);
+          reconnectTimer = null;
+          isReconnectScheduled = false;
         }
+        cleanupWebSocketConnection();
 
         const formData = new FormData();
         formData.append('user_id', "{{ user.user_id }}");
@@ -575,30 +580,17 @@
 
       async function fetchMyPrivateCards() {
         try {
-          console.log("Запрашиваем карты у Python");
-          // Стучимся на адресс стола - просим JSON
-          const response = await fetch(window.location.pathname, {
-            headers: { 'Accept': 'application/json' }
-          });
-          const data = await response.json();
+          console.log("Запрашиваем карты у Python (fallback)");
+          const result = await fetchWithRetry(`/api/table/${tableId}/state`);
+          if (!result) return;
 
-
-
-          if (data.redirect) {
-            if (data.redirect.includes('session_expired')) {
-              alert("Срок дейтсвия вашей сессии истек. Для продления перезайдите в аккаунт. Благодарим за усидчивость!");
-            }
-            window.location.href = data.redirect;
-            return;
-          }
-          // Достаем мои карты из my_cards
+          const data = result.data;
           const cards = data.my_cards;
           if (cards && cards.length > 0) {
             console.log("Карты получены", cards);
             renderMyCards(cards);
           } else {
             console.log("Карты либо еще не раздали, либо не получилось получить.");
-
           }
         } catch (err) {
           console.log("Полный провал миссии получения карт.");
@@ -1162,19 +1154,436 @@
 
       // === ГЛАВНЫЙ СЕТЕВОЙ ЦЕНТР ===
 
+      const PING_INTERVAL_MS = 3000;
+      const PONG_TIMEOUT_MS = PING_INTERVAL_MS * 2;
+      const RECONNECT_DELAYS = [500, 1000, 2000, 5000];
+      const FAST_RECONNECT_DELAY_MS = 500;
+      const RESYNC_RETRY_DELAYS = [500, 1000, 2000];
+      const SNAPSHOT_POLL_INTERVAL_MS = 30000;
+      const ACTIVE_HAND_STATES = ['PRE_FLOP', 'FLOP', 'TURN', 'RIVER', 'SHOWDOWN'];
+
       let pingInterval = null;
+      let snapshotPollInterval = null;
+      let currentGameState = null;
       let isFirstConnect = true;
+      let lastPongTime = 0;
+      let reconnectAttempt = 0;
+      let reconnectTimer = null;
+      let isReconnectScheduled = false;
+      let lastEventTime = Date.now();
+      let snapshotFallbackTimer = null;
 
-      function connectWebSocket() {
+      function markEventReceived() {
+        lastEventTime = Date.now();
+      }
 
-        if (!userToken || userToken === "None" || userToken.trim() === "") {
+      function getTurnTimeMs(data) {
+        return data.time_to_act_ms ?? 15000;
+      }
+
+      function extractHeroCardsFromState(state, myId) {
+        const me = state.players?.find(p => String(p.user_id) === myId);
+        if (!me || !Array.isArray(me.cards)) return null;
+        const cards = me.cards.filter(c => c && c !== 'card_back');
+        return cards.length > 0 ? cards : null;
+      }
+
+      function scheduleSnapshotFallback() {
+        if (snapshotFallbackTimer) {
+          clearTimeout(snapshotFallbackTimer);
+        }
+        snapshotFallbackTimer = setTimeout(async () => {
+          snapshotFallbackTimer = null;
+          console.warn('📸 Snapshot не пришёл за 3 сек — HTTP fallback');
+          try {
+            await resyncTableFromServer();
+          } catch (err) {
+            console.error('HTTP fallback resync не удался:', err);
+          }
+        }, 3000);
+      }
+
+      function clearSnapshotFallback() {
+        if (snapshotFallbackTimer) {
+          clearTimeout(snapshotFallbackTimer);
+          snapshotFallbackTimer = null;
+        }
+      }
+
+      async function fetchWithRetry(url, options = {}, retries = 3) {
+        let lastError = null;
+
+        for (let attempt = 0; attempt < retries; attempt++) {
+          try {
+            const response = await fetch(url, options);
+            let data = {};
+            try {
+              data = await response.json();
+            } catch (_) {
+              data = {};
+            }
+
+            if (response.status === 401 || data.redirect) {
+              window.location.href = data.redirect || '/login?error=session_expired';
+              return null;
+            }
+
+            if (response.status === 503 && data.retry) {
+              throw new Error(data.message || 'Сервис временно недоступен');
+            }
+
+            if (!response.ok) {
+              throw new Error(`HTTP ${response.status}`);
+            }
+
+            return { response, data };
+          } catch (err) {
+            lastError = err;
+            if (attempt < retries - 1) {
+              const delay = RESYNC_RETRY_DELAYS[attempt] || 2000;
+              console.warn(`🔁 Retry ${attempt + 1}/${retries - 1} для ${url} через ${delay}ms`);
+              await sleep(delay);
+            }
+          }
+        }
+
+        throw lastError || new Error('Запрос не удался');
+      }
+
+      function isSocketConnected() {
+        return Boolean(stompClient && stompClient.connected);
+      }
+
+      function startSnapshotPolling() {
+        stopSnapshotPolling();
+        snapshotPollInterval = setInterval(async () => {
+          if (isIntentionalReload || document.hidden) return;
+          if (!ACTIVE_HAND_STATES.includes(currentGameState)) return;
+          if (!isSocketConnected()) return;
+
+          try {
+            const result = await fetchWithRetry(`/api/table/${tableId}/state`);
+            if (result?.data?.game) {
+              console.log('🛡️ Periodic snapshot: синхронизация стола');
+              applyFullTableState(result.data.game, {
+                myCards: result.data.my_cards,
+                skipShowdownAnimation: true
+              });
+            }
+          } catch (err) {
+            console.warn('Periodic snapshot failed:', err);
+          }
+        }, SNAPSHOT_POLL_INTERVAL_MS);
+      }
+
+      function stopSnapshotPolling() {
+        if (snapshotPollInterval) {
+          clearInterval(snapshotPollInterval);
+          snapshotPollInterval = null;
+        }
+      }
+
+      function setupNetworkWatchers() {
+        window.addEventListener('online', () => {
+          if (isIntentionalReload) return;
+          if (!isSocketConnected()) {
+            console.log('🌐 Сеть восстановлена — быстрый реконнект');
+            scheduleReconnect('Сеть восстановлена (online)', true);
+          }
+        });
+
+        document.addEventListener('visibilitychange', () => {
+          if (isIntentionalReload || document.hidden) return;
+
+          if (!isSocketConnected()) {
+            console.log('👁️ Вкладка активна — reconnect');
+            scheduleReconnect('Вкладка снова активна', true);
+            return;
+          }
+
+          if (!isFirstConnect) {
+            resyncTableFromServer().catch(err => {
+              console.warn('Soft resync при возврате на вкладку:', err);
+            });
+          }
+        });
+      }
+
+      async function fetchFreshToken() {
+        try {
+          const response = await fetch('/api/session/token');
+          const data = await response.json();
+
+          if (response.status === 401 || data.redirect) {
+            window.location.href = data.redirect || '/login?error=session_expired';
+            return false;
+          }
+
+          if (data.token) {
+            userToken = data.token;
+          }
+          return Boolean(userToken && userToken !== "None" && userToken.trim() !== "");
+        } catch (err) {
+          console.error("Не удалось получить актуальный токен:", err);
+          return false;
+        }
+      }
+
+      function updateTableStateClass(state) {
+        const tableEl = document.querySelector('.poker-table');
+        if (!tableEl || !state) return;
+        tableEl.className = tableEl.className.replace(/\bstate-\S+/g, '').trim();
+        tableEl.classList.add(`state-${state}`);
+      }
+
+      function applyFullTableState(state, options = {}) {
+        const { myCards = null, skipShowdownAnimation = false } = options;
+        const myId = String("{{ user.user_id }}");
+        let me = null;
+
+        if (state.state) {
+          currentGameState = state.state;
+        }
+
+        if (state.state === 'WAITING_FOR_PLAYERS') {
+          clearShowdownUI(true);
+          myLastCardsString = "";
+          console.log("🧹 Стол подготовлен к новой раздаче.");
+        }
+
+        updateTableStateClass(state.state);
+
+        const potEl = document.getElementById('pot-value');
+        if (potEl && state.pot !== undefined) potEl.innerText = state.pot;
+
+        redrawCommunityCards(state);
+
+        if (state.players) {
+          me = state.players.find(p => String(p.user_id) === myId);
+
+          updateAllPlayers(state.players);
+
+          state.players.forEach(p => {
+              const seatEl = document.querySelector(`.player-seat[data-userid="${p.user_id}"]`);
+              if (seatEl) {
+                  let dBtn = seatEl.querySelector('.dealer-button');
+                  if (p.is_dealer) {
+                      if (!dBtn) {
+                          dBtn = document.createElement('div');
+                          dBtn.className = 'dealer-button';
+                          dBtn.innerText = 'D';
+                          seatEl.insertBefore(dBtn, seatEl.querySelector('.avatar-timer-wrap'));
+                      }
+                  } else if (dBtn) {
+                      dBtn.remove();
+                  }
+              }
+          });
+
+          renderOpponentCards(state.players);
+          renderStaticBets(state.players);
+          updateActionPanel(me, state.current_turn_seat, state.big_blind);
+
+          if (me && me.chips < state.big_blind) {
+            const isHandOver = (state.state === 'WAITING_FOR_PLAYERS');
+            const isFoldedBroke = (me.status === 'FOLDED');
+
+            if (isHandOver) {
+              checkRebuy(me, state.big_blind, true);
+            } else if (isFoldedBroke) {
+              checkRebuy(me, state.big_blind, false);
+            }
+
+            if (state.state === 'WAITING_FOR_PLAYERS') {
+              checkRebuy(me, state.big_blind);
+            }
+          } else {
+            checkRebuy(me, state.big_blind, false);
+          }
+        }
+
+        updateActiveTurn(state.current_turn_seat);
+        runTurnTimer(state.current_turn_seat, getTurnTimeMs(state));
+
+        const activePhases = ['PRE_FLOP', 'FLOP', 'TURN', 'RIVER'];
+        if (activePhases.includes(state.state)) {
+          const heroCards = myCards || extractHeroCardsFromState(state, myId);
+          if (heroCards) {
+            renderMyCards(heroCards);
+          } else {
+            fetchMyPrivateCards();
+          }
+        }
+
+        if (state.state === 'SHOWDOWN') {
+          renderAllHoleCards(state.players);
+          if (!skipShowdownAnimation && state.showdown_details) {
+            playShowdownSequence(state.showdown_details);
+          }
+        }
+      }
+
+      async function resyncTableFromServer() {
+        const result = await fetchWithRetry(`/api/table/${tableId}/state`);
+        if (!result) return;
+
+        const data = result.data;
+        if (data.game) {
+          console.log("🔄 Реконнект: полная синхронизация стола...");
+          applyFullTableState(data.game, {
+            myCards: data.my_cards,
+            skipShowdownAnimation: true
+          });
+        }
+      }
+
+      function cleanupWebSocketConnection() {
+        if (pingInterval) {
+          clearInterval(pingInterval);
+          pingInterval = null;
+        }
+
+        stopSnapshotPolling();
+        clearSnapshotFallback();
+
+        if (stompClient) {
+          try {
+            if (stompClient.connected) {
+              stompClient.disconnect();
+            }
+          } catch (err) {
+            console.warn("Ошибка при закрытии STOMP:", err);
+          }
+          stompClient = null;
+        }
+
+        updatePingIndicator(9999);
+      }
+
+      function scheduleReconnect(reason, fast = false) {
+        if (isIntentionalReload || isReconnectScheduled) return;
+
+        cleanupWebSocketConnection();
+
+        const delay = fast
+          ? FAST_RECONNECT_DELAY_MS
+          : RECONNECT_DELAYS[Math.min(reconnectAttempt, RECONNECT_DELAYS.length - 1)];
+
+        reconnectAttempt++;
+        isReconnectScheduled = true;
+
+        console.log(`⏳ ${reason}. Переподключение через ${delay} мс (попытка ${reconnectAttempt})...`);
+
+        reconnectTimer = setTimeout(() => {
+          isReconnectScheduled = false;
+          reconnectTimer = null;
+          connectWebSocket();
+        }, delay);
+      }
+
+      function handleTableEvent(eventData) {
+        markEventReceived();
+        console.log("⚡ ИВЕНТ:", eventData.event_type, eventData);
+
+        switch (eventData.event_type) {
+
+          case 'TABLE_UPDATE':
+            applyFullTableState(eventData);
+            break;
+
+          case 'PLAYER_ACTION':
+            document.getElementById('pot-value').innerText = eventData.total_pot;
+            updatePlayerBalance(eventData);
+            animateChip(eventData);
+
+            if (eventData.current_turn_seat !== undefined) {
+              updateActiveTurn(eventData.current_turn_seat);
+              runTurnTimer(eventData.current_turn_seat, getTurnTimeMs(eventData));
+            }
+            break;
+
+          case 'PLAYER_STATUS':
+            console.log(`🔄 Игрок ${eventData.nickname} ${eventData.status === 'JOINED' ? 'сел' : 'ушел'}. Обновляем рассадку...`);
+            fetch(`/api/table/${tableId}/state`)
+            .then(response => response.json())
+            .then(data => {
+              if (data.game && data.game.players) {
+                updateAllPlayers(data.game.players);
+                renderOpponentCards(data.game.players);
+              }
+            })
+            .catch(err => console.error("Ошибка обновления рассадки:", err));
+            break;
+
+          case 'EMOTE':
+            const emoteUserId = eventData.user_id;
+            const emoteIcon = emotesDict[eventData.emote_id] || '💬';
+            const emoteSeat = document.querySelector(`.player-seat[data-userid="${emoteUserId}"]`);
+            if (emoteSeat) {
+              const emoteEl = document.createElement('div');
+              emoteEl.className = 'player-emote';
+              emoteEl.innerText = emoteIcon;
+              emoteSeat.appendChild(emoteEl);
+              setTimeout(() => emoteEl.remove(), 3000);
+            }
+            break;
+
+          default:
+            console.warn("⚠️ Неизвестный тип ивента от Владоса:", eventData.event_type);
+        }
+      }
+
+      function setupStompSubscriptions(isReconnect) {
+        lastPongTime = Date.now();
+
+        stompClient.subscribe('/user/queue/pong', function (message) {
+          lastPongTime = Date.now();
+          const receiveTime = Date.now();
+          const data = JSON.parse(message.body);
+          const pingMs = receiveTime - data.clientTime;
+          updatePingIndicator(pingMs);
+        });
+
+        // 1) Слушаем личную очередь snapshot (Java шлёт сюда после шага 2)
+        stompClient.subscribe('/user/queue/table_snapshot', function (message) {
+          markEventReceived();
+          clearSnapshotFallback();
+          const eventData = JSON.parse(message.body);
+          console.log('📸 TABLE_SNAPSHOT от Java');
+          applyFullTableState(eventData, { skipShowdownAnimation: isReconnect });
+        });
+
+        // 2) Подписка на топик триггерит отправку snapshot в queue выше
+        stompClient.subscribe('/topic/table/' + tableId, function (message) {
+          handleTableEvent(JSON.parse(message.body));
+        });
+
+        pingInterval = setInterval(() => {
+          if (!stompClient || !stompClient.connected) return;
+
+          if (Date.now() - lastPongTime > PONG_TIMEOUT_MS) {
+            console.warn(`🛜 Pong timeout (${PONG_TIMEOUT_MS} мс) — принудительный реконнект`);
+            scheduleReconnect('Соединение не отвечает (pong timeout)', true);
+            return;
+          }
+
+          const sendTime = Date.now();
+          stompClient.send("/app/ping", {}, JSON.stringify({ clientTime: sendTime }));
+        }, PING_INTERVAL_MS);
+      }
+
+      async function connectWebSocket() {
+        if (isIntentionalReload) return;
+
+        if (!await fetchFreshToken()) {
           console.error("🚫 Соединение отменено: отсутствует токен авторизации.");
-          window.location.href = "/login?error=session_expired";
           return;
         }
 
+        cleanupWebSocketConnection();
+
         const wsProtocol = window.location.protocol === "https:" ? "wss" : "ws";
-        const wsUrlRaw = `${wsProtocol}://${javaHost}/ws-poker/websocket`;
+        const wsUrlRaw = `${wsProtocol}://${javaHost}/ws-poker`;
 
           let socket = new WebSocket(wsUrlRaw);
           stompClient = Stomp.over(socket);    
@@ -1184,185 +1593,22 @@
             'Authorization': 'Bearer ' + userToken,
           };
 
-          stompClient.connect(connectHeaders, function (frame) {
+          stompClient.connect(connectHeaders, async function (frame) {
               console.log('🔗 WebSocket Подключен!');
+              reconnectAttempt = 0;
+              isReconnectScheduled = false;
 
-              if (!isFirstConnect) {
-                fetch(window.location.pathname, { headers: { 'Accept': 'application/json' } })
-                .then(response => response.json())
-                .then(data => {
-                  if (data.redirect) return;
-                  if (data.game) {
-                    console.log("🔄 Реконнект: Синхронизируем стейт стола...");
-
-                    if (data.game.players) {
-                      updateAllPlayers(data.game.players);
-                      renderOpponentCards(data.game.players);
-                      renderStaticBets(data.game.players);
-
-                      const myId = String("{{ user.user_id }}");
-                      const me = data.game.players.find(p => String(p.user_id) === myId);
-
-                      if (me) {
-                        updateActionPanel(me, data.game.current_turn_seat, data.game.big_blind);
-                      }
-                    }
-
-                    redrawCommunityCards(data.game);
-
-                    const activeTurnSeat = data.game.current_turn_seat;
-                    const timeToAct = data.game.time_to_act_ms || 15000;
-                    if (activeTurnSeat !== -1) {
-                          runTurnTimer(activeTurnSeat, timeToAct);
-                    }
-                  }
-                })
-                .catch(err => console.error("Ошибка синхронизации:", err));
-              }
-
+              const isReconnect = !isFirstConnect;
               isFirstConnect = false;
 
-              stompClient.subscribe('/user/queue/pong', function (message) {
+              if (isReconnect) {
+                scheduleSnapshotFallback();
+              }
 
-                const receiveTime = Date.now();
-                const data = JSON.parse(message.body);
-                const pingMs = receiveTime - data.clientTime;
-                // console.log(`🛜 Пинг: ${pingMs} мс`);
-                updatePingIndicator(pingMs);
-              });
-
-              pingInterval = setInterval(() => {
-                if (stompClient && stompClient.connected) {
-                  const sendTime = Date.now();
-                  stompClient.send("/app/ping", {}, JSON.stringify({ clientTime: sendTime }));
-                }
-              }, 3000);
-
-              stompClient.subscribe('/topic/table/' + tableId, function (message) {
-            
-                  const eventData = JSON.parse(message.body);
-                  console.log("⚡ ИВЕНТ:", eventData.event_type, eventData);
-
-                  switch (eventData.event_type) {
-
-                      case 'TABLE_UPDATE':
-
-                        if (eventData.state === 'WAITING_FOR_PLAYERS') {
-                          clearShowdownUI(true);
-                          myLastCardsString = "";
-                          console.log("🧹 Стол подготовлен к новой раздаче.");
-                        }
-
-                        const potEl = document.getElementById('pot-value');
-                        if (potEl) potEl.innerText = eventData.pot;
-                        redrawCommunityCards(eventData);
-
-                        if (eventData.players) {
-                          const myId = String("{{ user.user_id }}");
-                          const me = eventData.players.find(p => String(p.user_id) === myId);
-
-                          updateAllPlayers(eventData.players);
-                          renderOpponentCards(eventData.players);
-                          renderStaticBets(eventData.players);
-                          updateActionPanel(me, eventData.current_turn_seat, eventData.big_blind);
-                        
-
-                          if (me && me.chips < eventData.big_blind) {
-
-                            const isHandOver = (eventData.state === 'WAITING_FOR_PLAYERS');
-                            const isFoldedBroke = (me.status === 'FOLDED');
-
-                            if (isHandOver) {
-                              checkRebuy(me, eventData.big_blind, true);
-                            }
-
-                            else if (isFoldedBroke) {
-                              checkRebuy(me, eventData.big_blind, false);
-                            }
-
-                            if (eventData.state === 'WAITING_FOR_PLAYERS') {
-                              checkRebuy(me, eventData.big_blind);
-                            }
-                          } else {
-                            checkRebuy(me, eventData.big_blind, false);
-                          }
-                        }                                                    
-
-                        updateActiveTurn(eventData.current_turn_seat);
-                        const timeToAct = eventData.time_to_act_ms || 15000;
-                        runTurnTimer(eventData.current_turn_seat, timeToAct);
-
-                        const activePhases = ['PRE_FLOP', 'FLOP', 'TURN', 'RIVER'];
-                        if (activePhases.includes(eventData.state)) {
-                          fetchMyPrivateCards();
-                        }
-
-                        if (eventData.state === 'SHOWDOWN') {
-                          renderAllHoleCards(eventData.players);
-                            
-                          if (eventData.showdown_details) {
-                            playShowdownSequence(eventData.showdown_details);
-                          }
-                        }
-
-                        break;
-
-                      
-                      case 'PLAYER_ACTION':
-                          document.getElementById('pot-value').innerText = eventData.total_pot;
-                    
-                          updatePlayerBalance(eventData);
-                          animateChip(eventData);
-                    
-                          if (eventData.current_turn_seat !== undefined) {
-                              updateActiveTurn(eventData.current_turn_seat);
-                              const newTimeToAct = eventData.time_to_act_ms || 15000;
-                              runTurnTimer(eventData.current_turn_seat, newTimeToAct);
-                          }
-                          break;
-
-                      case 'PLAYER_STATUS':
-                        console.log(`🔄 Игрок ${eventData.nickname} ${eventData.status === 'JOINED' ? 'сел' : 'ушел'}. Обновляем рассадку...`); 
-                        fetch(`/table/${tableId}`, {
-                          headers: { 'Accept': 'application/json' }
-                        })
-                        .then(response => response.json())
-                        .then(data => {
-                          if (data.game && data.game.players) {
-                            updateAllPlayers(data.game.players);
-                            renderOpponentCards(data.game.players);
-                          }
-                        })
-                        .catch(err => console.error("Ошибка обновления рассадки:", err));
-                        break;
-
-                        case 'EMOTE':
-                          const emoteUserId = eventData.user_id;
-                          const emoteIcon = emotesDict[eventData.emote_id] || '💬';
-
-                          const emoteSeat = document.querySelector(`.player-seat[data-userid="${emoteUserId}"]`);
-                          if (emoteSeat) {
-                            const emoteEl = document.createElement('div');
-                              emoteEl.className = 'player-emote';
-                              emoteEl.innerText = emoteIcon;
-
-                              emoteSeat.appendChild(emoteEl);
-
-                              setTimeout(() => emoteEl.remove(), 3000);
-                          }
-                          break;
-                      default:
-                          console.warn("⚠️ Неизвестный тип ивента от Владоса:", eventData.event_type);
-                  }
-              });
+              setupStompSubscriptions(isReconnect);
+              startSnapshotPolling();
 
           }, function(error) {
-
-              updatePingIndicator(9999);
-
-              if (pingInterval) {
-                clearInterval(pingInterval);
-              }
 
               console.error("❌ Ошибка WebSocket (Связь оборвана):", error);
 
@@ -1370,6 +1616,7 @@
 
               if (errorStr.includes('unauthorized') || errorStr.includes('401') || errorStr.includes('access denied')) {
                 console.error("🚨 Сервер отклонил токен при реконнекте. Выкидываем на логин.");
+                cleanupWebSocketConnection();
                 fetch('/logout', { method: 'GET' }).then(() => {
                   window.location.href = "/login?error=session_expired";
                 });
@@ -1377,8 +1624,7 @@
                 return;
               }
 
-              console.log("⏳ Пробую переподключиться через 5 секунд...");
-              setTimeout(connectWebSocket, 5000);
+              scheduleReconnect('Ошибка WebSocket');
           });
       }
 
@@ -1397,6 +1643,7 @@
         
         const initialPlayers = JSON.parse(metadataNode.getAttribute('data-players'));
         const initialState = metadataNode.getAttribute('data-state');
+        currentGameState = initialState;
 
         if (initialPlayers && initialPlayers.length > 0) {
           updateAllPlayers(initialPlayers);
@@ -1426,6 +1673,7 @@
             }
         }
         checkRebuy();
+        setupNetworkWatchers();
         connectWebSocket();
       });
 
