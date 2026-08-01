@@ -80,6 +80,7 @@ def _build_table_context(game_state: dict, table_id: str, my_user: dict) -> dict
         "community_cards": game_state.get("community_cards", []),
         "java_host": settings.FRONTEND_JAVA_HOST,
         "v": settings.APP_VERSION,
+        "is_dev_table": False,
     }
 
 
@@ -275,6 +276,7 @@ async def dev_page_table(request: Request):
         "community_cards": mock_community_cards,
         "java_host": settings.FRONTEND_JAVA_HOST,
         "v": settings.APP_VERSION,
+        "is_dev_table": True,
     }
 
     return templates.TemplateResponse(name="clear_index.html", context=context, request=request)

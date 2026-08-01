@@ -716,6 +716,10 @@ body {
   min-width: 180px;
 }
 
+.dev-controls[hidden] {
+  display: none !important;
+}
+
 .btn-dev-action {
   background: rgba(241, 196, 15, 0.12);
   color: #f1c40f;

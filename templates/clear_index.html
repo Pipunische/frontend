@@ -182,7 +182,8 @@
             Встать из-за стола
         </button>
 
-        <div id="dev-controls" class="dev-controls" hidden>
+        {% if is_dev_table %}
+        <div id="dev-controls" class="dev-controls">
           <button type="button" class="btn-dev-action" onclick="simulateDevStreetEnd()">
             Test STREET_END
           </button>
@@ -193,6 +194,7 @@
             Reset ставки
           </button>
         </div>
+        {% endif %}
       </div>
 
         <div id="rebuy-modal" class="modal-overlay">
@@ -2111,9 +2113,6 @@
 
       function initDevTableControls() {
         if (!isDevTableMode()) return;
-
-        const devControls = document.getElementById('dev-controls');
-        if (devControls) devControls.hidden = false;
 
         initDevMockState();
         console.log('🛠️ Dev-table: панель тестирования STREET_END активна');
