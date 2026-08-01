@@ -142,6 +142,11 @@ body {
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
   background-color: #1a2a3a;
 }
+
+.seat-avatar {
+  object-fit: cover;
+}
+
 /* ------------------------------------ */
 .player-chips {
   color: #2ecc71;
@@ -156,7 +161,7 @@ body {
 
 /* ТВОЕ МЕСТО */
 .pos-hero {
-  bottom: -90px;
+  bottom: -100px;
   left: 50%;
   transform: translateX(-50%);
   /* Раньше тут была рамка, удаляем её, чтобы не было квадрата */
@@ -166,17 +171,28 @@ body {
 
 /* ОППОНЕНТЫ (По часовой стрелке, начиная слева от тебя) */
 
+/* Левая колонка: pos-1 (низ) и pos-4 (верх) — одна вертикаль */
+.pos-1,
+.pos-4 {
+  left: 20%;
+  transform: translateX(-50%);
+}
+
+/* Правая колонка: pos-9 (низ) и pos-6 (верх) — одна вертикаль */
+.pos-6,
+.pos-9 {
+  right: 20%;
+  transform: translateX(50%);
+}
+
 /* Низ-Лево */
 .pos-1 {
-  bottom: -30px;
-  top: 90%;
-  left: 15%;
-  transform: translateX(-50%);
+  bottom: -60px;
 }
 
 /* Центр-Лево (Нижний) */
 .pos-2 {
-  top: 70%;
+  top: 75%;
   left: -60px;
   transform: translateY(-50%);
 }
@@ -188,25 +204,21 @@ body {
   transform: translateY(-50%);
 }
 
-/* Верх-Лево */
+/* Верх-Лево — зеркало pos-1 сверху */
 .pos-4 {
-  top: -40px;
-  left: 20%;
-  transform: translateX(-50%);
+  top: -50px;
 }
 
 /* Верх-Центр */
 .pos-5 {
-  top: -40px;
+  top: -65px;
   left: 50%;
   transform: translateX(-50%);
 }
 
-/* Верх-Право */
+/* Верх-Право — зеркало pos-9 сверху */
 .pos-6 {
-  top: -40px;
-  right: 20%;
-  transform: translateX(50%);
+  top: -50px;
 }
 
 /* Центр-Право (Верхний) */
@@ -218,17 +230,14 @@ body {
 
 /* Центр-Право (Нижний) */
 .pos-8 {
-  top: 70%;
+  top: 75%;
   right: -60px;
   transform: translateY(-50%);
 }
 
 /* Низ-Право */
 .pos-9 {
-  bottom: -20px;
-  top: 90%;
-  right: 15%;
-  transform: translateX(50%);
+  bottom: -60px;
 }
 
 /* 5. ПАНЕЛЬ КНОПОК */
@@ -255,7 +264,7 @@ body {
   border-radius: 10px;
   cursor: pointer;
   transition: 0.2s;
-  color: #000000;
+  color: #ffffff;
   text-transform: uppercase;
   box-sizing: border-box;
 }
@@ -630,16 +639,16 @@ body {
   transform: translateX(-50%);
 }
 .pos-2 .player-bet {
-  bottom: 90px;
-  left: 140px;
+  bottom: 120px;
+  left: 155px;
 }
 .pos-3 .player-bet {
   bottom: 40px;
-  left: 140px;
+  left: 155px;
 }
 .pos-4 .player-bet {
   top: 120px;
-  left: 110px;
+  left: 135px;
 }
 .pos-5 .player-bet {
   top: 130px;
@@ -648,23 +657,23 @@ body {
 }
 .pos-6 .player-bet {
   top: 120px;
-  right: 110px;
+  right: 135px;
 }
 .pos-7 .player-bet {
   bottom: 40px;
-  right: 140px;
+  right: 155px;
 }
 .pos-8 .player-bet {
-  bottom: 90px;
-  right: 140px;
+  bottom: 120px;
+  right: 155px;
 }
 .pos-9 .player-bet {
-  bottom: 178px;
+  bottom: 180px;
   right: 145%;
   transform: translateX(50%);
 }
 .pos-hero .player-bet {
-  top: -118px;
+  top: -130px;
   left: 0;
   right: 0;
   margin-left: auto;
@@ -862,46 +871,14 @@ body {
   }
 }
 
-/* ==========================================================================
-   🔥 ДОБАВЛЕНО: СТИЛИ ДЛЯ АВАТАРОК ИГРОКОВ (ПЕРЕНЕСЕНО ИЗ INDEX.HTML В CSS)
-   ========================================================================== */
-.seat-profile {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  margin: 5px 0;
-}
-
-.seat-avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  border: 2px solid #3498db;
-  object-fit: cover;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
-}
-
 .seat-avatar-default {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #3498db, #8e44ad);
-  border: 2px solid #3498db;
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: 900;
-  font-size: 14px;
+  font-size: 36px;
   color: #fff;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
   text-transform: uppercase;
-}
-
-.seat-info {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
 }
 
 .state-SHOWDOWN .opponent-hand,

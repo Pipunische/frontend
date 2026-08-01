@@ -15,6 +15,7 @@
       <div id="poker-metadata"
         data-players='{{ game.players | tojson | safe }}'
         data-state="{{ game.state }}"
+        data-dealer-seat="{{ game.dealer_seat | default(-1) }}"
         data-turn="{{ game.current_turn_seat | default(-1) }}"
         data-time="{{ game.time_to_act_ms | default(15000) }}"
         data-bb="{{ game.big_blind | default(100) }}"
@@ -298,6 +299,10 @@
       const tableId = window.location.pathname.split("/").pop();
       let userToken = "{{ user_token }}";
 
+      function isDevTableMode() {
+        return window.location.pathname.includes('dev-table');
+      }
+
       // Сетевые настройки
       const javaHost = "{{ java_host }}";
       const wsUrl = `https://${javaHost}/ws-poker`;
@@ -579,6 +584,8 @@
 
 
       async function fetchMyPrivateCards() {
+        if (isDevTableMode()) return;
+
         try {
           console.log("Запрашиваем карты у Python (fallback)");
           const result = await fetchWithRetry(`/api/table/${tableId}/state`);
@@ -758,6 +765,39 @@
       }
 
 
+      function ensureDealerFlags(players, dealerSeat) {
+        if (!players?.length) return;
+        if (dealerSeat === undefined || dealerSeat === null || Number(dealerSeat) < 0) return;
+
+        const dealerIdx = Number(dealerSeat);
+        players.forEach(p => {
+          p.is_dealer = Number(p.seat_index) === dealerIdx;
+        });
+      }
+
+      function syncDealerButtons(players) {
+        document.querySelectorAll('.player-seat .dealer-button').forEach(btn => btn.remove());
+        if (!players?.length) return;
+
+        const dealer = players.find(p => p.is_dealer);
+        if (!dealer) return;
+
+        const seatEl = document.querySelector(`.player-seat[data-userid="${dealer.user_id}"]`);
+        if (!seatEl) return;
+
+        const dealerBtn = document.createElement('div');
+        dealerBtn.className = 'dealer-button';
+        dealerBtn.innerText = 'D';
+
+        const anchor = seatEl.querySelector('.avatar-timer-wrap');
+        if (anchor) {
+          seatEl.insertBefore(dealerBtn, anchor);
+        } else {
+          seatEl.prepend(dealerBtn);
+        }
+      }
+
+
       function updateAllPlayers(playersList) {
         console.log("👥 Пересчитываем игроков за столом...");
 
@@ -787,6 +827,8 @@
                 seatElement.dataset.userid = p.user_id;
                 seatElement.dataset.seatindex = p.seat_index;
 
+                const dealerHtml = p.is_dealer ? '<div class="dealer-button">D</div>' : '';
+
                 seatElement.innerHTML = `
                   <div class="opponent-hand"></div>
                   ${dealerHtml}
@@ -798,7 +840,7 @@
                       ${avatarHtml}
                   </div>
                   <div class="seat-info-badge">
-                      <span class="player-name ${p.is_active_turn ? 'active_turn' : ''}">${p.name}</span>
+                      <span class="player-name ${p.is_active_turn ? 'active-turn' : ''}">${p.name}</span>
                       <span class="player-chips">${p.chips} <span class="chip-icon"></span></span>
                   </div>
                 `;
@@ -811,7 +853,7 @@
                 if (nameEl) {
                   nameEl.innerText = p.name;
                   if (p.is_active_turn) {
-                    nameEl.classList.add('active_turn');
+                    nameEl.classList.add('active-turn');
                   } else {
                     nameEl.classList.remove('active-turn');
                   }
@@ -822,19 +864,6 @@
                 const wrapEl = seatElement.querySelector('.avatar-timer-wrap');
                 if (wrapEl && !wrapEl.querySelector('.seat-avatar, .seat-avatar-default')) {
                   wrapEl.insertAdjacentHTML('beforeend', avatarHtml);
-                }
-
-                let dealerBtn = seatElement.querySelector('.dealer-button');
-
-                if (p.is_dealer) {
-                  if (!dealerBtn) {
-                    dealerBtn = document.createElement('div');
-                    dealerBtn.className = 'dealer-button';
-                    dealerBtn.innerText = 'D';
-                    seatElement.insertBefore(dealerBtn, seatElement.querySelector('.avatar-timer-wrap'));
-                  }
-                } else {
-                  if (dealerBtn) dealerBtn.remove();
                 }
               }
 
@@ -865,22 +894,12 @@
             const chipsEl = heroNode.querySelector('.player-chips');
             if (chipsEl) chipsEl.innerHTML = `${myPlayer.chips} <span class="chip-icon"></span>`;
 
-            let heroDealerBtn = heroNode.querySelector('.dealer-button');
-            if (myPlayer.is_dealer) {
-              if (!heroDealerBtn) {
-                heroDealerBtn = document.createElement('div');
-                heroDealerBtn.className = ('dealer-button');
-                heroDealerBtn.innerText = 'D';
-                heroNode.insertBefore(heroDealerBtn, heroNode.querySelector('.avatar-timer-wrap'));
-              }
-            } else {
-              if (heroDealerBtn) heroDealerBtn.remove();
-            }
-
             refreshSeatStatus(heroNode, myPlayer.status);
             heroNode.dataset.seatindex = myPlayer.seat_index;
           }
         }
+
+        syncDealerButtons(playersList);
       }
 
 
@@ -1224,6 +1243,10 @@
             }
 
             if (response.status === 401 || data.redirect) {
+              if (isDevTableMode()) {
+                console.warn('Dev-table: пропускаем редирект на login для', url);
+                return null;
+              }
               window.location.href = data.redirect || '/login?error=session_expired';
               return null;
             }
@@ -1255,6 +1278,8 @@
       }
 
       function startSnapshotPolling() {
+        if (isDevTableMode()) return;
+
         stopSnapshotPolling();
         snapshotPollInterval = setInterval(async () => {
           if (isIntentionalReload || document.hidden) return;
@@ -1284,6 +1309,8 @@
       }
 
       function setupNetworkWatchers() {
+        if (isDevTableMode()) return;
+
         window.addEventListener('online', () => {
           if (isIntentionalReload) return;
           if (!isSocketConnected()) {
@@ -1310,6 +1337,8 @@
       }
 
       async function fetchFreshToken() {
+        if (isDevTableMode()) return true;
+
         try {
           const response = await fetch('/api/session/token');
           const data = await response.json();
@@ -1361,24 +1390,8 @@
         if (state.players) {
           me = state.players.find(p => String(p.user_id) === myId);
 
+          ensureDealerFlags(state.players, state.dealer_seat);
           updateAllPlayers(state.players);
-
-          state.players.forEach(p => {
-              const seatEl = document.querySelector(`.player-seat[data-userid="${p.user_id}"]`);
-              if (seatEl) {
-                  let dBtn = seatEl.querySelector('.dealer-button');
-                  if (p.is_dealer) {
-                      if (!dBtn) {
-                          dBtn = document.createElement('div');
-                          dBtn.className = 'dealer-button';
-                          dBtn.innerText = 'D';
-                          seatEl.insertBefore(dBtn, seatEl.querySelector('.avatar-timer-wrap'));
-                      }
-                  } else if (dBtn) {
-                      dBtn.remove();
-                  }
-              }
-          });
 
           renderOpponentCards(state.players);
           renderStaticBets(state.players);
@@ -1424,6 +1437,8 @@
       }
 
       async function resyncTableFromServer() {
+        if (isDevTableMode()) return;
+
         const result = await fetchWithRetry(`/api/table/${tableId}/state`);
         if (!result) return;
 
@@ -1461,6 +1476,7 @@
       }
 
       function scheduleReconnect(reason, fast = false) {
+        if (isDevTableMode()) return;
         if (isIntentionalReload || isReconnectScheduled) return;
 
         cleanupWebSocketConnection();
@@ -1508,6 +1524,7 @@
             .then(response => response.json())
             .then(data => {
               if (data.game && data.game.players) {
+                ensureDealerFlags(data.game.players, data.game.dealer_seat);
                 updateAllPlayers(data.game.players);
                 renderOpponentCards(data.game.players);
               }
@@ -1574,6 +1591,11 @@
 
       async function connectWebSocket() {
         if (isIntentionalReload) return;
+
+        if (isDevTableMode()) {
+          console.log("🛠️ Dev-table: WebSocket и API отключены, UI-only режим.");
+          return;
+        }
 
         if (!await fetchFreshToken()) {
           console.error("🚫 Соединение отменено: отсутствует токен авторизации.");
@@ -1646,6 +1668,8 @@
         currentGameState = initialState;
 
         if (initialPlayers && initialPlayers.length > 0) {
+          const initialDealerSeat = parseInt(metadataNode.getAttribute('data-dealer-seat'), 10);
+          ensureDealerFlags(initialPlayers, initialDealerSeat);
           updateAllPlayers(initialPlayers);
           renderOpponentCards(initialPlayers);
           renderStaticBets(initialPlayers);
@@ -1674,7 +1698,11 @@
         }
         checkRebuy();
         setupNetworkWatchers();
-        connectWebSocket();
+        if (isDevTableMode()) {
+          console.log("🛠️ Dev-table: стол загружен без сети, карты из mock-данных.");
+        } else {
+          connectWebSocket();
+        }
       });
 
     </script>

@@ -258,6 +258,7 @@ async def dev_page_table(request: Request):
         "big_blind": 100,
         "community_cards": mock_community_cards,
         "players": all_players_for_js,
+        "dealer_seat": 0,
         "current_turn_seat": 0,
         "time_to_act_ms": 15000,
     }
