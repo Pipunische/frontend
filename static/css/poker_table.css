@@ -85,6 +85,7 @@ body {
   align-items: center;
   justify-content: center;
   margin-bottom: -15px; /* Стягиваем плашку с ником наверх, чтобы она налезла на аватар */
+  z-index: 12;
 }
 
 /* Настройки SVG-таймера */
@@ -342,7 +343,7 @@ body {
   top: -75px; /* Вылет карт из-за головы */
   display: flex;
   gap: 5px;
-  z-index: 5; /* Карты ЗА аватаркой (z-index 5 < 10) */
+  z-index: 3; /* Карты за аватаром и кнопкой дилера */
 }
 
 .hand-card {
@@ -412,7 +413,7 @@ body {
   transform: translateX(-50%);
   display: flex;
   gap: 3px;
-  z-index: 10;
+  z-index: 3; /* Рубашки/карты оппонента — под аватаром и D */
 }
 
 .poker-card,
@@ -506,7 +507,7 @@ body {
   color: #2c3e50;
   font-weight: 900;
   font-size: 13px;
-  z-index: 20;
+  z-index: 18;
   top: -50px;
   /* left: 37%; 
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5); */
