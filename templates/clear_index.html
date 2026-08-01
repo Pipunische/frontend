@@ -337,12 +337,90 @@
       }
 
       function findCardImages(card) {
-        const target = normalizeCardFileName(card);
+        const target = normalizeCardFileName(parseCardToken(card));
         if (!target || target === 'card_back') return [];
 
         return Array.from(document.querySelectorAll('img.poker-card, img.hand-card')).filter(img => {
           const fileName = img.src.split('/').pop()?.split('?')[0]?.replace(/\.png$/i, '') || '';
           return normalizeCardFileName(fileName) === target;
+        });
+      }
+
+      function normalizeCardList(cards) {
+        if (!cards) return [];
+        if (Array.isArray(cards)) return cards;
+        if (typeof cards === 'string') return [cards];
+        return [];
+      }
+
+      function parseCardToken(card) {
+        if (card === null || card === undefined) return null;
+
+        if (typeof card === 'string') {
+          const trimmed = card.trim();
+          if (!trimmed) return null;
+          if (trimmed.includes('_')) {
+            const [rank, suit] = trimmed.split('_');
+            return `${rank}${suit}`;
+          }
+          return trimmed;
+        }
+
+        if (typeof card === 'object') {
+          const rank = card.rank ?? card.Rank ?? card.value ?? card.cardRank;
+          const suit = card.suit ?? card.Suit ?? card.cardSuit;
+          if (rank && suit) {
+            const suitMap = {
+              hearts: 'H',
+              heart: 'H',
+              diamonds: 'D',
+              diamond: 'D',
+              clubs: 'C',
+              club: 'C',
+              spades: 'S',
+              spade: 'S',
+            };
+            const suitKey = String(suit).toLowerCase();
+            const suitChar = suitMap[suitKey]
+              || (String(suit).length === 1 ? String(suit).toUpperCase() : '');
+            return `${rank}${suitChar}`;
+          }
+        }
+
+        return String(card);
+      }
+
+      function resolveShowdownHighlightCards(payout, showdownDetails) {
+        const rankCards = normalizeCardList(
+          payout.rank_cards ?? payout.rankCards
+          ?? showdownDetails.rank_cards ?? showdownDetails.rankCards
+        );
+        const kickerCards = normalizeCardList(
+          payout.kicker_cards ?? payout.kickerCards
+          ?? showdownDetails.kicker_cards ?? showdownDetails.kickerCards
+        );
+        return { rankCards, kickerCards };
+      }
+
+      function ensureShowdownCardsVisible() {
+        document.querySelectorAll('.community-cards img.poker-card, img.hand-card').forEach(img => {
+          img.classList.add('card-static');
+        });
+      }
+
+      function highlightShowdownCards(cards, highlightClass) {
+        normalizeCardList(cards).forEach(card => {
+          const token = parseCardToken(card);
+          const matches = findCardImages(token);
+          if (!matches.length) {
+            console.warn('🃏 Showdown: карта не найдена в DOM:', token, card);
+            return;
+          }
+          matches.forEach(el => {
+            el.classList.add('card-static');
+            el.classList.remove('card-dimmed');
+            el.classList.add(highlightClass);
+          });
         });
       }
 
@@ -1409,28 +1487,17 @@
         }
 
         isShowdownRunning = true;
+        ensureShowdownCardsVisible();
 
         for (const payout of finalPayouts) {
           clearShowdownUI(false);
           document.querySelectorAll('img.poker-card, img.hand-card').forEach(img => img.classList.add('card-dimmed'));
 
-          if (payout.rank_cards) {
-            payout.rank_cards.forEach(card => {
-              findCardImages(card).forEach(el => {
-                el.classList.remove('card-dimmed');
-                el.classList.add('card-winner-rank');
-              });
-            });
-          }
+          const { rankCards, kickerCards } = resolveShowdownHighlightCards(payout, showdownDetails);
+          console.log('🃏 Showdown highlight:', { rankCards, kickerCards, payout });
 
-          if (payout.kicker_cards) {
-            payout.kicker_cards.forEach(card => {
-              findCardImages(card).forEach(el => {
-                el.classList.remove('card-dimmed');
-                el.classList.add('card-winner-kicker');
-              });
-            });
-          }
+          highlightShowdownCards(rankCards, 'card-winner-rank');
+          highlightShowdownCards(kickerCards, 'card-winner-kicker');
 
           const winnerSeat = document.querySelector(`.player-seat[data-userid="${payout.user_id}"]`);
           if (winnerSeat) {
@@ -1722,8 +1789,9 @@
 
         if (state.state === 'SHOWDOWN' && state.players) {
           renderAllHoleCards(state.players);
-          if (!skipShowdownAnimation && state.showdown_details) {
-            playShowdownSequence(state.showdown_details);
+          const showdownDetails = state.showdown_details ?? state.showdownDetails;
+          if (!skipShowdownAnimation && showdownDetails) {
+            playShowdownSequence(showdownDetails);
           }
         }
       }
