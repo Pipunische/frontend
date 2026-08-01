@@ -1126,19 +1126,59 @@
         }, delay);
     }
 
+    function updateOnlineIndicator(count) {
+        if (count === undefined || count === null || Number.isNaN(Number(count))) return;
+
+        const countEl = document.getElementById('online-count');
+        if (!countEl) return;
+
+        countEl.innerText = Number(count);
+        countEl.style.color = '#2ecc71';
+        setTimeout(() => { countEl.style.color = '#bdc3c7'; }, 500);
+    }
+
+    function extractOnlineCount(data) {
+        if (!data || typeof data !== 'object') return null;
+
+        const candidates = [
+            data.online_count,
+            data.onlineCount,
+            data.players_online,
+            data.total_online,
+            data.online,
+        ];
+
+        for (const value of candidates) {
+            if (value !== undefined && value !== null && !Number.isNaN(Number(value))) {
+                return Number(value);
+            }
+        }
+
+        return null;
+    }
+
+    function normalizeLobbyTable(table) {
+        return {
+            table_id: table.table_id,
+            current_players: table.current_players ?? table.currentPlayers ?? 0,
+            max_players: table.max_players ?? table.max_players_num ?? table.maxPlayers ?? 10,
+        };
+    }
+
     function applyLobbyUpdateTables(tables) {
         tables.forEach(table => {
-            const countEl = document.getElementById(`count-${table.table_id}`);
+            const normalized = normalizeLobbyTable(table);
+            const countEl = document.getElementById(`count-${normalized.table_id}`);
             if (!countEl) return;
 
-            countEl.innerText = `${table.current_players} / ${table.max_players}`;
+            countEl.innerText = `${normalized.current_players} / ${normalized.max_players}`;
             countEl.style.color = '#2ecc71';
             setTimeout(() => { countEl.style.color = '#f1c40f'; }, 1000);
 
-            const buySection = document.getElementById(`buy-section-${table.table_id}`);
+            const buySection = document.getElementById(`buy-section-${normalized.table_id}`);
             const tableCard = countEl.closest('.table-card');
 
-            if (table.current_players >= table.max_players) {
+            if (normalized.current_players >= normalized.max_players) {
                 if (buySection) buySection.style.display = 'none';
                 if (tableCard && !tableCard.querySelector('.status-full-dynamic')) {
                     const badge = document.createElement('div');
@@ -1152,6 +1192,40 @@
                 if (badge) badge.remove();
             }
         });
+    }
+
+    function handleLobbyStompMessage(message) {
+        let data;
+        try {
+            data = JSON.parse(message.body);
+        } catch (err) {
+            console.warn('Не удалось разобрать сообщение лобби:', err);
+            return;
+        }
+
+        console.log('📢 Новости Лобби:', data);
+
+        const onlineCount = extractOnlineCount(data);
+        if (onlineCount !== null) {
+            updateOnlineIndicator(onlineCount);
+        }
+
+        if (data.event_type === 'ONLINE_UPDATE') {
+            return;
+        }
+
+        if (data.event_type !== 'LOBBY_UPDATE') {
+            return;
+        }
+
+        if (Array.isArray(data.tables)) {
+            applyLobbyUpdateTables(data.tables);
+            return;
+        }
+
+        if (data.table_id) {
+            applyLobbyUpdateTables([data]);
+        }
     }
 
     function setupLobbySubscriptions() {
@@ -1173,21 +1247,8 @@
             stompClient.send("/app/ping", {}, JSON.stringify({ clientTime: Date.now() }));
         }, PING_INTERVAL_MS);
 
-        stompClient.subscribe('/topic/lobby', function (message) {
-            const data = JSON.parse(message.body);
-            console.log("📢 Новости Лобби:", data);
-
-            if (data.event_type === 'LOBBY_UPDATE' && data.tables) {
-                applyLobbyUpdateTables(data.tables);
-            } else if (data.event_type === 'ONLINE_UPDATE') {
-                const countEl = document.getElementById('online-count');
-                if (countEl) {
-                    countEl.innerText = data.online_count;
-                    countEl.style.color = '#2ecc71';
-                    setTimeout(() => { countEl.style.color = '#bdc3c7'; }, 500);
-                }
-            }
-        });
+        stompClient.subscribe('/topic/lobby', handleLobbyStompMessage);
+        stompClient.subscribe('/user/queue/online', handleLobbyStompMessage);
 
         stompClient.subscribe('/user/queue/wallet', function (message) {
             const data = JSON.parse(message.body);
@@ -1230,6 +1291,8 @@
             reconnectAttempt = 0;
             isReconnectScheduled = false;
 
+            setupLobbySubscriptions();
+
             if (!isFirstConnect) {
                 try {
                     await resyncLobbyFromServer();
@@ -1239,7 +1302,6 @@
             }
 
             isFirstConnect = false;
-            setupLobbySubscriptions();
             startLobbyPolling();
 
         }, function(error) {

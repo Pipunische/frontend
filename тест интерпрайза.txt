@@ -1,0 +1,9 @@
+[ ] F5 — WebSocket подключен, игра идёт - 
+[ ] Offline 7 сек на столе — 📸 TABLE_SNAPSHOT, UI верный - 
+[ ] Offline 2 сек — reconnect, UI верный - 
+[ ] Смена вкладки — reconnect или soft resync - 
+[ ] 40 сек в раздаче — periodic snapshot в консоли - 
+[ ] Лobby offline 7 сек — resync, счётчики верные - 
+[ ] Лobby 40 сек — periodic snapshot - 
+[ ] Нет logout при reconnect после долгой игры - 
+[ ] HTTP fallback срабатывает, если snapshot не пришёл (опционально) - 
