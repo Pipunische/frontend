@@ -377,7 +377,7 @@ body {
   transform: translateX(-50%);
   display: flex;
   gap: 3px;
-  z-index: 3; /* Рубашки/карты оппонента — под аватаром и D */
+  z-index: 3;
 }
 
 .poker-card,
@@ -470,16 +470,9 @@ body {
   justify-content: center;
   color: #2c3e50;
   font-weight: 900;
-  font-size: 13px;
   z-index: 18;
-  top: -50px;
-  /* left: 37%; 
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5); */
+  top: -40px;
 }
-
-/* =========================================
-   10. ВИЗУАЛЬНЫЕ СТАТУСЫ ИГРОКОВ
-   ========================================= */
 
 /* Свободное место */
 .status-empty {
@@ -888,7 +881,9 @@ body {
 }
 
 .state-SHOWDOWN .opponent-hand,
-.state-SHOWDOWN .my-hand {
+.state-SHOWDOWN .my-hand,
+.state-CLEANUP .opponent-hand,
+.state-CLEANUP .my-hand {
   z-index: 25 !important;
 }
 
@@ -899,15 +894,15 @@ body {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  z-index: 9999; /* Поверх всех элементов стола и модалок */
-  pointer-events: none; /* Пропускаем клики сквозь пустой контейнер */
+  z-index: 9999;
+  pointer-events: none;
 }
 
 .poker-toast {
-  background: rgba(15, 23, 42, 0.95); /* Глубокое темное стекло */
+  background: rgba(15, 23, 42, 0.95);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border-left: 4px solid #f1c40f; /* По дефолту желтая полоска */
+  border-left: 4px solid #f1c40f;
   color: #ecf0f1;
   padding: 12px 18px;
   border-radius: 8px;
@@ -919,16 +914,14 @@ body {
   gap: 12px;
   min-width: 260px;
   max-width: 380px;
-  pointer-events: auto; /* Разрешаем взаимодействовать с тостом */
-
-  /* Анимация вылета справа за экран */
+  pointer-events: auto;
   transform: translateX(120%);
   opacity: 0;
   transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
 .poker-toast.show {
-  transform: translateX(0); /* Залетает на экран */
+  transform: translateX(0);
   opacity: 1;
 }
 
@@ -977,8 +970,7 @@ body {
   font-size: 22px;
   color: #26b86a;
   text-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
-  font-family:
-    "Times New Roman", Times, serif; /* Винтажный шрифт для названия */
+  font-family: "Times New Roman", Times, serif;
 }
 
 .table-header-bar {
@@ -986,14 +978,14 @@ body {
   top: 20px;
   left: 30px;
   display: flex;
-  align-items: center; /* Выравниваем антенну по нижней линии текста */
-  gap: 15px; /* Расстояние между названием стола и антенной */
+  align-items: center;
+  gap: 15px;
   z-index: 1000;
 }
 
 .ping-indicator {
   display: flex;
-  align-items: flex-end; /* Палочки стоят на одной линии снизу */
+  align-items: flex-end;
   justify-content: center;
   gap: 3px;
   height: 20px;

@@ -197,6 +197,9 @@
           <button type="button" class="btn-dev-action btn-dev-secondary" onclick="resetDevTableBets()">
             Reset ставки
           </button>
+          <button type="button" class="btn-dev-action btn-dev-secondary" onclick="simulateDevShowdownPipeline()">
+            Test Showdown
+          </button>
         </div>
         {% endif %}
       </div>
@@ -1353,7 +1356,19 @@
         return isCollectingBets || streetEndInProgress;
       }
 
-      const STREET_ORDER = ['WAITING_FOR_PLAYERS', 'PRE_FLOP', 'FLOP', 'TURN', 'RIVER', 'SHOWDOWN'];
+      const STREET_ORDER = ['WAITING_FOR_PLAYERS', 'PRE_FLOP', 'FLOP', 'TURN', 'RIVER', 'SHOWDOWN', 'CLEANUP'];
+
+      function isShowdownPhase(state) {
+        return state === 'SHOWDOWN' || state === 'CLEANUP';
+      }
+
+      function getShowdownDetails(state) {
+        return state.showdown_details ?? state.showdownDetails ?? null;
+      }
+
+      function shouldSkipShowdownAnimation(state, skipShowdownAnimation) {
+        return skipShowdownAnimation || state.skip_animations === true;
+      }
 
       function isStreetAdvanced(previousState, nextState) {
         const prevIdx = STREET_ORDER.indexOf(previousState);
@@ -1396,8 +1411,19 @@
       }
 
       function enqueueTableUpdate(state) {
+        const incomingHasShowdown = Boolean(getShowdownDetails(state)?.payouts?.length);
+        const pendingHasShowdown = Boolean(getShowdownDetails(pendingTableUpdateState)?.payouts?.length);
+
+        if (pendingTableUpdateState && pendingHasShowdown && !incomingHasShowdown) {
+          console.log('⏸️ Отложенное обновление сохранено (в pending уже есть showdown_details)');
+          return;
+        }
+
         pendingTableUpdateState = state;
-        console.log('⏸️ TABLE_UPDATE отложен — идёт сбор фишек');
+        console.log('⏸️ TABLE_UPDATE отложен — идёт STREET_END / сбор фишек', {
+          state: state.state,
+          hasShowdown: incomingHasShowdown,
+        });
       }
 
       function flushPendingTableUpdate() {
@@ -1449,6 +1475,8 @@
         if (!hadPendingUpdate) {
           applyPartialStateAfterStreetEnd(eventData);
         }
+
+        flushPendingTableUpdate();
       }
 
       function flushPendingPostShowdownState() {
@@ -1461,7 +1489,14 @@
       }
 
       async function playShowdownSequence(showdownDetails) {
-        if (!showdownDetails || !showdownDetails.payouts || isShowdownRunning) return;
+        if (!showdownDetails?.payouts?.length) {
+          console.warn('🃏 Showdown skipped: нет payouts', showdownDetails);
+          return;
+        }
+        if (isShowdownRunning) {
+          console.warn('🃏 Showdown skipped: анимация уже идёт');
+          return;
+        }
 
         const rawPayouts = showdownDetails.payouts;
 
@@ -1499,7 +1534,7 @@
           highlightShowdownCards(rankCards, 'card-winner-rank');
           highlightShowdownCards(kickerCards, 'card-winner-kicker');
 
-          const winnerSeat = document.querySelector(`.player-seat[data-userid="${payout.user_id}"]`);
+          const winnerSeat = document.querySelector(`.player-seat[data-userid="${String(payout.user_id)}"]`);
           if (winnerSeat) {
             const badge = document.createElement('div');
             badge.className = 'hand-name-badge';
@@ -1518,6 +1553,52 @@
         flushPendingPostShowdownState();
       }
 
+      function applyStaticShowdownHighlight(showdownDetails) {
+        if (!showdownDetails?.payouts?.length) return;
+
+        ensureShowdownCardsVisible();
+        document.querySelectorAll('img.poker-card, img.hand-card').forEach(img => {
+          img.classList.add('card-dimmed');
+        });
+
+        showdownDetails.payouts.forEach(payout => {
+          const { rankCards, kickerCards } = resolveShowdownHighlightCards(payout, showdownDetails);
+          highlightShowdownCards(rankCards, 'card-winner-rank');
+          highlightShowdownCards(kickerCards, 'card-winner-kicker');
+
+          const winnerSeat = document.querySelector(`.player-seat[data-userid="${String(payout.user_id)}"]`);
+          if (!winnerSeat || winnerSeat.querySelector('.hand-name-badge')) return;
+
+          const badge = document.createElement('div');
+          badge.className = 'hand-name-badge';
+          badge.innerHTML = `${payout.hand_name} (+${payout.amount} <span class="chip-icon"></span>)`;
+          winnerSeat.appendChild(badge);
+        });
+      }
+
+      function applyShowdownPhase(state, options = {}) {
+        const { skipShowdownAnimation = false } = options;
+
+        if (!isShowdownPhase(state.state) || !state.players) return;
+
+        renderAllHoleCards(state.players);
+
+        const showdownDetails = getShowdownDetails(state);
+        if (!showdownDetails?.payouts?.length) {
+          console.warn('🃏 Showdown phase без payouts:', state.state, showdownDetails);
+          return;
+        }
+
+        if (shouldSkipShowdownAnimation(state, skipShowdownAnimation)) {
+          console.log('🃏 Showdown: статическая подсветка (skip_animations / reconnect)');
+          applyStaticShowdownHighlight(showdownDetails);
+          return;
+        }
+
+        console.log('🃏 Showdown: запуск анимации, state =', state.state);
+        playShowdownSequence(showdownDetails);
+      }
+
 
       // === ГЛАВНЫЙ СЕТЕВОЙ ЦЕНТР ===
 
@@ -1527,7 +1608,7 @@
       const FAST_RECONNECT_DELAY_MS = 500;
       const RESYNC_RETRY_DELAYS = [500, 1000, 2000];
       const SNAPSHOT_POLL_INTERVAL_MS = 30000;
-      const ACTIVE_HAND_STATES = ['PRE_FLOP', 'FLOP', 'TURN', 'RIVER', 'SHOWDOWN'];
+      const ACTIVE_HAND_STATES = ['PRE_FLOP', 'FLOP', 'TURN', 'RIVER', 'SHOWDOWN', 'CLEANUP'];
 
       let pingInterval = null;
       let snapshotPollInterval = null;
@@ -1787,12 +1868,8 @@
           }
         }
 
-        if (state.state === 'SHOWDOWN' && state.players) {
-          renderAllHoleCards(state.players);
-          const showdownDetails = state.showdown_details ?? state.showdownDetails;
-          if (!skipShowdownAnimation && showdownDetails) {
-            playShowdownSequence(showdownDetails);
-          }
+        if (isShowdownPhase(state.state)) {
+          applyShowdownPhase(state, { skipShowdownAnimation });
         }
       }
 
@@ -1915,6 +1992,7 @@
             streetEndInProgress = true;
             handleStreetEnd(eventData).finally(() => {
               streetEndInProgress = false;
+              flushPendingTableUpdate();
             });
             break;
 
@@ -2089,9 +2167,11 @@
         RIVER: {
           previous_state: 'TURN',
           next_state: 'SHOWDOWN',
-          community_cards: ['As', 'Kh', '10d', '2c', '5s', '9h'],
+          community_cards: ['As', 'Kh', '10d', '2c', '5s'],
         },
       };
+
+      const DEV_SHOWDOWN_BOARD = ['AS', 'KH', '10D', '2C', '5S'];
 
       function initDevMockState() {
         const metadataNode = document.getElementById('poker-metadata');
@@ -2195,6 +2275,94 @@
         }, 50);
       }
 
+      function buildDevShowdownTableUpdate() {
+        if (!devMockPlayers) initDevMockState();
+
+        const communityCards = DEV_SHOWDOWN_BOARD;
+        const showdownDetails = {
+          rank_cards: communityCards,
+          kicker_cards: [],
+          payouts: [{
+            user_id: 'hero_123',
+            amount: 400,
+            hand_name: 'STRAIGHT',
+            rank_cards: communityCards,
+            kicker_cards: [],
+            is_side_pot: false,
+          }],
+        };
+
+        devMockPlayers = devMockPlayers.map(p => {
+          const base = {
+            ...p,
+            round_contribution: 0,
+            is_active_turn: false,
+          };
+
+          if (p.user_id === 'hero_123') {
+            return { ...base, cards: ['AH', 'AC'] };
+          }
+          if (p.status === 'ACTIVE' && p.user_id === 'opp_0') {
+            return { ...base, cards: ['JH', '9D'] };
+          }
+          if (p.status === 'FOLDED') {
+            return { ...base, cards: [] };
+          }
+          return base;
+        });
+
+        return {
+          event_type: 'TABLE_UPDATE',
+          state: 'SHOWDOWN',
+          pot: 0,
+          skip_animations: false,
+          big_blind: 100,
+          community_cards: communityCards,
+          dealer_seat: 0,
+          current_turn_seat: -1,
+          time_to_act_ms: 0,
+          showdown_details: showdownDetails,
+          players: devMockPlayers,
+        };
+      }
+
+      function simulateDevShowdownPipeline() {
+        if (!devMockPlayers) initDevMockState();
+
+        cancelCollectAnimation();
+        pendingTableUpdateState = null;
+        pendingPostShowdownState = null;
+        clearShowdownUI(true);
+
+        currentGameState = 'RIVER';
+        lastCardsString = '';
+
+        const communityCards = DEV_SHOWDOWN_BOARD;
+        redrawCommunityCards({ community_cards: communityCards });
+
+        const contributions = getDevContributions();
+        const collectedAmount = contributions.reduce((sum, c) => sum + c.amount, 0);
+        const currentPot = parseInt(document.getElementById('pot-value')?.innerText, 10) || 0;
+        const potAfterCollect = contributions.length ? currentPot + collectedAmount : currentPot;
+
+        handleTableEvent({
+          event_type: 'STREET_END',
+          previous_state: 'RIVER',
+          state: 'SHOWDOWN',
+          pot: potAfterCollect,
+          contributions,
+          community_cards: communityCards,
+          current_turn_seat: -1,
+          time_to_act_ms: 0,
+        });
+
+        setTimeout(() => {
+          handleTableEvent(buildDevShowdownTableUpdate());
+        }, 100);
+
+        console.log('🛠️ Dev-table: SHOWDOWN pipeline (STREET_END → TABLE_UPDATE через 100ms)');
+      }
+
       function simulateDevAutoCollect() {
         const config = DEV_NEXT_STREET[currentGameState];
         if (!config) {
@@ -2248,6 +2416,8 @@
         if (!isDevTableMode()) return;
 
         initDevMockState();
+        window.simulateDevShowdownPipeline = simulateDevShowdownPipeline;
+        window.buildDevShowdownTableUpdate = buildDevShowdownTableUpdate;
         console.log('🛠️ Dev-table: панель тестирования STREET_END активна');
       }
 
