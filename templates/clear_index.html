@@ -336,6 +336,16 @@
         return `/static/${normalizeCardFileName(card)}.png`;
       }
 
+      function findCardImages(card) {
+        const target = normalizeCardFileName(card);
+        if (!target || target === 'card_back') return [];
+
+        return Array.from(document.querySelectorAll('img.poker-card, img.hand-card')).filter(img => {
+          const fileName = img.src.split('/').pop()?.split('?')[0]?.replace(/\.png$/i, '') || '';
+          return normalizeCardFileName(fileName) === target;
+        });
+      }
+
       function handleSeatAvatarError(img) {
         if (!img || img.dataset.fallbackApplied === '1') return;
 
@@ -1155,6 +1165,7 @@
 
       const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
       let isShowdownRunning = false;
+      let pendingPostShowdownState = null;
 
       const CHIP_COLLECT_DURATION_MS = 650;
       const CHIP_COLLECT_STAGGER_MS = 90;
@@ -1362,6 +1373,15 @@
         }
       }
 
+      function flushPendingPostShowdownState() {
+        if (!pendingPostShowdownState) return;
+
+        const pending = pendingPostShowdownState;
+        pendingPostShowdownState = null;
+        console.log('▶️ Применяем отложенное состояние после шоудауна');
+        applyFullTableStateCore(pending, { skipShowdownAnimation: true });
+      }
+
       async function playShowdownSequence(showdownDetails) {
         if (!showdownDetails || !showdownDetails.payouts || isShowdownRunning) return;
 
@@ -1396,15 +1416,19 @@
 
           if (payout.rank_cards) {
             payout.rank_cards.forEach(card => {
-              const el = document.querySelector(`img[src*="${normalizeCardFileName(card)}.png"]`);
-              if (el) { el.classList.remove('card-dimmed'); el.classList.add('card-winner-rank'); }
+              findCardImages(card).forEach(el => {
+                el.classList.remove('card-dimmed');
+                el.classList.add('card-winner-rank');
+              });
             });
           }
 
           if (payout.kicker_cards) {
             payout.kicker_cards.forEach(card => {
-              const el = document.querySelector(`img[src*="${normalizeCardFileName(card)}.png"]`);
-              if (el) { el.classList.remove('card-dimmed'); el.classList.add('card-winner-kicker'); }
+              findCardImages(card).forEach(el => {
+                el.classList.remove('card-dimmed');
+                el.classList.add('card-winner-kicker');
+              });
             });
           }
 
@@ -1424,6 +1448,7 @@
         await sleep(2000);
         clearShowdownUI(true);
         isShowdownRunning = false;
+        flushPendingPostShowdownState();
       }
 
 
@@ -1626,6 +1651,12 @@
         const { myCards = null, skipShowdownAnimation = false } = options;
         const myId = String("{{ user.user_id }}");
         let me = null;
+
+        if (isShowdownRunning) {
+          pendingPostShowdownState = state;
+          console.log('⏸️ TABLE_UPDATE отложен — идёт анимация шоудауна');
+          return;
+        }
 
         if (state.state) {
           currentGameState = state.state;

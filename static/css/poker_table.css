@@ -1,7 +1,4 @@
-/* 1. КОМНАТА И ОБЩИЙ ФОН */
 body {
-  /* Глубокий радиальный фон (эффект освещенного стола в темной комнате) */
-  /* font-family: "Montserrat", sans-serif !important; */
   background: radial-gradient(
     circle at center,
     #1a2a3a 0%,
@@ -25,27 +22,22 @@ body {
   font-family: "Segoe UI", Arial, sans-serif;
 }
 
-/* 2. ЗЕЛЕНЫЙ СТОЛ */
 .poker-table {
   width: 1100px;
   height: 520px;
-  /* Бархатное зеленое сукно с затемнением к краям */
   background: radial-gradient(circle, #1ebd5d 0%, #085a25 100%) !important;
 
-  /* Дорогой борт: Темное дерево (махагони) + внутренняя тень + золотой кант */
   border: 16px solid #3d0c0c !important;
   border-radius: 260px;
   position: relative;
 
-  /* Мощные 3D-тени: внешняя тень стола на пол + глубокая внутренняя тень под борт */
   box-shadow:
     0 35px 80px rgba(0, 0, 0, 0.9),
     inset 0 0 80px rgba(0, 0, 0, 0.8),
-    0 0 0 2px #d4ac0d !important; /* Тонкий золотой ободок вокруг стола */
+    0 0 0 2px #d4ac0d !important;
   margin-top: 20px;
 }
 
-/* 3. КАРТЫ В ЦЕНТРЕ */
 .community-cards {
   position: absolute;
   top: 50%;
@@ -59,12 +51,10 @@ body {
   transform: translateY(-5px);
 }
 
-/* 4. МЕСТА ДЛЯ ИГРОКОВ */
 .player-seat {
   position: absolute;
   width: 115px;
   height: 115px;
-  /* УБРАЛИ background, border, backdrop-filter и box-shadow! */
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
@@ -72,23 +62,21 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: flex-end; /* Прижимаем всё к низу */
+  justify-content: flex-end;
   z-index: 10;
 }
 
-/* Обертка для аватарки и таймера вокруг нее */
 .avatar-timer-wrap {
   position: relative;
-  width: 120px; /* Размер SVG кольца */
+  width: 120px;
   height: 120px;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: -15px; /* Стягиваем плашку с ником наверх, чтобы она налезла на аватар */
+  margin-bottom: -15px;
   z-index: 12;
 }
 
-/* Настройки SVG-таймера */
 .timer-svg {
   position: absolute;
   top: -5;
@@ -103,22 +91,19 @@ body {
 
 .timer-bg {
   fill: none;
-  stroke: rgba(0, 0, 0, 0.5); /* Темный фон кольца */
+  stroke: rgba(0, 0, 0, 0.5);
   stroke-width: 4;
 }
 
 .timer-progress {
   fill: none;
-  stroke: #2ecc71; /* Зеленый цвет по умолчанию */
+  stroke: #2ecc71;
   stroke-width: 4;
-  /* Длина окружности (2 * pi * radius). При радиусе 36 длина ~226 */
   stroke-dasharray: 226;
-  stroke-dashoffset: 226; /* Полностью скрыто в начале */
+  stroke-dashoffset: 226;
   stroke-linecap: round;
-  /* transition: stroke 0.3s; */
 }
 
-/* Плашка с ником и деньгами (наползает на аватарку) */
 .seat-info-badge {
   background: #001e3c;
   border: 1px solid #444;
@@ -134,11 +119,11 @@ body {
 
 .seat-avatar,
 .seat-avatar-default {
-  width: 100px !important; /* Чуть меньше кольца, чтобы был зазор */
+  width: 100px !important;
   height: 100px !important;
   margin: 0 !important;
   border-radius: 50%;
-  border: 2px solid #1a2a3a !important; /* Темная рамка отделяет фото от таймера */
+  border: 2px solid #1a2a3a !important;
   z-index: 10;
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
   background-color: #1a2a3a;
@@ -148,7 +133,6 @@ body {
   object-fit: cover;
 }
 
-/* ------------------------------------ */
 .player-chips {
   color: #2ecc71;
   font-weight: bold;
@@ -160,88 +144,72 @@ body {
   white-space: nowrap;
 }
 
-/* ТВОЕ МЕСТО */
 .pos-hero {
   bottom: -100px;
   left: 50%;
   transform: translateX(-50%);
-  /* Раньше тут была рамка, удаляем её, чтобы не было квадрата */
   border: none !important;
   box-shadow: none !important;
 }
 
-/* ОППОНЕНТЫ (По часовой стрелке, начиная слева от тебя) */
-
-/* Левая колонка: pos-1 (низ) и pos-4 (верх) — одна вертикаль */
 .pos-1,
 .pos-4 {
   left: 20%;
   transform: translateX(-50%);
 }
 
-/* Правая колонка: pos-9 (низ) и pos-6 (верх) — одна вертикаль */
 .pos-6,
 .pos-9 {
   right: 20%;
   transform: translateX(50%);
 }
 
-/* Низ-Лево */
 .pos-1 {
   bottom: -60px;
 }
 
-/* Центр-Лево (Нижний) */
 .pos-2 {
   top: 75%;
   left: -60px;
   transform: translateY(-50%);
 }
 
-/* Центр-Лево (Верхний) */
 .pos-3 {
   top: 30%;
   left: -60px;
   transform: translateY(-50%);
 }
 
-/* Верх-Лево — зеркало pos-1 сверху */
 .pos-4 {
   top: -50px;
 }
 
-/* Верх-Центр */
 .pos-5 {
   top: -65px;
   left: 50%;
   transform: translateX(-50%);
 }
 
-/* Верх-Право — зеркало pos-9 сверху */
 .pos-6 {
   top: -50px;
 }
 
-/* Центр-Право (Верхний) */
 .pos-7 {
   top: 30%;
   right: -60px;
   transform: translateY(-50%);
 }
 
-/* Центр-Право (Нижний) */
 .pos-8 {
   top: 75%;
   right: -60px;
   transform: translateY(-50%);
 }
 
-/* Низ-Право */
 .pos-9 {
   bottom: -60px;
 }
 
-/* 5. ПАНЕЛЬ КНОПОК */
 .action-panel {
   position: absolute;
   bottom: 40px;
@@ -261,7 +229,6 @@ body {
   padding: 13px 0;
   font-size: 15px;
   font-weight: bold;
-  /* border: none; */
   border-radius: 10px;
   cursor: pointer;
   transition: 0.2s;
@@ -270,7 +237,6 @@ body {
   box-sizing: border-box;
 }
 
-/* Цвета кнопок */
 .btn-allin {
   background-color: #d10000;
 }
@@ -337,13 +303,12 @@ body {
   gap: 8px;
 }
 
-/* Карты игрока в руках */
 .my-hand {
   position: absolute;
-  top: -75px; /* Вылет карт из-за головы */
+  top: -75px;
   display: flex;
   gap: 5px;
-  z-index: 3; /* Карты за аватаром и кнопкой дилера */
+  z-index: 3;
 }
 
 .hand-card {
@@ -389,7 +354,6 @@ body {
   object-fit: cover;
 }
 
-/* Анимация полета */
 @keyframes dealCard {
   0% {
     opacity: 0;
@@ -1229,7 +1193,8 @@ body {
   font-size: 16px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
   will-change: transform, opacity;
-  animation: chipFlyToPot var(--fly-duration, 650ms) cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+  animation: chipFlyToPot var(--fly-duration, 650ms)
+    cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
   animation-delay: var(--fly-delay, 0ms);
 }
 
