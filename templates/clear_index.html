@@ -200,6 +200,9 @@
           <button type="button" class="btn-dev-action btn-dev-secondary" onclick="simulateDevShowdownPipeline()">
             Test Showdown
           </button>
+          <button type="button" class="btn-dev-action btn-dev-secondary" onclick="simulateDevSplitPotShowdown()">
+            Test Split Pot
+          </button>
         </div>
         {% endif %}
       </div>
@@ -1250,9 +1253,11 @@
 
       const CHIP_COLLECT_DURATION_MS = 650;
       const CHIP_COLLECT_STAGGER_MS = 90;
+      const CHIP_PAYOUT_STAGGER_MS = 80;
       let isCollectingBets = false;
       let streetEndInProgress = false;
       let pendingTableUpdateState = null;
+      let pendingShowdownChipTargets = null;
 
       function getElementCenter(el) {
         const rect = el.getBoundingClientRect();
@@ -1350,6 +1355,112 @@
 
         playSound('bet');
         isCollectingBets = false;
+      }
+
+      function getPayoutTotalsByUser(payouts) {
+        const totals = {};
+        (payouts || []).forEach(p => {
+          const id = String(p.user_id);
+          totals[id] = (totals[id] || 0) + (p.amount || 0);
+        });
+        return totals;
+      }
+
+      function getTotalPayoutAmount(payouts) {
+        return (payouts || []).reduce((sum, p) => sum + (p.amount || 0), 0);
+      }
+
+      function prepareShowdownPayoutDisplay(showdownDetails, players) {
+        pendingShowdownChipTargets = {};
+        (players || []).forEach(p => {
+          pendingShowdownChipTargets[String(p.user_id)] = p.chips;
+        });
+
+        const payoutByUser = getPayoutTotalsByUser(showdownDetails?.payouts);
+        return (players || []).map(p => {
+          const winAmount = payoutByUser[String(p.user_id)] || 0;
+          return winAmount > 0 ? { ...p, chips: p.chips - winAmount } : p;
+        });
+      }
+
+      function resolveShowdownPotDisplay(showdownDetails, potEl) {
+        const currentPot = parseInt(potEl?.innerText, 10) || 0;
+        const totalPayout = getTotalPayoutAmount(showdownDetails?.payouts);
+        return Math.max(currentPot, totalPayout);
+      }
+
+      function getDisplayedSeatChips(seat) {
+        const chipsEl = seat?.querySelector('.player-chips');
+        if (!chipsEl) return 0;
+        return parseInt(chipsEl.textContent.replace(/[^\d]/g, ''), 10) || 0;
+      }
+
+      function setDisplayedSeatChips(seat, chips) {
+        const chipsEl = seat?.querySelector('.player-chips');
+        if (!chipsEl) return;
+        chipsEl.innerHTML = `${chips} <span class="chip-icon"></span>`;
+      }
+
+      /**
+       * Анимирует выплату банка победителю.
+       * @param {string} userId
+       * @param {number} amount
+       * @returns {Promise<void>}
+       */
+      async function payPotToWinner(userId, amount) {
+        if (!amount || amount <= 0) return;
+
+        const potEl = document.querySelector('.table-pot');
+        const potValueEl = document.getElementById('pot-value');
+        if (!potEl || !potValueEl) return;
+
+        const winnerSeat = document.querySelector(`.player-seat[data-userid="${String(userId)}"]`);
+        if (!winnerSeat) {
+          console.warn('💰 Payout: стул победителя не найден:', userId);
+          return;
+        }
+
+        const potCenter = getElementCenter(potEl);
+        const targetEl = winnerSeat.querySelector('.player-chips') || winnerSeat;
+        const targetCenter = getElementCenter(targetEl);
+
+        const chipCount = amount >= 400 ? 3 : amount >= 150 ? 2 : 1;
+        const baseAmount = Math.floor(amount / chipCount);
+        const remainder = amount - baseAmount * chipCount;
+
+        const flights = [];
+        for (let i = 0; i < chipCount; i++) {
+          const chipAmount = i === chipCount - 1 ? baseAmount + remainder : baseAmount;
+          flights.push(spawnFlyingChip(
+            potCenter,
+            targetCenter,
+            chipAmount,
+            i * CHIP_PAYOUT_STAGGER_MS
+          ));
+        }
+
+        await Promise.all(flights);
+
+        const currentPot = parseInt(potValueEl.innerText, 10) || 0;
+        potValueEl.innerText = Math.max(0, currentPot - amount);
+
+        setDisplayedSeatChips(winnerSeat, getDisplayedSeatChips(winnerSeat) + amount);
+
+        potEl.classList.remove('pot-payout-pulse');
+        void potEl.offsetWidth;
+        potEl.classList.add('pot-payout-pulse');
+        potEl.addEventListener('animationend', () => {
+          potEl.classList.remove('pot-payout-pulse');
+        }, { once: true });
+
+        winnerSeat.classList.remove('winner-payout-pulse');
+        void winnerSeat.offsetWidth;
+        winnerSeat.classList.add('winner-payout-pulse');
+        winnerSeat.addEventListener('animationend', () => {
+          winnerSeat.classList.remove('winner-payout-pulse');
+        }, { once: true });
+
+        playSound('bet');
       }
 
       function isStreetTransitionBusy() {
@@ -1540,15 +1651,25 @@
             badge.className = 'hand-name-badge';
             badge.innerHTML = `${payout.hand_name} | ${payout.pot_label} (+${payout.amount} <span class="chip-icon"></span>)`;
             winnerSeat.appendChild(badge);
-            playSound('bet');
           }
 
-          const pauseTime = uniqueWinners.size === 1 ? 6000 : 3500;
-          await sleep(pauseTime);
+          const pauseBeforePayout = uniqueWinners.size === 1 ? 4000 : 2500;
+          await sleep(pauseBeforePayout);
+
+          console.log('💰 Showdown payout:', payout.user_id, payout.amount);
+          await payPotToWinner(payout.user_id, payout.amount);
+
+          const pauseAfterPayout = uniqueWinners.size === 1 ? 1500 : 1000;
+          await sleep(pauseAfterPayout);
         }
 
-        await sleep(2000);
+        await sleep(800);
         clearShowdownUI(true);
+        pendingShowdownChipTargets = null;
+
+        const potValueEl = document.getElementById('pot-value');
+        if (potValueEl) potValueEl.innerText = 0;
+
         isShowdownRunning = false;
         flushPendingPostShowdownState();
       }
@@ -1818,8 +1939,19 @@
 
         updateTableStateClass(state.state);
 
+        const showdownDetails = getShowdownDetails(state);
+        const willAnimateShowdown = isShowdownPhase(state.state)
+          && showdownDetails?.payouts?.length
+          && !shouldSkipShowdownAnimation(state, skipShowdownAnimation);
+
         const potEl = document.getElementById('pot-value');
-        if (potEl && state.pot !== undefined) potEl.innerText = state.pot;
+        if (potEl && state.pot !== undefined) {
+          if (willAnimateShowdown) {
+            potEl.innerText = resolveShowdownPotDisplay(showdownDetails, potEl);
+          } else {
+            potEl.innerText = state.pot;
+          }
+        }
 
         if (state.community_cards !== undefined) {
           redrawCommunityCards(state);
@@ -1829,7 +1961,10 @@
           me = state.players.find(p => String(p.user_id) === myId);
 
           ensureDealerFlags(state.players, state.dealer_seat);
-          updateAllPlayers(state.players);
+          const playersForDisplay = willAnimateShowdown
+            ? prepareShowdownPayoutDisplay(showdownDetails, state.players)
+            : state.players;
+          updateAllPlayers(playersForDisplay);
 
           renderOpponentCards(state.players);
           renderStaticBets(state.players);
@@ -2275,28 +2410,33 @@
         }, 50);
       }
 
-      function buildDevShowdownTableUpdate() {
+      function buildDevShowdownTableUpdate(options = {}) {
         if (!devMockPlayers) initDevMockState();
 
         const communityCards = DEV_SHOWDOWN_BOARD;
+        const payouts = options.payouts || [{
+          user_id: 'hero_123',
+          amount: 400,
+          hand_name: 'STRAIGHT',
+          rank_cards: communityCards,
+          kicker_cards: [],
+          is_side_pot: false,
+        }];
+
         const showdownDetails = {
           rank_cards: communityCards,
           kicker_cards: [],
-          payouts: [{
-            user_id: 'hero_123',
-            amount: 400,
-            hand_name: 'STRAIGHT',
-            rank_cards: communityCards,
-            kicker_cards: [],
-            is_side_pot: false,
-          }],
+          payouts,
         };
+
+        const payoutByUser = getPayoutTotalsByUser(payouts);
 
         devMockPlayers = devMockPlayers.map(p => {
           const base = {
             ...p,
             round_contribution: 0,
             is_active_turn: false,
+            chips: p.chips + (payoutByUser[String(p.user_id)] || 0),
           };
 
           if (p.user_id === 'hero_123') {
@@ -2326,12 +2466,36 @@
         };
       }
 
-      function simulateDevShowdownPipeline() {
+      function buildDevSplitPotShowdownTableUpdate() {
+        return buildDevShowdownTableUpdate({
+          payouts: [
+            {
+              user_id: 'hero_123',
+              amount: 250,
+              hand_name: 'PAIR',
+              rank_cards: ['AS', 'AH', 'AC'],
+              kicker_cards: ['KH'],
+              is_side_pot: false,
+            },
+            {
+              user_id: 'opp_0',
+              amount: 150,
+              hand_name: 'HIGH_CARD',
+              rank_cards: ['KH'],
+              kicker_cards: ['JH'],
+              is_side_pot: true,
+            },
+          ],
+        });
+      }
+
+      function runDevShowdownPipeline(tableUpdateBuilder) {
         if (!devMockPlayers) initDevMockState();
 
         cancelCollectAnimation();
         pendingTableUpdateState = null;
         pendingPostShowdownState = null;
+        pendingShowdownChipTargets = null;
         clearShowdownUI(true);
 
         currentGameState = 'RIVER';
@@ -2343,7 +2507,11 @@
         const contributions = getDevContributions();
         const collectedAmount = contributions.reduce((sum, c) => sum + c.amount, 0);
         const currentPot = parseInt(document.getElementById('pot-value')?.innerText, 10) || 0;
-        const potAfterCollect = contributions.length ? currentPot + collectedAmount : currentPot;
+        const potAfterCollect = contributions.length ? currentPot + collectedAmount : 400;
+
+        if (potAfterCollect > 0) {
+          document.getElementById('pot-value').innerText = potAfterCollect;
+        }
 
         handleTableEvent({
           event_type: 'STREET_END',
@@ -2357,10 +2525,18 @@
         });
 
         setTimeout(() => {
-          handleTableEvent(buildDevShowdownTableUpdate());
+          handleTableEvent(tableUpdateBuilder());
         }, 100);
+      }
 
+      function simulateDevShowdownPipeline() {
+        runDevShowdownPipeline(buildDevShowdownTableUpdate);
         console.log('🛠️ Dev-table: SHOWDOWN pipeline (STREET_END → TABLE_UPDATE через 100ms)');
+      }
+
+      function simulateDevSplitPotShowdown() {
+        runDevShowdownPipeline(buildDevSplitPotShowdownTableUpdate);
+        console.log('🛠️ Dev-table: SPLIT POT pipeline (2 победителя)');
       }
 
       function simulateDevAutoCollect() {
@@ -2398,6 +2574,7 @@
 
         cancelCollectAnimation();
         pendingTableUpdateState = null;
+        pendingShowdownChipTargets = null;
 
         document.getElementById('pot-value').innerText = devInitialPot;
         updateTableStateClass(currentGameState);
@@ -2417,6 +2594,7 @@
 
         initDevMockState();
         window.simulateDevShowdownPipeline = simulateDevShowdownPipeline;
+        window.simulateDevSplitPotShowdown = simulateDevSplitPotShowdown;
         window.buildDevShowdownTableUpdate = buildDevShowdownTableUpdate;
         console.log('🛠️ Dev-table: панель тестирования STREET_END активна');
       }
