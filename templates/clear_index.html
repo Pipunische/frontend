@@ -1474,6 +1474,7 @@
       }
 
       function getShowdownDetails(state) {
+        if (!state) return null;
         return state.showdown_details ?? state.showdownDetails ?? null;
       }
 
@@ -1522,6 +1523,8 @@
       }
 
       function enqueueTableUpdate(state) {
+        if (!state) return;
+
         const incomingHasShowdown = Boolean(getShowdownDetails(state)?.payouts?.length);
         const pendingHasShowdown = Boolean(getShowdownDetails(pendingTableUpdateState)?.payouts?.length);
 
