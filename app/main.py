@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.config import settings
@@ -9,6 +10,27 @@ from app.routers import auth, lobby, tables
 
 app = FastAPI(title="PoluPoker BFF", version="2.0.0")
 
+
+class StaticCacheMiddleware(BaseHTTPMiddleware):
+    """Long-cache versioned static files; HTML/API stay fresh."""
+
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        path = request.url.path
+
+        if not path.startswith("/static/"):
+            return response
+
+        query = request.url.query or ""
+        if "v=" in query:
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        else:
+            response.headers["Cache-Control"] = "public, max-age=300"
+
+        return response
+
+
+app.add_middleware(StaticCacheMiddleware)
 app.add_middleware(
     SessionMiddleware,
     secret_key=settings.SESSION_KEY,

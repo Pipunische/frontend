@@ -1,6 +1,17 @@
 import os
 import time
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _resolve_app_version() -> str:
+    """Cache-bust token for static assets (?v=). Prefer deploy env over process start time."""
+    for key in ("APP_VERSION", "GIT_SHA", "GITHUB_SHA", "COMMIT_SHA"):
+        value = os.getenv(key)
+        if value and str(value).strip():
+            return str(value).strip()
+    return str(int(time.time()))
+
 
 class Settings(BaseSettings):
 
@@ -12,7 +23,7 @@ class Settings(BaseSettings):
 
     JAVA_PROTOCOL: str = "http"
 
-    APP_VERSION: int = int(time.time())
+    APP_VERSION: str = Field(default_factory=_resolve_app_version)
 
     @property
     def BASE_JAVA_URL(self) -> str:
