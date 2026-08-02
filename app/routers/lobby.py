@@ -5,7 +5,15 @@ import asyncio
 
 from app.config import settings
 from app.models import CreateTableRequest
-from app.services import templates, java_request, core_unreachable_json, is_core_unreachable
+from app.services import (
+    templates,
+    java_request,
+    core_unreachable_json,
+    is_core_unreachable,
+    enrich_lobby_tables,
+    enrich_user_wallet_display,
+    format_poker_amount,
+)
 
 router = APIRouter(tags=["Lobby"])
 
@@ -67,6 +75,10 @@ async def load_lobby_context(request: Request):
             logger.success(f"💰 Баланс успешно получен: {new_balance}")
 
     tables_data, is_down, _tables_error = await fetch_lobby_tables(request)
+    tables_data = enrich_lobby_tables(tables_data)
+    current_user = enrich_user_wallet_display(current_user)
+    if current_user.get("wallet_balance") is not None:
+        request.session["user"] = current_user
 
     return {
         "tables": tables_data,
@@ -79,12 +91,16 @@ async def load_lobby_context(request: Request):
 
 
 def _lobby_state_payload(lobby_data: dict) -> dict:
+    user = lobby_data["user"]
+    wallet = user.get("wallet_balance")
     return {
         "tables": lobby_data["tables"],
         "is_server_down": lobby_data["is_server_down"],
         "user": {
-            "wallet_balance": lobby_data["user"].get("wallet_balance"),
-            "name": lobby_data["user"].get("name"),
+            "wallet_balance": wallet,
+            "wallet_balance_formatted": user.get("wallet_balance_formatted")
+            or (format_poker_amount(wallet) if wallet is not None else None),
+            "name": user.get("name"),
         },
         "token": lobby_data["user_token"],
     }
@@ -212,16 +228,16 @@ async def dev_page_lobby(request: Request):
     Доступен по адресу: http://127.0.0.1:8000/dev-lobby
     """
     # 1. Фейковый юзер с ограниченным бюджетом (чтобы протестить блокировку VIP стола)
-    mock_user = {
+    mock_user = enrich_user_wallet_display({
         "user_id": "hero_123",
         "name": "Arseniy",
         "wallet_balance": 1500, # Денег мало!
         "token": "fake_token",
         "avatar_url": "https://api.dicebear.com/7.x/avataaars/svg?seed=Arseniy"
-    }
+    })
 
     # 2. Фейковые столы всех возможных типов
-    mock_tables = [
+    mock_tables = enrich_lobby_tables([
         {
             "table_id": "table_1",
             "table_name": "Новички (Low Stake)",
@@ -278,7 +294,7 @@ async def dev_page_lobby(request: Request):
             "current_players": 1,
             "max_players": 2
         }
-    ]
+    ])
 
     context = {
         "tables": mock_tables,

@@ -638,7 +638,7 @@
 
         <div class="wallet-badge-compact">
             <span class="player-chips wallet-balance-display">
-                <span class="chip-icon"></span> {{ user.wallet_balance }}
+                <span class="chip-icon"></span> {{ user.wallet_balance_formatted | default(user.wallet_balance | poker_amount) }}
             </span>
         </div>
 
@@ -847,10 +847,61 @@
     let stompClient = null;
     let isIntentionalReload = false;
 
+    function formatPokerAmount(value) {
+        const n = parseInt(value, 10);
+        if (Number.isNaN(n)) {
+            return value != null ? String(value) : '0';
+        }
+
+        if (n >= 1_000_000) {
+            const scaled = n / 1_000_000;
+            if (scaled === Math.floor(scaled)) {
+                return `${Math.floor(scaled)}M`;
+            }
+            return `${parseFloat(scaled.toFixed(1))}M`;
+        }
+
+        if (n >= 1_000) {
+            const scaled = n / 1_000;
+            if (scaled === Math.floor(scaled)) {
+                return `${Math.floor(scaled)}K`;
+            }
+            return `${parseFloat(scaled.toFixed(1))}K`;
+        }
+
+        return String(n);
+    }
+
+    function formatBlinds(blinds) {
+        const text = String(blinds ?? '').trim();
+        if (!text) return '0/0';
+        if (/[a-zA-Z]/.test(text)) return text;
+
+        const parts = text.split('/');
+        if (parts.length === 2) {
+            return `${formatPokerAmount(parts[0].trim())}/${formatPokerAmount(parts[1].trim())}`;
+        }
+
+        return formatPokerAmount(text);
+    }
+
+    function enrichTableForDisplay(table) {
+        const enriched = { ...table };
+
+        if (!enriched.blinds && enriched.small_blind != null && enriched.big_blind != null) {
+            enriched.blinds = `${enriched.small_blind}/${enriched.big_blind}`;
+        }
+
+        enriched.blinds = formatBlinds(enriched.blinds || '0/0');
+        enriched.min_buy_in_formatted = formatPokerAmount(enriched.min_buy_in);
+        return enriched;
+    }
+
     function updateWalletDisplay(balance) {
         walletBalance = parseInt(balance, 10) || 0;
+        const formatted = formatPokerAmount(walletBalance);
         document.querySelectorAll('.wallet-balance-display').forEach(el => {
-            el.innerHTML = `<span class="chip-icon"></span> ${walletBalance}`;
+            el.innerHTML = `<span class="chip-icon"></span> ${formatted}`;
         });
     }
 
@@ -890,16 +941,18 @@
     }
 
     function renderTableCard(table) {
-        const tableId = table.table_id;
-        const minBuyIn = parseInt(table.min_buy_in, 10) || 0;
-        const currentPlayers = table.current_players || 0;
-        const maxPlayers = table.max_players || 10;
+        const displayTable = enrichTableForDisplay(table);
+        const tableId = displayTable.table_id;
+        const minBuyIn = parseInt(displayTable.min_buy_in, 10) || 0;
+        const currentPlayers = displayTable.current_players || 0;
+        const maxPlayers = displayTable.max_players || 10;
         const isFull = currentPlayers >= maxPlayers;
         const insufficientChips = walletBalance < minBuyIn;
         const stakeClass = getStakeClass(minBuyIn);
-        const blinds = table.blinds || '0/0';
-        const minBuyInFormatted = table.min_buy_in_formatted || table.min_buy_in;
-        const joinArg = table.is_private ? 'true' : 'false';
+        const blinds = displayTable.blinds || '0/0';
+        const minBuyInFormatted = displayTable.min_buy_in_formatted || formatPokerAmount(minBuyIn);
+        const joinArg = displayTable.is_private ? 'true' : 'false';
+        const tableName = displayTable.table_name || displayTable.tableName || 'Стол';
 
         let actionHtml = '';
         if (isFull) {
@@ -926,7 +979,7 @@
 
         return `
             <div class="table-card ${stakeClass}">
-                <h3 class="table-name-title">${table.table_name}</h3>
+                <h3 class="table-name-title">${tableName}</h3>
                 <div class="blinds-display">
                     <span class="chip-icon"></span>
                     <span class="blinds-text">${blinds}</span>

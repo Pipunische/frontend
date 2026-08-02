@@ -25,6 +25,80 @@ def card_png_url(card: str) -> str:
 
 templates.env.filters["card_png"] = card_png_url
 
+
+def format_poker_amount(value) -> str:
+    """Compact chip display: 1000 -> 1K, 1000000 -> 1M."""
+    try:
+        n = int(float(value))
+    except (TypeError, ValueError):
+        return str(value) if value is not None else "0"
+
+    if n >= 1_000_000:
+        scaled = n / 1_000_000
+        if scaled == int(scaled):
+            return f"{int(scaled)}M"
+        text = f"{scaled:.1f}".rstrip("0").rstrip(".")
+        return f"{text}M"
+
+    if n >= 1_000:
+        scaled = n / 1_000
+        if scaled == int(scaled):
+            return f"{int(scaled)}K"
+        text = f"{scaled:.1f}".rstrip("0").rstrip(".")
+        return f"{text}K"
+
+    return str(n)
+
+
+def format_blinds(blinds) -> str:
+    if blinds is None:
+        return "0/0"
+
+    text = str(blinds).strip()
+    if not text:
+        return "0/0"
+
+    if any(ch.isalpha() for ch in text):
+        return text
+
+    parts = text.split("/")
+    if len(parts) == 2:
+        return f"{format_poker_amount(parts[0].strip())}/{format_poker_amount(parts[1].strip())}"
+
+    return format_poker_amount(text)
+
+
+def enrich_lobby_table(table: dict) -> dict:
+    enriched = dict(table)
+
+    if not enriched.get("blinds"):
+        small = enriched.get("small_blind")
+        big = enriched.get("big_blind")
+        if small is not None and big is not None:
+            enriched["blinds"] = f"{small}/{big}"
+
+    enriched["blinds"] = format_blinds(enriched.get("blinds"))
+    enriched["min_buy_in_formatted"] = format_poker_amount(enriched.get("min_buy_in"))
+    return enriched
+
+
+def enrich_lobby_tables(tables: list) -> list:
+    if not tables:
+        return []
+    return [enrich_lobby_table(table) for table in tables]
+
+
+def enrich_user_wallet_display(user: dict) -> dict:
+    if not user:
+        return user
+    if user.get("wallet_balance") is not None:
+        user["wallet_balance_formatted"] = format_poker_amount(user["wallet_balance"])
+    return user
+
+
+templates.env.filters["poker_amount"] = format_poker_amount
+templates.env.filters["poker_blinds"] = format_blinds
+
 JAVA_RETRYABLE_STATUSES = {502, 503, 504}
 JAVA_MAX_RETRIES = 3
 JAVA_RETRY_DELAYS = (0.3, 0.6, 1.2)
