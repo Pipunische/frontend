@@ -631,6 +631,7 @@
 
     <div id="lobby-metadata"
          data-wallet-balance="{{ user.wallet_balance | int if user else 0 }}"
+         data-dev-lobby="{{ 'true' if is_dev_lobby else 'false' }}"
          hidden></div>
 
     <div class="user-profile-widget">
@@ -831,12 +832,13 @@
         }, 4000);
     }
 
-    const isDevLobby = {{ 'true' if is_dev_lobby else 'false' }};
     const javaHost = "{{ java_host }}";
     let userToken = "{{ user_token if user else '' }}";
 
     function isDevLobbyMode() {
-        return isDevLobby || window.location.pathname.includes('dev-lobby');
+        const meta = document.getElementById('lobby-metadata');
+        if (meta?.dataset.devLobby === 'true') return true;
+        return window.location.pathname.includes('dev-lobby');
     }
     const lobbyMeta = document.getElementById('lobby-metadata');
     let walletBalance = lobbyMeta
