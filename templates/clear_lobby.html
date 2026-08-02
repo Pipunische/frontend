@@ -682,7 +682,7 @@
     <div class="lobby-grid" id="lobby-grid">
 
         <!-- СЦЕНАРИЙ 1: ВЛАДОС УПАЛ -->
-        {% if is_down %}
+        {% if is_server_down %}
         <div class="alert-banner" style="border: 2px dashed #e74c3c; background: rgba(231, 76, 60, 0.1);">
             <h2 style="color: #e74c3c;">🚧 КАЗИНО НА ТЕХОБСЛУЖИВАНИИ 🚧</h2>
             <p style="color: #bdc3c7; font-size: 18px;">Наши крупье ушли пересчитывать фишки. Вернитесь через пару
@@ -831,8 +831,13 @@
         }, 4000);
     }
 
+    const isDevLobby = {{ 'true' if is_dev_lobby else 'false' }};
     const javaHost = "{{ java_host }}";
     let userToken = "{{ user_token if user else '' }}";
+
+    function isDevLobbyMode() {
+        return isDevLobby || window.location.pathname.includes('dev-lobby');
+    }
     const lobbyMeta = document.getElementById('lobby-metadata');
     let walletBalance = lobbyMeta
         ? parseInt(lobbyMeta.dataset.walletBalance || '0', 10)
@@ -848,6 +853,11 @@
     }
 
     async function fetchFreshToken() {
+        if (isDevLobbyMode()) {
+            console.log('🛠️ Dev-lobby: используем mock-токен из шаблона, без /api/session/token');
+            return Boolean(userToken && userToken !== 'None' && userToken.trim() !== '');
+        }
+
         try {
             const response = await fetch('/api/session/token');
             const data = await response.json();
@@ -927,6 +937,46 @@
             </div>`;
     }
 
+    let lobbyServerDownStreak = 0;
+    const LOBBY_RESYNC_DELAY_MS = 500;
+    const LOBBY_POST_LOAD_RESYNC_MS = 700;
+    const LOBBY_WS_RESYNC_GRACE_MS = 4000;
+    let lastLobbyWsUpdateAt = 0;
+    let pendingLobbyResyncTimer = null;
+
+    function markLobbyWsSync(source = 'LOBBY_UPDATE') {
+        lastLobbyWsUpdateAt = Date.now();
+        console.log(`📡 Лобби: WS sync (${source}) — HTTP resync можно пропустить`);
+    }
+
+    function shouldSkipLobbyHttpResync() {
+        return Date.now() - lastLobbyWsUpdateAt < LOBBY_WS_RESYNC_GRACE_MS;
+    }
+
+    function cancelPendingLobbyResync() {
+        if (pendingLobbyResyncTimer) {
+            clearTimeout(pendingLobbyResyncTimer);
+            pendingLobbyResyncTimer = null;
+        }
+    }
+
+    function scheduleLobbyResyncIfNeeded(options = {}) {
+        const {
+            delayMs = LOBBY_POST_LOAD_RESYNC_MS,
+            reason = 'connect',
+        } = options;
+
+        cancelPendingLobbyResync();
+        pendingLobbyResyncTimer = setTimeout(async () => {
+            pendingLobbyResyncTimer = null;
+            try {
+                await resyncLobbyFromServer({ reason });
+            } catch (err) {
+                console.warn(`Resync лобби (${reason}) не удался:`, err);
+            }
+        }, delayMs);
+    }
+
     function applyLobbyState(data) {
         if (data.token) {
             userToken = data.token;
@@ -939,6 +989,14 @@
         if (!grid) return;
 
         if (data.is_server_down) {
+            lobbyServerDownStreak += 1;
+            const hasRenderedTables = grid.querySelector('.table-card');
+
+            if (hasRenderedTables && lobbyServerDownStreak < 2) {
+                console.warn('⚠️ Лобби: transient server_down, оставляем текущие столы');
+                return;
+            }
+
             grid.innerHTML = `
                 <div class="alert-banner" style="border: 2px dashed #e74c3c; background: rgba(231, 76, 60, 0.1);">
                     <h2 style="color: #e74c3c;">🚧 КАЗИНО НА ТЕХОБСЛУЖИВАНИИ 🚧</h2>
@@ -948,6 +1006,8 @@
                 </div>`;
             return;
         }
+
+        lobbyServerDownStreak = 0;
 
         if (!data.tables || data.tables.length === 0) {
             grid.innerHTML = `
@@ -963,11 +1023,21 @@
         grid.innerHTML = data.tables.map(renderTableCard).join('');
     }
 
-    async function resyncLobbyFromServer() {
+    async function resyncLobbyFromServer(options = {}) {
+        const { delayMs = 0, reason = 'manual' } = options;
+        if (delayMs > 0) {
+            await lobbySleep(delayMs);
+        }
+
+        if (shouldSkipLobbyHttpResync()) {
+            console.log(`⏭️ HTTP resync пропущен (${reason}): недавно был LOBBY_UPDATE по WS`);
+            return;
+        }
+
         const result = await fetchWithRetry('/api/lobby/state');
         if (!result) return;
 
-        console.log("🔄 Реконнект: полная синхронизация лобби...");
+        console.log(`🔄 HTTP resync лобби (${reason})...`);
         applyLobbyState(result.data);
     }
 
@@ -1003,7 +1073,7 @@
                     data = {};
                 }
 
-                if (response.status === 401 || data.redirect) {
+                if (!isDevLobbyMode() && (response.status === 401 || data.redirect)) {
                     window.location.href = data.redirect || '/login?error=session_expired';
                     return null;
                 }
@@ -1041,6 +1111,10 @@
             if (!isLobbySocketConnected()) return;
 
             try {
+                if (shouldSkipLobbyHttpResync()) {
+                    return;
+                }
+
                 const result = await fetchWithRetry('/api/lobby/state');
                 if (result?.data) {
                     console.log('🛡️ Periodic snapshot: синхронизация лобби');
@@ -1078,14 +1152,55 @@
             }
 
             if (!isFirstConnect) {
-                resyncLobbyFromServer().catch(err => {
-                    console.warn('Soft resync лобби при возврате на вкладку:', err);
+                scheduleLobbyResyncIfNeeded({
+                    delayMs: LOBBY_RESYNC_DELAY_MS,
+                    reason: 'visibility',
                 });
             }
         });
     }
 
+    function gracefulLobbyDisconnect() {
+        cancelPendingLobbyResync();
+
+        if (reconnectTimer) {
+            clearTimeout(reconnectTimer);
+            reconnectTimer = null;
+            isReconnectScheduled = false;
+        }
+
+        stopLobbyPolling();
+
+        if (pingInterval) {
+            clearInterval(pingInterval);
+            pingInterval = null;
+        }
+
+        if (stompClient) {
+            try {
+                if (stompClient.connected) {
+                    stompClient.disconnect();
+                }
+            } catch (err) {
+                console.warn('Graceful STOMP disconnect:', err);
+            }
+            stompClient = null;
+        }
+    }
+
+    function setupLobbyUnloadHandler() {
+        const onPageLeave = () => {
+            isIntentionalReload = true;
+            gracefulLobbyDisconnect();
+        };
+
+        window.addEventListener('pagehide', onPageLeave);
+        window.addEventListener('beforeunload', onPageLeave);
+    }
+
     function cleanupLobbySocket() {
+        cancelPendingLobbyResync();
+
         if (pingInterval) {
             clearInterval(pingInterval);
             pingInterval = null;
@@ -1218,12 +1333,27 @@
             return;
         }
 
-        if (Array.isArray(data.tables)) {
+        if (Array.isArray(data.tables) && data.tables.length > 0) {
+            const looksLikeFullSnapshot = Boolean(
+                data.tables[0].table_name || data.tables[0].tableName
+            );
+
+            if (looksLikeFullSnapshot) {
+                markLobbyWsSync('LOBBY_UPDATE snapshot');
+                applyLobbyState({
+                    tables: data.tables,
+                    is_server_down: false,
+                });
+                return;
+            }
+
+            markLobbyWsSync('LOBBY_UPDATE tables');
             applyLobbyUpdateTables(data.tables);
             return;
         }
 
         if (data.table_id) {
+            markLobbyWsSync('LOBBY_UPDATE table');
             applyLobbyUpdateTables([data]);
         }
     }
@@ -1268,12 +1398,18 @@
     async function connectLobbySocket() {
         if (isIntentionalReload) return;
 
+        if (isDevLobbyMode()) {
+            console.log('🛠️ Dev-lobby: WebSocket отключён, mock-столы из шаблона');
+            return;
+        }
+
         if (!await fetchFreshToken()) {
             console.log("Без токена сокеты лобби не подключаем.");
             return;
         }
 
         cleanupLobbySocket();
+        lastLobbyWsUpdateAt = 0;
 
         const wsProtocol = window.location.protocol === "https:" ? "wss" : "ws";
         const wsUrlRaw = `${wsProtocol}://${javaHost}/ws-poker`;
@@ -1286,22 +1422,21 @@
             'Authorization': 'Bearer ' + userToken
         };
 
-        stompClient.connect(connectHeaders, async function () {
+        stompClient.connect(connectHeaders, function () {
             console.log('🔗 Лобби подключено к сети Владоса!');
             reconnectAttempt = 0;
             isReconnectScheduled = false;
 
             setupLobbySubscriptions();
 
-            if (!isFirstConnect) {
-                try {
-                    await resyncLobbyFromServer();
-                } catch (err) {
-                    console.error("Ошибка синхронизации лобби:", err);
-                }
-            }
-
+            const wasFirstConnect = isFirstConnect;
             isFirstConnect = false;
+
+            scheduleLobbyResyncIfNeeded({
+                delayMs: wasFirstConnect ? LOBBY_POST_LOAD_RESYNC_MS : LOBBY_RESYNC_DELAY_MS,
+                reason: wasFirstConnect ? 'post-load' : 'reconnect',
+            });
+
             startLobbyPolling();
 
         }, function(error) {
@@ -1361,7 +1496,7 @@
             const result = await response.json();
 
             if (result.redirect) {
-                window.location.href = result.redirect;
+                navigateFromLobby(result.redirect);
                 return;
             }
 
@@ -1412,7 +1547,13 @@
             }
         }
 
-        window.location.href = `/table/${tableId}?buy_in=${buyIn}&passcode=${encodeURIComponent(passcode)}`;
+        navigateFromLobby(`/table/${tableId}?buy_in=${buyIn}&passcode=${encodeURIComponent(passcode)}`);
+    }
+
+    function navigateFromLobby(url) {
+        isIntentionalReload = true;
+        gracefulLobbyDisconnect();
+        window.location.href = url;
     }
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -1427,8 +1568,13 @@
             window.history.replaceState({path: cleanUrl}, '', cleanUrl)
         }
 
-        connectLobbySocket();
-        setupLobbyNetworkWatchers();
+        if (isDevLobbyMode()) {
+            console.log('🛠️ Dev-lobby: локальный mock без сети и авторизации');
+        } else {
+            connectLobbySocket();
+            setupLobbyNetworkWatchers();
+            setupLobbyUnloadHandler();
+        }
     })
 
 

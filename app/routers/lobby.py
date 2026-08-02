@@ -1,12 +1,45 @@
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from loguru import logger
+import asyncio
 
 from app.config import settings
 from app.models import CreateTableRequest
 from app.services import templates, java_request, core_unreachable_json, is_core_unreachable
 
 router = APIRouter(tags=["Lobby"])
+
+LOBBY_TABLES_RETRY_DELAYS = (0.25, 0.5, 0.75)
+
+
+async def fetch_lobby_tables(request: Request):
+    """Fetch tables with short retries — avoids false server_down on Ctrl+F5 / WS reconnect races."""
+    last_status = None
+
+    for attempt, delay in enumerate(LOBBY_TABLES_RETRY_DELAYS):
+        tables_res = await java_request("GET", settings.JAVA_TABLES_URL, request)
+
+        if is_core_unreachable(tables_res):
+            if attempt < len(LOBBY_TABLES_RETRY_DELAYS) - 1:
+                logger.warning(
+                    f"🔄 Лобби: ядро не ответило на /tables (попытка {attempt + 1}), retry..."
+                )
+                await asyncio.sleep(delay)
+                continue
+            return [], True, "unreachable"
+
+        if tables_res and tables_res.status_code == 200:
+            return tables_res.json(), False, None
+
+        last_status = getattr(tables_res, "status_code", None)
+        if attempt < len(LOBBY_TABLES_RETRY_DELAYS) - 1:
+            logger.warning(
+                f"🔄 Лобби: /tables вернул {last_status} (попытка {attempt + 1}), retry..."
+            )
+            await asyncio.sleep(delay)
+
+    logger.error(f"🛑 Лобби: не удалось получить столы после retry (status={last_status})")
+    return [], True, last_status
 
 
 async def load_lobby_context(request: Request):
@@ -33,16 +66,7 @@ async def load_lobby_context(request: Request):
             request.session["user"] = current_user
             logger.success(f"💰 Баланс успешно получен: {new_balance}")
 
-    is_down = False
-    tables_data = []
-
-    tables_res = await java_request("GET", settings.JAVA_TABLES_URL, request)
-
-    if tables_res and tables_res.status_code == 200:
-        tables_data = tables_res.json()
-    else:
-        logger.error(f"🛑 При получении столов произошла ошибка: {tables_res.status_code if tables_res else 'No response'}")
-        is_down = True
+    tables_data, is_down, _tables_error = await fetch_lobby_tables(request)
 
     return {
         "tables": tables_data,
@@ -116,6 +140,7 @@ async def page_lobby(request: Request, error: str = None):
     context = {
         **lobby_data,
         "error": error,
+        "is_dev_lobby": False,
     }
 
     return templates.TemplateResponse(request=request, name="clear_lobby.html", context=context)
@@ -262,7 +287,8 @@ async def dev_page_lobby(request: Request):
         "user_token": mock_user["token"],
         "error": None,
         "java_host": settings.FRONTEND_JAVA_HOST,
-        "v": settings.APP_VERSION
+        "v": settings.APP_VERSION,
+        "is_dev_lobby": True,
     }
 
     return templates.TemplateResponse(request=request, name="clear_lobby.html", context=context)
