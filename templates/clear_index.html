@@ -200,6 +200,9 @@
           <button type="button" class="btn-dev-action btn-dev-secondary" onclick="simulateDevShowdownPipeline()">
             Test Showdown
           </button>
+          <button type="button" class="btn-dev-action btn-dev-secondary" onclick="simulateDevCombinationHighlight()">
+            Test подсветку
+          </button>
           <button type="button" class="btn-dev-action btn-dev-secondary" onclick="simulateDevSplitPotShowdown()">
             Test Split Pot
           </button>
@@ -483,7 +486,7 @@
         const { includePotLabel = false } = options;
         const hand = formatHandName(payout.hand_name);
         const amount = formatPokerAmount(payout.amount);
-        const amountHtml = `(<span class="badge-payout">+${amount}<span class="chip-icon"></span></span>)`;
+        const amountHtml = `<span class="badge-payout">(+${amount}<span class="chip-icon"></span>)</span>`;
 
         if (includePotLabel && payout.pot_label) {
           return `${hand} | ${formatPotLabel(payout.pot_label)} ${amountHtml}`;
@@ -2638,6 +2641,64 @@
         }, 100);
       }
 
+      function simulateDevCombinationHighlight() {
+        if (!devMockPlayers) initDevMockState();
+
+        cancelCollectAnimation();
+        pendingTableUpdateState = null;
+        pendingPostShowdownState = null;
+        pendingShowdownChipTargets = null;
+        showdownHighlightDone = false;
+        isShowdownRunning = false;
+        clearShowdownUI(true);
+
+        const board = ['QH', 'JC', '10S', '2D', '3C'];
+        const heroCards = ['AH', 'KD'];
+        const rankCards = ['AH', 'KD', 'QH', 'JC', '10S'];
+
+        currentGameState = 'SHOWDOWN';
+        lastCardsString = '';
+        updateTableStateClass('SHOWDOWN');
+        redrawCommunityCards({ community_cards: board });
+
+        devMockPlayers = devMockPlayers.map(p => {
+          const base = {
+            ...p,
+            round_contribution: 0,
+            is_active_turn: false,
+          };
+
+          if (p.user_id === 'hero_123') {
+            return { ...base, status: 'ACTIVE', cards: heroCards };
+          }
+          if (p.user_id === 'opp_0') {
+            return { ...base, status: 'ACTIVE', cards: ['9H', '8D'] };
+          }
+          return { ...base, cards: [] };
+        });
+
+        updateAllPlayers(devMockPlayers);
+        renderAllHoleCards(devMockPlayers);
+
+        const potEl = document.getElementById('pot-value');
+        if (potEl) potEl.innerText = 400;
+
+        playShowdownSequence({
+          rank_cards: rankCards,
+          kicker_cards: [],
+          payouts: [{
+            user_id: 'hero_123',
+            amount: 400,
+            hand_name: 'STRAIGHT',
+            rank_cards: rankCards,
+            kicker_cards: [],
+            is_side_pot: false,
+          }],
+        });
+
+        console.log('🛠️ Dev-table: подсветка комбинации (Стрит A-K-Q-J-10)');
+      }
+
       function simulateDevShowdownPipeline() {
         runDevShowdownPipeline(buildDevShowdownTableUpdate);
         console.log('🛠️ Dev-table: SHOWDOWN pipeline (STREET_END → TABLE_UPDATE через 100ms)');
@@ -2704,8 +2765,9 @@
         initDevMockState();
         window.simulateDevShowdownPipeline = simulateDevShowdownPipeline;
         window.simulateDevSplitPotShowdown = simulateDevSplitPotShowdown;
+        window.simulateDevCombinationHighlight = simulateDevCombinationHighlight;
         window.buildDevShowdownTableUpdate = buildDevShowdownTableUpdate;
-        console.log('🛠️ Dev-table: панель тестирования STREET_END активна');
+        console.log('🛠️ Dev-table: http://127.0.0.1:8000/dev-table — кнопка «Test подсветку»');
       }
 
 
@@ -2759,6 +2821,9 @@
         if (isDevTableMode()) {
           initDevTableControls();
           console.log("🛠️ Dev-table: стол загружен без сети, карты из mock-данных.");
+          if (window.location.search.includes('auto_showdown=1')) {
+            setTimeout(() => simulateDevCombinationHighlight(), 300);
+          }
         } else {
           connectWebSocket();
         }
