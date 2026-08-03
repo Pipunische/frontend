@@ -6,6 +6,11 @@ from loguru import logger
 
 from app.config import settings
 from app.models import ActionRequest
+from app.table_layouts import (
+    build_opponent_seats_by_pos,
+    get_opponent_pos_layout,
+    normalize_max_players,
+)
 from app.services import (
     templates,
     java_request,
@@ -47,19 +52,23 @@ def _order_players(game_state: dict, my_id: str):
                 p["cards"] = ["card_back", "card_back"]
             others_raw.append(p)
 
-    ordered_others = [None] * 9
+    max_players = normalize_max_players(game_state.get("max_players"))
+    max_opponents = max(max_players - 1, 0)
+
+    ordered_others = [None] * max_opponents
     if my_player:
         hero_seat = my_player.get("seat_index", 0)
         for p in others_raw:
             opp_seat = p.get("seat_index", 0)
-            relative_pos = (opp_seat - hero_seat - 1 + 10) % 10
-            if 0 <= relative_pos < 9:
+            relative_pos = (opp_seat - hero_seat - 1 + max_players) % max_players
+            if 0 <= relative_pos < max_opponents:
                 ordered_others[relative_pos] = p
     else:
+        layout = get_opponent_pos_layout(max_players)
         for p in others_raw:
             seat = p.get("seat_index", 0)
-            if 0 <= seat < 9:
-                ordered_others[seat] = p
+            if seat in layout:
+                ordered_others[layout.index(seat)] = p
 
     return my_player, my_cards, ordered_others
 
@@ -67,11 +76,18 @@ def _order_players(game_state: dict, my_id: str):
 def _build_table_context(game_state: dict, table_id: str, my_user: dict) -> dict:
     my_id = str(my_user.get("user_id"))
     my_player, my_cards, ordered_others = _order_players(game_state, my_id)
+    max_players = normalize_max_players(game_state.get("max_players"))
+    seat_layout_opponents = get_opponent_pos_layout(max_players)
+    opponent_seats_by_pos = build_opponent_seats_by_pos(ordered_others, max_players)
+    game_with_size = {**game_state, "max_players": max_players}
 
     return {
         "my_player": my_player,
         "ordered_others": ordered_others,
-        "game": game_state,
+        "max_players": max_players,
+        "seat_layout_opponents": seat_layout_opponents,
+        "opponent_seats_by_pos": opponent_seats_by_pos,
+        "game": game_with_size,
         "table_id": table_id,
         "table_name": game_state.get("table_name"),
         "user": my_user,
@@ -199,11 +215,15 @@ def _respond_table_result(result, *, json_mode: bool):
 
 
 @router.get("/dev-table", response_class=HTMLResponse)
-async def dev_page_table(request: Request):
+async def dev_page_table(request: Request, size: int = 10):
     """
     Секретный эндпоинт для тестирования верстки без Java-бэкенда.
-    Доступен по адресу: http://127.0.0.1:8000/dev-table
+    Доступен по адресу: http://127.0.0.1:8000/dev-table?size=6
     """
+    from app.table_layouts import SEAT_LAYOUTS
+
+    max_players = size if size in SEAT_LAYOUTS else 10
+    max_opponents = max(max_players - 1, 0)
 
     mock_user = {
         "user_id": "hero_123",
@@ -227,57 +247,41 @@ async def dev_page_table(request: Request):
         "avatar_url": mock_user["avatar_url"],
     }
 
-    mock_ordered_others = []
     bot_names = ["SiliVal", "Ivan99", "ProGamer", "Kicker", "Loser99", "Shark", "Fish", "Lucky", "Donk"]
+    mock_players = [mock_my_player]
 
-    for i in range(9):
-        status = "FOLDED" if i in [11, 12] else "ACTIVE"
-        cards = [] if status == "FOLDED" else ["card_back", "card_back"]
-        avatar = f"https://api.dicebear.com/7.x/avataaars/svg?seed={bot_names[i]}" if i % 2 == 0 else ""
-
-        mock_ordered_others.append({
-            "user_id": f"opp_{i}",
-            "name": bot_names[i],
-            "seat_index": i + 1,
-            "chips": 1000 + (i * 350),
-            "status": status,
+    for rel_idx in range(max_opponents):
+        if rel_idx >= len(bot_names):
+            break
+        mock_players.append({
+            "user_id": f"opp_{rel_idx}",
+            "name": bot_names[rel_idx],
+            "seat_index": rel_idx + 1,
+            "chips": 1000 + (rel_idx * 350),
+            "status": "ACTIVE",
             "is_dealer": False,
             "is_active_turn": False,
-            "round_contribution": 50 if status == "ACTIVE" else 0,
-            "cards": cards,
-            "avatar_url": avatar,
+            "round_contribution": 50,
+            "cards": ["card_back", "card_back"],
+            "avatar_url": f"https://api.dicebear.com/7.x/avataaars/svg?seed={bot_names[rel_idx]}" if rel_idx % 2 == 0 else "",
         })
-
-    all_players_for_js = [mock_my_player]
-    for p in mock_ordered_others:
-        if p is not None:
-            all_players_for_js.append(p)
 
     mock_game = {
         "state": "FLOP",
         "pot": 150,
         "big_blind": 100,
+        "max_players": max_players,
         "community_cards": mock_community_cards,
-        "players": all_players_for_js,
+        "players": mock_players,
         "dealer_seat": 0,
         "current_turn_seat": 0,
         "time_to_act_ms": 15000,
     }
 
-    context = {
-        "my_player": mock_my_player,
-        "ordered_others": mock_ordered_others,
-        "game": mock_game,
-        "table_id": "dev_table_777",
-        "table_name": "Тестовый Стол VIP",
-        "user": mock_user,
-        "user_token": mock_user["token"],
-        "my_cards": ["Ah", "Ac"],
-        "community_cards": mock_community_cards,
-        "java_host": settings.FRONTEND_JAVA_HOST,
-        "v": settings.APP_VERSION,
-        "is_dev_table": True,
-    }
+    context = _build_table_context(mock_game, "dev_table_777", mock_user)
+    context["table_name"] = f"Dev {max_players}-max"
+    context["my_cards"] = ["Ah", "Ac"]
+    context["is_dev_table"] = True
 
     return templates.TemplateResponse(name="clear_index.html", context=context, request=request)
 

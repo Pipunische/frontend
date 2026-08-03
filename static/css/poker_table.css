@@ -1356,3 +1356,8 @@ body {
     box-shadow: none;
   }
 }
+
+/* Variable table sizes: hide opponent slots not used by current layout */
+.poker-table .player-seat:not(.seat-active) {
+  display: none !important;
+}

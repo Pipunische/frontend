@@ -1,4 +1,6 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+
+from app.table_layouts import TABLE_SIZES_CUSTOM
 
 class CreateTableRequest(BaseModel):
     name: str
@@ -8,6 +10,14 @@ class CreateTableRequest(BaseModel):
     max_players_num: int
     small_blind: int
     big_blind: int
+
+    @field_validator("max_players_num")
+    @classmethod
+    def validate_max_players_num(cls, value: int) -> int:
+        if value not in TABLE_SIZES_CUSTOM:
+            allowed = ", ".join(str(n) for n in TABLE_SIZES_CUSTOM)
+            raise ValueError(f"max_players_num must be one of: {allowed}")
+        return value
 
 class PasswordRequest(BaseModel):
     old_password: str

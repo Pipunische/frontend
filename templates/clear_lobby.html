@@ -779,7 +779,13 @@
 
             <div style="display: flex; gap: 10px; width: 100%; margin-bottom: 20px;">
                 <input type="number" id="create-min-players" placeholder="Мин. игроков" value="2" min="2" class="buyin-input-field" style="flex-grow: 1;">
-                <input type="number" id="create-max-players" placeholder="Макс. игроков" value="10" max="10" class="buyin-input-field" style="flex-grow: 1;">
+                <select id="create-max-players" class="buyin-input-field" style="flex-grow: 1;">
+                    <option value="2">Heads-Up (2)</option>
+                    <option value="4">4-max</option>
+                    <option value="6" selected>6-max</option>
+                    <option value="9">Full Ring (9)</option>
+                    <option value="10">Live (10)</option>
+                </select>
             </div>
 
             <div style="display: flex; gap: 10px; width: 100%;">
@@ -1526,10 +1532,21 @@
         const sb = parseInt(document.getElementById('create-sb').value);
         const bb = parseInt(document.getElementById('create-bb').value);
         const minPlayers = parseInt(document.getElementById('create-min-players').value) || 2;
-        const maxPlayers = parseInt(document.getElementById('create-max-players').value) || 10;
+        const maxPlayers = parseInt(document.getElementById('create-max-players').value) || 6;
+        const allowedSizes = [2, 4, 6, 9, 10];
 
         if  (!name || isNaN(chips) || isNaN(sb) || isNaN(bb)) {
             alert("Заполните обязательные поля!");
+            return;
+        }
+
+        if (!allowedSizes.includes(maxPlayers)) {
+            alert("Выберите корректный размер стола.");
+            return;
+        }
+
+        if (minPlayers > maxPlayers) {
+            alert("Мин. игроков не может быть больше макс. игроков.");
             return;
         }
 
