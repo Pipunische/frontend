@@ -486,13 +486,17 @@
         const { includePotLabel = false } = options;
         const hand = formatHandName(payout.hand_name);
         const amount = formatPokerAmount(payout.amount);
-        const amountHtml = `<span class="badge-payout">(+${amount}<span class="chip-icon"></span>)</span>`;
+        const label = includePotLabel && payout.pot_label
+          ? `${hand} | ${formatPotLabel(payout.pot_label)}`
+          : hand;
+        const payoutHtml = [
+          '<span class="badge-payout-paren">(</span>',
+          `<span class="badge-payout-amount">+${amount}</span>`,
+          '<span class="chip-icon badge-payout-chip"></span>',
+          '<span class="badge-payout-paren">)</span>',
+        ].join('');
 
-        if (includePotLabel && payout.pot_label) {
-          return `${hand} | ${formatPotLabel(payout.pot_label)} ${amountHtml}`;
-        }
-
-        return `${hand} ${amountHtml}`;
+        return `<span class="badge-inner"><span class="badge-label">${label}</span><span class="badge-payout">${payoutHtml}</span></span>`;
       }
 
       function ensureShowdownCardsVisible() {
@@ -2398,6 +2402,62 @@
       let devMockPlayers = null;
       let devInitialPot = 150;
       let devInitialCommunityCards = ['As', 'Kh', '10d'];
+      let devShowdownFrozen = false;
+
+      function unfreezeDevShowdown() {
+        if (!devShowdownFrozen) return;
+        clearShowdownUI(true);
+        devShowdownFrozen = false;
+        isShowdownRunning = false;
+        showdownHighlightDone = false;
+        pendingPostShowdownState = null;
+        console.log('🛠️ Dev-table: подсветка разморожена');
+      }
+
+      function applyDevFrozenShowdownHighlight(showdownDetails) {
+        if (!showdownDetails?.payouts?.length) return;
+
+        const rawPayouts = showdownDetails.payouts;
+        const uniqueWinners = new Set(rawPayouts.map(p => p.user_id));
+        let payoutsToShow = rawPayouts;
+
+        if (uniqueWinners.size === 1) {
+          payoutsToShow = [{
+            ...rawPayouts[0],
+            amount: rawPayouts.reduce((sum, p) => sum + p.amount, 0),
+            pot_label: 'TOTAL POT',
+          }];
+        } else {
+          payoutsToShow = rawPayouts.map(p => ({
+            ...p,
+            pot_label: p.is_side_pot ? 'SIDE POT' : 'MAIN POT',
+          }));
+        }
+
+        clearShowdownUI(false);
+        ensureShowdownCardsVisible();
+        document.querySelectorAll('img.poker-card, img.hand-card').forEach(img => {
+          img.classList.add('card-dimmed');
+        });
+
+        payoutsToShow.forEach(payout => {
+          const { rankCards, kickerCards } = resolveShowdownHighlightCards(payout, showdownDetails);
+          highlightShowdownCards(rankCards, 'card-winner-rank');
+          highlightShowdownCards(kickerCards, 'card-winner-kicker');
+
+          const winnerSeat = document.querySelector(`.player-seat[data-userid="${String(payout.user_id)}"]`);
+          if (!winnerSeat || winnerSeat.querySelector('.hand-name-badge')) return;
+
+          const badge = document.createElement('div');
+          badge.className = 'hand-name-badge';
+          badge.innerHTML = buildShowdownBadgeHtml(payout, { includePotLabel: true });
+          winnerSeat.appendChild(badge);
+        });
+
+        devShowdownFrozen = true;
+        isShowdownRunning = true;
+        showdownHighlightDone = true;
+      }
 
       const DEV_NEXT_STREET = {
         FLOP: {
@@ -2482,6 +2542,7 @@
       }
 
       function simulateDevStreetEnd() {
+        unfreezeDevShowdown();
         const config = DEV_NEXT_STREET[currentGameState];
         if (!config) {
           showToast('error', null, `Нет следующей улицы для ${currentGameState}`);
@@ -2603,6 +2664,7 @@
       function runDevShowdownPipeline(tableUpdateBuilder) {
         if (!devMockPlayers) initDevMockState();
 
+        unfreezeDevShowdown();
         cancelCollectAnimation();
         pendingTableUpdateState = null;
         pendingPostShowdownState = null;
@@ -2644,6 +2706,7 @@
       function simulateDevCombinationHighlight() {
         if (!devMockPlayers) initDevMockState();
 
+        unfreezeDevShowdown();
         cancelCollectAnimation();
         pendingTableUpdateState = null;
         pendingPostShowdownState = null;
@@ -2683,7 +2746,7 @@
         const potEl = document.getElementById('pot-value');
         if (potEl) potEl.innerText = 400;
 
-        playShowdownSequence({
+        applyDevFrozenShowdownHighlight({
           rank_cards: rankCards,
           kicker_cards: [],
           payouts: [{
@@ -2696,7 +2759,7 @@
           }],
         });
 
-        console.log('🛠️ Dev-table: подсветка комбинации (Стрит A-K-Q-J-10)');
+        console.log('🛠️ Dev-table: подсветка заморожена — нажми другую dev-кнопку для сброса');
       }
 
       function simulateDevShowdownPipeline() {
@@ -2710,6 +2773,7 @@
       }
 
       function simulateDevAutoCollect() {
+        unfreezeDevShowdown();
         const config = DEV_NEXT_STREET[currentGameState];
         if (!config) {
           showToast('error', null, `Нет следующей улицы для ${currentGameState}`);
@@ -2736,6 +2800,7 @@
       }
 
       function resetDevTableBets() {
+        unfreezeDevShowdown();
         const metadataNode = document.getElementById('poker-metadata');
         if (!metadataNode || !devMockPlayers) return;
 
@@ -2766,6 +2831,7 @@
         window.simulateDevShowdownPipeline = simulateDevShowdownPipeline;
         window.simulateDevSplitPotShowdown = simulateDevSplitPotShowdown;
         window.simulateDevCombinationHighlight = simulateDevCombinationHighlight;
+        window.unfreezeDevShowdown = unfreezeDevShowdown;
         window.buildDevShowdownTableUpdate = buildDevShowdownTableUpdate;
         console.log('🛠️ Dev-table: http://127.0.0.1:8000/dev-table — кнопка «Test подсветку»');
       }

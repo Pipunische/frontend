@@ -842,6 +842,12 @@ body {
 
 /* Плашка комбинации */
 .hand-name-badge {
+  --badge-row-h: 14px;
+  --badge-amount-h: 14px;
+  --badge-chip-size: 13px;
+  --badge-amount-shift-y: -1px;
+  --badge-chip-shift-y: 0px;
+
   position: absolute;
   top: -45px;
   left: 50%;
@@ -864,36 +870,67 @@ body {
   animation: badgePop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
-.hand-name-badge .chip-icon {
-  width: 1em;
-  height: 1em;
-  vertical-align: middle;
+.hand-name-badge .badge-inner {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  line-height: 1;
+  height: var(--badge-row-h);
+}
+
+.hand-name-badge .badge-label {
+  display: inline-flex;
+  align-items: center;
+  height: var(--badge-row-h);
+  line-height: var(--badge-row-h);
 }
 
 .hand-name-badge .badge-payout {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
   gap: 2px;
+  height: var(--badge-row-h);
   line-height: 1;
-  vertical-align: middle;
 }
 
-.hand-name-badge .badge-payout .chip-icon {
-  width: 12px;
-  height: 12px;
-  min-width: 12px;
-  min-height: 12px;
+/* Подстройка: --badge-amount-h, --badge-amount-shift-y */
+.hand-name-badge .badge-payout-amount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--badge-amount-h);
+  line-height: 1;
+  font-size: inherit;
+  transform: translateY(var(--badge-amount-shift-y));
+}
+
+.hand-name-badge .badge-payout-paren {
+  display: inline-flex;
+  align-items: center;
+  height: var(--badge-amount-h);
+  line-height: 1;
+  transform: translateY(var(--badge-amount-shift-y));
+}
+
+/* Подстройка: --badge-chip-size, --badge-chip-shift-y */
+.hand-name-badge .badge-payout-chip {
+  width: var(--badge-chip-size);
+  height: var(--badge-chip-size);
+  min-width: var(--badge-chip-size);
+  min-height: var(--badge-chip-size);
   display: block;
   flex-shrink: 0;
   margin: 0;
   padding: 0;
   background-size: contain;
   background-position: center center;
-  align-self: center;
-  position: relative;
-  top: 0;
-  transform: none;
+  transform: translateY(var(--badge-chip-shift-y));
+}
+
+.hand-name-badge .chip-icon {
+  width: 1em;
+  height: 1em;
+  vertical-align: middle;
 }
 
 /* Старая разметка на проде: chip-icon рядом с badge-payout, не внутри */
