@@ -896,6 +896,18 @@ body {
   transform: none;
 }
 
+/* Старая разметка на проде: chip-icon рядом с badge-payout, не внутри */
+.hand-name-badge > .chip-icon {
+  width: 12px;
+  height: 12px;
+  min-width: 12px;
+  min-height: 12px;
+  align-self: center;
+  flex-shrink: 0;
+  background-size: contain;
+  background-position: center center;
+}
+
 @keyframes badgePop {
   0% {
     opacity: 0;
