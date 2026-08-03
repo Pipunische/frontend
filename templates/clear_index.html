@@ -408,6 +408,89 @@
         return { rankCards, kickerCards };
       }
 
+      const HAND_NAME_RU = {
+        HIGH_CARD: 'Старшая карта',
+        PAIR: 'Пара',
+        ONE_PAIR: 'Пара',
+        TWO_PAIR: 'Две пары',
+        THREE_OF_A_KIND: 'Сет',
+        SET: 'Сет',
+        TRIPS: 'Трипс',
+        STRAIGHT: 'Стрит',
+        FLUSH: 'Флеш',
+        FULL_HOUSE: 'Фул-хаус',
+        FOUR_OF_A_KIND: 'Каре',
+        QUADS: 'Каре',
+        STRAIGHT_FLUSH: 'Стрит-флеш',
+        ROYAL_FLUSH: 'Роял-флеш',
+      };
+
+      const POT_LABEL_RU = {
+        TOTAL_POT: 'Общий банк',
+        MAIN_POT: 'Основной банк',
+        SIDE_POT: 'Доп. банк',
+      };
+
+      function formatPokerAmount(value) {
+        const n = parseInt(value, 10);
+        if (Number.isNaN(n)) {
+          return value != null ? String(value) : '0';
+        }
+
+        if (n >= 1_000_000) {
+          const scaled = n / 1_000_000;
+          if (scaled === Math.floor(scaled)) {
+            return `${Math.floor(scaled)}M`;
+          }
+          return `${parseFloat(scaled.toFixed(1))}M`;
+        }
+
+        if (n >= 1_000) {
+          const scaled = n / 1_000;
+          if (scaled === Math.floor(scaled)) {
+            return `${Math.floor(scaled)}K`;
+          }
+          return `${parseFloat(scaled.toFixed(1))}K`;
+        }
+
+        return String(n);
+      }
+
+      function normalizeLabelKey(label) {
+        return String(label ?? '').trim().toUpperCase().replace(/[\s-]+/g, '_');
+      }
+
+      function formatHandName(handName) {
+        if (!handName) return '';
+
+        const key = normalizeLabelKey(handName);
+        if (HAND_NAME_RU[key]) return HAND_NAME_RU[key];
+
+        if (/[а-яА-ЯёЁ]/.test(String(handName))) return String(handName);
+
+        return String(handName).replace(/_/g, ' ').toLowerCase()
+          .replace(/\b\w/g, char => char.toUpperCase());
+      }
+
+      function formatPotLabel(label) {
+        if (!label) return '';
+        const key = normalizeLabelKey(label);
+        return POT_LABEL_RU[key] || String(label);
+      }
+
+      function buildShowdownBadgeHtml(payout, options = {}) {
+        const { includePotLabel = false } = options;
+        const hand = formatHandName(payout.hand_name);
+        const amount = formatPokerAmount(payout.amount);
+        const amountHtml = `(+${amount} <span class="chip-icon"></span>)`;
+
+        if (includePotLabel && payout.pot_label) {
+          return `${hand} | ${formatPotLabel(payout.pot_label)} ${amountHtml}`;
+        }
+
+        return `${hand} ${amountHtml}`;
+      }
+
       function ensureShowdownCardsVisible() {
         document.querySelectorAll('.community-cards img.poker-card, img.hand-card').forEach(img => {
           img.classList.add('card-static');
@@ -1250,6 +1333,7 @@
       const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
       let isShowdownRunning = false;
       let pendingPostShowdownState = null;
+      let showdownHighlightDone = false;
 
       const CHIP_COLLECT_DURATION_MS = 650;
       const CHIP_COLLECT_STAGGER_MS = 90;
@@ -1599,7 +1683,10 @@
         const pending = pendingPostShowdownState;
         pendingPostShowdownState = null;
         console.log('▶️ Применяем отложенное состояние после шоудауна');
-        applyFullTableStateCore(pending, { skipShowdownAnimation: true });
+        applyFullTableStateCore(pending, {
+          skipShowdownAnimation: true,
+          skipShowdownHighlight: true,
+        });
       }
 
       async function playShowdownSequence(showdownDetails) {
@@ -1652,7 +1739,7 @@
           if (winnerSeat) {
             const badge = document.createElement('div');
             badge.className = 'hand-name-badge';
-            badge.innerHTML = `${payout.hand_name} | ${payout.pot_label} (+${payout.amount} <span class="chip-icon"></span>)`;
+            badge.innerHTML = buildShowdownBadgeHtml(payout, { includePotLabel: true });
             winnerSeat.appendChild(badge);
           }
 
@@ -1669,6 +1756,7 @@
         await sleep(800);
         clearShowdownUI(true);
         pendingShowdownChipTargets = null;
+        showdownHighlightDone = true;
 
         const potValueEl = document.getElementById('pot-value');
         if (potValueEl) potValueEl.innerText = 0;
@@ -1695,15 +1783,20 @@
 
           const badge = document.createElement('div');
           badge.className = 'hand-name-badge';
-          badge.innerHTML = `${payout.hand_name} (+${payout.amount} <span class="chip-icon"></span>)`;
+          badge.innerHTML = buildShowdownBadgeHtml(payout);
           winnerSeat.appendChild(badge);
         });
       }
 
       function applyShowdownPhase(state, options = {}) {
-        const { skipShowdownAnimation = false } = options;
+        const { skipShowdownAnimation = false, skipShowdownHighlight = false } = options;
 
         if (!isShowdownPhase(state.state) || !state.players) return;
+
+        if (skipShowdownHighlight || showdownHighlightDone) {
+          console.log('🃏 Showdown: подсветка уже была, пропуск');
+          return;
+        }
 
         renderAllHoleCards(state.players);
 
@@ -1920,7 +2013,11 @@
       }
 
       function applyFullTableStateCore(state, options = {}) {
-        const { myCards = null, skipShowdownAnimation = false } = options;
+        const {
+          myCards = null,
+          skipShowdownAnimation = false,
+          skipShowdownHighlight = false,
+        } = options;
         const myId = String("{{ user.user_id }}");
         let me = null;
 
@@ -1936,6 +2033,7 @@
 
         if (state.state === 'WAITING_FOR_PLAYERS') {
           clearShowdownUI(true);
+          showdownHighlightDone = false;
           myLastCardsString = "";
           console.log("🧹 Стол подготовлен к новой раздаче.");
         }
@@ -2007,7 +2105,7 @@
         }
 
         if (isShowdownPhase(state.state)) {
-          applyShowdownPhase(state, { skipShowdownAnimation });
+          applyShowdownPhase(state, { skipShowdownAnimation, skipShowdownHighlight });
         }
       }
 
@@ -2499,6 +2597,7 @@
         pendingTableUpdateState = null;
         pendingPostShowdownState = null;
         pendingShowdownChipTargets = null;
+        showdownHighlightDone = false;
         clearShowdownUI(true);
 
         currentGameState = 'RIVER';
