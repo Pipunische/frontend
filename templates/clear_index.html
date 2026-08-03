@@ -423,6 +423,7 @@
         QUADS: 'Каре',
         STRAIGHT_FLUSH: 'Стрит-флеш',
         ROYAL_FLUSH: 'Роял-флеш',
+        NO_SHOWDOWN: 'Без вскрытия',
       };
 
       const POT_LABEL_RU = {
@@ -482,7 +483,7 @@
         const { includePotLabel = false } = options;
         const hand = formatHandName(payout.hand_name);
         const amount = formatPokerAmount(payout.amount);
-        const amountHtml = `(+${amount} <span class="chip-icon"></span>)`;
+        const amountHtml = `(<span class="badge-payout">+${amount}<span class="chip-icon"></span></span>)`;
 
         if (includePotLabel && payout.pot_label) {
           return `${hand} | ${formatPotLabel(payout.pot_label)} ${amountHtml}`;
@@ -660,7 +661,8 @@
       }
 
       let rebuyCountdownInterval = null;
-      let currentSitOutDeadline = 0; 
+      let currentSitOutDeadline = 0;
+      let rebuyDefaultsApplied = false;
       
       function checkRebuy(myPlayerState, tableBigBlind) {
         if (!myPlayerState) return;
@@ -681,11 +683,15 @@
             rebuyCountdownInterval = null;
           }
           currentSitOutDeadline = 0;
+          rebuyDefaultsApplied = false;
           return; 
         }
 
         if (modal && input) {
-          input.value = bigBlind;
+          if (!rebuyDefaultsApplied && document.activeElement !== input) {
+            input.value = bigBlind;
+            rebuyDefaultsApplied = true;
+          }
           input.min = bigBlind;
           modal.style.display = 'flex';
         }
@@ -755,6 +761,7 @@
             }
 
             document.getElementById('rebuy-modal').style.display = 'none';
+            rebuyDefaultsApplied = false;
           } else {
             showToast('error', result.errorType, result.message || "Недостаточно средств");
           }

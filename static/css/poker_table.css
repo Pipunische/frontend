@@ -870,6 +870,22 @@ body {
   vertical-align: middle;
 }
 
+.hand-name-badge .badge-payout {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  line-height: 1;
+}
+
+.hand-name-badge .badge-payout .chip-icon {
+  width: 13px;
+  height: 13px;
+  display: block;
+  flex-shrink: 0;
+  position: relative;
+  top: 1px;
+}
+
 @keyframes badgePop {
   0% {
     opacity: 0;
