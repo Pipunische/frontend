@@ -159,7 +159,7 @@ async def page_lobby(request: Request, error: str = None):
         "is_dev_lobby": False,
     }
 
-    return templates.TemplateResponse(request=request, name="clear_lobby.html", context=context)
+    return templates.TemplateResponse(request=request, name="lobby.html", context=context)
 
 
 @router.get("/api/lobby/state")
@@ -307,4 +307,4 @@ async def dev_page_lobby(request: Request):
         "is_dev_lobby": True,
     }
 
-    return templates.TemplateResponse(request=request, name="clear_lobby.html", context=context)
+    return templates.TemplateResponse(request=request, name="lobby.html", context=context)
