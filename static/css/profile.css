@@ -111,7 +111,6 @@ body {
   }
 }
 
-
 /* в”Ђв”Ђ Sidebar в”Ђв”Ђ */
 
 .profile-identity {
@@ -237,10 +236,10 @@ body {
 
 .profile-nick-edit input {
   width: min(200px, 100%);
-  padding: 10px 14px;
+  padding: 14px 14px;
   border-radius: 12px;
   border: 1px solid rgba(34, 211, 238, 0.35);
-  background: rgba(0, 0, 0, 0.35);
+  background: rgba(168, 85, 247, 0.18);
   color: var(--cyan);
   font-size: 1rem;
   font-weight: 700;
@@ -256,13 +255,13 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  padding: 12px 22px;
+  padding: 14px 17px;
   border-radius: 999px;
   margin-bottom: 28px;
   font-family: "Orbitron", sans-serif;
   font-size: 1.15rem;
   font-weight: 700;
-  color: var(--green);
+  color: #22d3ee;
   background: rgba(52, 211, 153, 0.1);
   border: 1px solid rgba(52, 211, 153, 0.35);
   box-shadow: 0 0 24px rgba(52, 211, 153, 0.12);
@@ -621,7 +620,7 @@ body {
 .profile-chip-icon {
   display: inline-block;
   width: 1.05em;
-  height: 1.05em;
+  height: 0.9em;
   background: url("/static/poker_chip.svg") center / contain no-repeat;
   vertical-align: -0.12em;
   margin-right: 4px;
@@ -678,4 +677,3 @@ body {
     align-items: flex-start;
   }
 }
-

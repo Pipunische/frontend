@@ -1,341 +1,61 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ club_name }} | Добро пожаловать</title>
-    <!-- Подключаем шрифт Roboto или Inter (можно Google Fonts) -->
-    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700;900&display=swap" rel="stylesheet">
-    <style>
-        /* Базовый сброс */
-        body, html {
-            margin: 0;
-            padding: 0;
-            height: 100%;
-            font-family: 'Montserrat', sans-serif;
-            color: white;
-            overflow: hidden;
-
-            /* Базовый темный цвет на случай, если картинка не загрузится (Fallback) */
-            background-color: #0b0f14;
-
-            /* Твоя картинка. Накладываем 80% темный фильтр, чтобы кнопки сияли */
-            background-image: 
-                linear-gradient(rgba(11, 15, 20, 0.8), rgba(11, 15, 20, 0.8)), 
-                url('/static/images/homeFon.png');
-            
-            background-position: center;
-            background-repeat: no-repeat;
-            background-attachment: fixed;
-            background-size: cover; /* Картинка заполнит весь экран */
-        }
-
-        .shimmer-text {
-            font-weight: 900;
-            /* 🔥 Цианово-Сине-Пурпурный переливающийся градиент */
-            background: linear-gradient(120deg, #00f2fe 0%, #4facfe 30%, #7f00ff 70%, #00f2fe 100%);
-            background-size: 200% auto;
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            display: inline-block;
-            animation: shine 3s linear infinite; /* Сделали чуть быстрее (3 сек вместо 4) для динамики */
-            
-            /* 🔥 Легкое неоновое свечение под текст в цвет циана */
-            filter: drop-shadow(0 0 8px rgba(0, 242, 254, 0.4));
-        }
-
-        @keyframes shine {
-            to {
-                background-position: 200% center;
-            }
-        }
-
-        /* Декоративные пятна света на фоне */
-        .glow-circle {
-            position: absolute;
-            border-radius: 50%;
-            filter: blur(100px);
-            z-index: 0;
-        }
-        .glow-green {
-            width: 400px; height: 400px;
-            background: rgba(46, 204, 113, 0.15);
-            top: -100px; left: -100px;
-        }
-        .glow-purple {
-            width: 500px; height: 500px;
-            background: rgba(155, 89, 182, 0.15);
-            bottom: -150px; right: -150px;
-        }
-
-        /* Главный контейнер по центру */
-        .hero-container {
-            position: relative;
-            z-index: 10;
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            text-align: center;
-        }
-
-        /* Логотип / Название */
-        .logo-title {
-            font-size: 5rem;
-            font-weight: 900;
-            margin: 0;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            /* Градиентный текст */
-            background: linear-gradient(135deg, #f1c40f 0%, #e67e22 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            /* Легкое золотое свечение */
-            filter: drop-shadow(0px 4px 15px rgba(241, 196, 15, 0.3));
-            animation: breatheGlow 4s ease-in-out infinite alternate;
-        }
-
-        @keyframes breatheGlow {
-            0% {
-                filter: drop-shadow(0 2px 8px rgba(241, 196, 15, 0.3));
-            }
-            100% {
-                filter: drop-shadow(0 8px 25px rgba(241, 196, 15, 0.7));
-            }
-        }
-
-        .subtitle {
-            color: #95a5a6;
-            font-size: 1.2rem;
-            margin-top: 10px;
-            margin-bottom: 50px;
-        }
-
-        /* Стеклянная панель с кнопками */
-        .action-card {
-            /* Делаем подложку темнее и глубже (с синеватым оттенком) */
-            background: rgba(10, 15, 30, 0.65); 
-            backdrop-filter: blur(25px); /* Больше матовости */
-            -webkit-backdrop-filter: blur(25px);
-            
-            /* Тонкая неоновая грань (пока синяя) */
-            border: 1px solid rgba(52, 152, 219, 0.25); 
-            padding: 40px;
-            border-radius: 24px;
-            
-            /* Слоистые тени: внешняя глубокая + внутренняя 3D + внешнее мягкое свечение */
-            box-shadow: 
-                0 30px 60px rgba(0, 0, 0, 0.8),
-                inset 0 0 20px rgba(255, 255, 255, 0.05),
-                0 0 30px rgba(52, 152, 219, 0.1);
-                
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-            width: 100%;
-            max-width: 300px;
-            transition: all 0.5s cubic-bezier(0.25, 0.8, 0.25, 1); /* Плавный переход */
-        }
-
-        .action-card:hover {
-            border-color: rgba(241, 196, 15, 0.3); /* Рамка теплеет, переходит в золото */
-            box-shadow: 
-                0 30px 60px rgba(0, 0, 0, 0.9),
-                inset 0 0 25px rgba(255, 255, 255, 0.08),
-                0 0 40px rgba(241, 196, 15, 0.15); /* Золотой ореол */
-        }
-
-
-
-        /* Кнопки */
-        .btn {
-            display: inline-block;
-            padding: 16px 20px;
-            font-size: 16px;
-            font-weight: bold;
-            text-transform: uppercase;
-            text-decoration: none;
-            border-radius: 12px;
-            transition: all 0.3s ease;
-            letter-spacing: 1px;
-            text-align: center;
-        }
-
-        .btn-primary {
-            position: relative;
-            overflow: hidden;
-            background: linear-gradient(135deg, #f1c40f 0%, #e67e22 100%);
-            color: #1a1a1a;
-            border: none;
-            box-shadow: 0 4px 15px rgba(241, 196, 15, 0.4);
-        }
-
-        .btn-primary::after {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -150%;
-            width: 50%;
-            height: 100%;
-            background: linear-gradient(to right, rgba(255,255,255,0) 0%, rgba(255,255,255,0.4) 50%, rgba(255,255,255,0) 100%);
-            transform: skewX(-25deg); /* Наклоняем полоску */
-            transition: none;
-        }
-
-        .btn-primary:hover::after {
-            left: 150%;
-            transition: all 0.7s ease-in-out; /* Блик быстро пробегает слева направо */
-        }
-
-        .btn-primary:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 8px 25px rgba(241, 196, 15, 0.6);
-        }
-
-        .btn-outline {
-            background: rgba(255, 255, 255, 0.02);
-            color: #bdc3c7;
-            /* Тонкая, едва заметная грань */
-            border: 1px solid rgba(255, 255, 255, 0.15); 
-            backdrop-filter: blur(5px);
-            box-sizing: border-box;
-        }
-
-        .btn-outline:hover {
-            border-color: #00f2fe !important; /* Циановый неон при наведении (в тон нику!) */
-            color: #00f2fe !important;
-            background: rgba(0, 242, 254, 0.05) !important;
-            transform: translateY(-3px);
-            /* Неоновый отсвет кнопки */
-            box-shadow: 0 0 20px rgba(0, 242, 254, 0.3); 
-        }
-
-        /* Если юзер уже залогинен */
-        .welcome-text {
-            color: #2ecc71;
-            font-size: 1.1rem;
-            margin-bottom: 20px;
-            font-weight: bold;
-        }
-
-        /* Футер */
-        .footer {
-            position: absolute;
-            bottom: 20px;
-            font-size: 0.8rem;
-            color: #7f8c8d;
-        }
-
-        /* === БЛОК ПРИВЕТСТВИЯ С АВАТАРОМ === */
-        .welcome-container {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 10px;
-        }
-
-        /* Мини-копия твоей будущей аватарки */
-        .mini-avatar {
-            width: 45px;
-            height: 45px;
-            border-radius: 50%;
-            background: linear-gradient(135deg, #3498db, #8e44ad);
-            border: 2px solid #f1c40f;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-size: 20px;
-            font-weight: 900;
-            text-transform: uppercase;
-        }
-
-        .welcome-text {
-            font-size: 1.1rem;
-            color: #bdc3c7;
-            font-weight: bold;
-        }
-
-        .user-highlight {
-            color: #2ecc71;
-            text-shadow: 0 0 5px rgba(46, 204, 113, 0.4);
-        }
-
-        /* === КНОПКА "В ИГРУ" (Зеленый пульсирующий неон) === */
-        .btn-play-neon {
-            background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%) !important;
-            color: white !important;
-            border: none;
-            box-shadow: 0 4px 15px rgba(46, 204, 113, 0.4);
-            animation: playPulse 2.0s infinite alternate ease-in-out;
-        }
-
-        @keyframes playPulse {
-            0% {
-                box-shadow: 0 4px 10px rgba(46, 204, 113, 0.4);
-            }
-            100% {
-                box-shadow: 0 4px 25px rgba(46, 204, 113, 0.8), 0 0 10px rgba(46, 204, 113, 0.5);
-            }
-        }
-
-        /* === КНОПКА "ВЫХОД" (Красный неон) === */
-        .btn-danger-neon {
-            background: rgba(255, 255, 255, 0.02);
-            color: #bdc3c7;
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            box-sizing: border-box;
-        }
-
-        .btn-danger-neon:hover {
-            border-color: #e74c3c !important; /* Красный неон */
-            color: #e74c3c !important;
-            background: rgba(231, 76, 60, 0.05) !important;
-            transform: translateY(-3px);
-            box-shadow: 0 0 20px rgba(231, 76, 60, 0.4);
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ club_name }} | Добро пожаловать</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@400;600;700;800&family=Orbitron:wght@700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', path='css/theme.css') }}?v={{ v }}">
+  <link rel="stylesheet" href="{{ url_for('static', path='css/home.css') }}?v={{ v }}">
 </head>
 <body>
 
-    <!-- Фоновые свечения -->
-    <div class="glow-circle glow-green"></div>
-    <div class="glow-circle glow-purple"></div>
+<div class="pp-scene">
+  <span class="home-float-chip home-float-chip--1" aria-hidden="true"></span>
+  <span class="home-float-chip home-float-chip--2" aria-hidden="true"></span>
+  <span class="home-float-chip home-float-chip--3" aria-hidden="true"></span>
+  <span class="home-float-chip home-float-chip--4" aria-hidden="true"></span>
 
-    <div class="hero-container">
-        
-        <h1 class="logo-title">{{ club_name }}</h1>
-        <div class="subtitle">Автор: <span class="shimmer-text">{{ creator_name }}</span></div>
+  {% if user %}
+    <span class="home-status-badge home-status-badge--auth">Авторизован</span>
+  {% else %}
+    <span class="home-status-badge home-status-badge--guest">Гость</span>
+  {% endif %}
 
-        <div class="action-card">
-            {% if user %}
-                <div class="welcome-container">
-                    <div class="mini-avatar">
-                        {{ user.name[0] | upper }}
-                    </div>
-                </div>
-
-                <!-- КНОПКИ ДЕЙСТВИЙ -->
-                <!-- Зеленая пульсирующая кнопка -->
-                <a href="/lobby" class="btn btn-play-neon">В ИГРУ</a>
-            
-                <!-- Циановая кнопка (использует наш прошлый стиль btn-outline) -->
-                <a href="/profile" class="btn btn-outline">ПРОФИЛЬ</a>
-            
-                <!-- Красная неоновая кнопка выхода -->
-                <a href="/logout" class="btn btn-danger-neon">ВЫХОД</a>
-            {% else %}
-                <a href="/login" class="btn btn-primary">АВТОРИЗАЦИЯ</a>
-            {% endif %}
-        </div>
-
-        <div class="footer">
-            &copy; 2026 Все права защищены
-        </div>
+  <main class="home-hero">
+    <div class="home-logo-wrap">
+      <p class="home-tagline">Online poker club</p>
+      <h1 class="home-logo">{{ club_name }}</h1>
     </div>
+
+    <p class="home-subtitle">Автор: <strong>{{ creator_name }}</strong></p>
+
+    <div class="home-card">
+      {% if user %}
+        <div class="home-welcome">
+          <div class="home-avatar">
+            {% if user.avatar_url %}
+              <img src="{{ user.avatar_url }}" alt="">
+            {% else %}
+              {{ user.name[0] | upper }}
+            {% endif %}
+          </div>
+          <p class="home-welcome-text">С возвращением, <span>{{ user.name }}</span></p>
+        </div>
+        <div class="home-divider"></div>
+        <a href="/lobby" class="pp-btn pp-btn-play">▶ В игру</a>
+        <a href="/profile" class="pp-btn pp-btn-ghost">Профиль</a>
+        <a href="/logout" class="pp-btn pp-btn-danger">Выход</a>
+      {% else %}
+        <a href="/login" class="pp-btn pp-btn-primary">Авторизация</a>
+      {% endif %}
+    </div>
+  </main>
+
+  <footer class="home-footer">&copy; 2026 Все права защищены</footer>
+</div>
 
 </body>
 </html>

@@ -1,0 +1,190 @@
+/* PoluPoker shared design tokens — use across home, profile, lobby, table */
+
+:root {
+  --void: #07050f;
+  --panel: rgba(12, 10, 24, 0.72);
+  --glass: rgba(255, 255, 255, 0.04);
+  --stroke: rgba(168, 85, 247, 0.28);
+  --purple: #a855f7;
+  --pink: #ec4899;
+  --cyan: #22d3ee;
+  --gold: #fbbf24;
+  --green: #34d399;
+  --red: #f87171;
+  --muted: #94a3b8;
+  --text: #f8fafc;
+  --glow-purple: 0 0 40px rgba(168, 85, 247, 0.35);
+  --glow-pink: 0 0 35px rgba(236, 72, 153, 0.3);
+  --glow-cyan: 0 0 28px rgba(34, 211, 238, 0.28);
+  --font-body: "Exo 2", "Segoe UI", sans-serif;
+  --font-display: "Orbitron", "Segoe UI", sans-serif;
+  --radius-lg: 28px;
+  --radius-md: 16px;
+  --radius-sm: 12px;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100vh;
+  color: var(--text);
+  font-family: var(--font-body);
+  background: var(--void);
+}
+
+/* Full-page immersive backdrop */
+.pp-scene {
+  position: relative;
+  min-height: 100vh;
+  overflow: hidden;
+}
+
+.pp-scene::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(circle at 15% 20%, rgba(236, 72, 153, 0.22), transparent 42%),
+    radial-gradient(circle at 85% 15%, rgba(168, 85, 247, 0.25), transparent 40%),
+    radial-gradient(circle at 50% 85%, rgba(34, 211, 238, 0.12), transparent 45%),
+    var(--pp-scene-image, url("/static/images/homeFon.png")) center / cover no-repeat;
+  filter: saturate(1.12) brightness(0.52);
+  z-index: 0;
+}
+
+.pp-scene::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(7, 5, 15, 0.3), rgba(7, 5, 15, 0.9)),
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(255, 255, 255, 0.015) 2px,
+      rgba(255, 255, 255, 0.015) 4px
+    );
+  pointer-events: none;
+  z-index: 1;
+}
+
+.pp-scene--lobby {
+  --pp-scene-image: url("/static/images/lobbyFon2.png");
+}
+
+@keyframes pp-rise {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes pp-shimmer {
+  0% { background-position: 0% center; }
+  100% { background-position: 200% center; }
+}
+
+.pp-btn {
+  width: 100%;
+  padding: 15px 20px;
+  border-radius: var(--radius-sm);
+  border: none;
+  cursor: pointer;
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-decoration: none;
+  text-align: center;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: 0.25s ease;
+}
+
+.pp-btn-primary {
+  color: #0c0818;
+  background: linear-gradient(135deg, #fde68a, var(--gold), #f59e0b);
+  box-shadow: 0 8px 24px rgba(251, 191, 36, 0.35);
+}
+
+.pp-btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 32px rgba(251, 191, 36, 0.45);
+}
+
+.pp-btn-purple {
+  color: white;
+  background: linear-gradient(135deg, rgba(79, 70, 229, 0.9), rgba(124, 58, 237, 0.9));
+  border: 1px solid rgba(167, 139, 250, 0.45);
+}
+
+.pp-btn-purple:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--glow-purple);
+}
+
+.pp-btn-play {
+  color: white;
+  background: linear-gradient(135deg, #34d399, #10b981);
+  box-shadow: 0 8px 24px rgba(52, 211, 153, 0.35);
+  animation: pp-play-pulse 2s ease-in-out infinite alternate;
+}
+
+@keyframes pp-play-pulse {
+  from { box-shadow: 0 6px 20px rgba(52, 211, 153, 0.35); }
+  to { box-shadow: 0 8px 32px rgba(52, 211, 153, 0.55), 0 0 16px rgba(52, 211, 153, 0.25); }
+}
+
+.pp-btn-play:hover {
+  transform: translateY(-2px);
+}
+
+.pp-btn-ghost {
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+}
+
+.pp-btn-ghost:hover {
+  color: var(--cyan);
+  border-color: rgba(34, 211, 238, 0.45);
+  box-shadow: var(--glow-cyan);
+  transform: translateY(-2px);
+}
+
+.pp-btn-danger {
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+.pp-btn-danger:hover {
+  color: var(--red);
+  border-color: rgba(248, 113, 113, 0.5);
+  box-shadow: 0 0 20px rgba(248, 113, 113, 0.25);
+  transform: translateY(-2px);
+}
+
+.pp-chip-icon {
+  display: inline-block;
+  width: 1.05em;
+  height: 1.05em;
+  background: url("/static/poker_chip.svg") center / contain no-repeat;
+  vertical-align: -0.12em;
+}

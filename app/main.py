@@ -82,7 +82,8 @@ def page_home(request: Request):
     context = {
         "club_name": "PoluPoker",
         "creator_name": "SiliVal",
-        "user": current_user
+        "user": current_user,
+        "v": settings.APP_VERSION,
     }
     return templates.TemplateResponse(
         request=request, name="clear_home.html", context=context
