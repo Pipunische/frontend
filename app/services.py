@@ -96,6 +96,43 @@ def enrich_user_wallet_display(user: dict) -> dict:
     return user
 
 
+def _pick(stats: dict, *keys):
+    for key in keys:
+        value = stats.get(key)
+        if value is not None:
+            return value
+    return None
+
+
+def normalize_user_stats(stats: dict) -> dict:
+    """Map Java UserStatsDTO field names to what profile.html expects (no rank logic)."""
+    normalized = dict(stats)
+
+    normalized["hands_played"] = _pick(stats, "hands_played", "handsPlayed") or 0
+    normalized["total_won"] = _pick(stats, "total_won", "totalWon") or 0
+    normalized["win_ratio"] = _pick(stats, "win_ratio", "winRatio") or 0
+    normalized["biggest_pot"] = _pick(stats, "biggest_pot", "biggestPot") or 0
+    normalized["rank"] = _pick(stats, "rank") or "Sucker"
+
+    progress = _pick(stats, "rank_progress_percent", "rankProgressPercent")
+    if progress is None:
+        progress = _pick(stats, "rank_progress", "rankProgress")
+    normalized["rank_progress_percent"] = float(progress) if progress is not None else 0
+
+    normalized["next_rank"] = _pick(stats, "next_rank", "nextRank")
+    chips = _pick(stats, "chips_to_next_rank", "chipsToNextRank")
+    normalized["chips_to_next_rank"] = int(chips) if chips is not None else 0
+
+    rank_min = _pick(stats, "rank_min_total_won", "rankMinTotalWon")
+    rank_max = _pick(stats, "rank_max_total_won", "rankMaxTotalWon")
+    if rank_min is not None:
+        normalized["rank_min_total_won"] = int(rank_min)
+    if rank_max is not None:
+        normalized["rank_max_total_won"] = int(rank_max)
+
+    return normalized
+
+
 templates.env.filters["poker_amount"] = format_poker_amount
 templates.env.filters["poker_blinds"] = format_blinds
 

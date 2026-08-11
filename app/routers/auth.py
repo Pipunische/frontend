@@ -5,7 +5,7 @@ from loguru import logger
 
 from app.config import settings
 from app.models import GoogleAuthRequest, NicknameRequest
-from app.services import templates, java_request, core_unreachable_json, is_core_unreachable
+from app.services import templates, java_request, core_unreachable_json, is_core_unreachable, normalize_user_stats
 
 router = APIRouter(tags=["Authentication & Profile"])
 
@@ -168,6 +168,8 @@ async def page_profile(request: Request):
         err_msg = stats_res.text if stats_res else "No Response"
         status = stats_res.status_code if stats_res else "N/A"
         logger.error(f"Failed to fetch stats from Java | Status: {status} | URL: {stats_url} | Error: {err_msg}")
+
+    stats_data = normalize_user_stats(stats_data)
 
     context = {
         "user": current_user,

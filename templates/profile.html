@@ -1,456 +1,230 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <title>Профиль Игрока</title>
-<style>
-    body {
-        /* Фоновое изображение */
-        background: url('/static/images/lobbyFon2.png') no-repeat center center fixed; 
-        background-size: cover;
-        margin: 0;
-        color: white; 
-        font-family: 'Segoe UI', sans-serif;
-        height: 100vh;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-
-    /* Стеклянный дашборд */
-    .dashboard-wrapper {
-        width: 90%;
-        max-width: 1200px;
-        height: 80vh;
-        background: rgba(30, 40, 50, 0.85); 
-        backdrop-filter: blur(10px); 
-        -webkit-backdrop-filter: blur(10px);
-        border: 2px solid #3498db;
-        border-radius: 20px;
-        box-shadow: 0 20px 50px rgba(0,0,0,0.7);
-        display: flex;
-        overflow: hidden; 
-    }
-
-    /* Левая колонка (Sidebar) */
-    .profile-sidebar {
-        width: 350px;
-        background: rgba(20, 25, 30, 0.6);
-        padding: 40px;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        border-right: 1px solid rgba(52, 152, 219, 0.3);
-    }
-
-    /* Правая колонка (Content) */
-    .profile-content {
-        flex-grow: 1;
-        padding: 40px;
-        position: relative;
-    }
-
-    /* Аватар */
-    .avatar-preview {
-        width: 150px;
-        height: 150px;
-        border-radius: 50%;
-        background: linear-gradient(135deg, #3498db, #8e44ad);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 60px;
-        font-weight: 900;
-        color: white;
-        border: 4px solid #f1c40f;
-        box-shadow: 0 10px 20px rgba(0,0,0,0.5);
-        overflow: hidden;
-        margin-bottom: 10px; 
-    }
-    .avatar-preview img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-    }
-
-    /* Инлайн-виджет никнейма */
-    .nickname-widget {
-        margin: 15px 0;
-        height: 45px; 
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-
-    .nickname-view, .nickname-edit {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 12px;
-        width: 100%;
-        height: 100%;
-    }
-
-    .user-nickname {
-        margin: 0;
-        color: #f1c40f;
-        font-size: 28px;
-        font-weight: 900;
-        letter-spacing: 1px;
-        text-shadow: 0 0 10px rgba(241, 196, 15, 0.3);
-    }
-
-    .edit-btn {
-        background: transparent;
-        border: none;
-        font-size: 18px;
-        cursor: pointer;
-        opacity: 0.6;
-        transition: transform 0.2s, opacity 0.2s;
-    }
-    .edit-btn:hover {
-        opacity: 1;
-        transform: scale(1.2);
-    }
-
-    .nickname-edit input {
-        width: 180px; 
-        padding: 8px 12px;
-        border-radius: 8px;
-        background: rgba(30, 40, 50, 0.4) !important;
-        backdrop-filter: blur(5px);
-        -webkit-backdrop-filter: blur(5px);
-        border: 1px solid rgba(0, 242, 254, 0.3) !important;
-        color: #00f2fe !important; 
-        font-size: 18px;
-        font-weight: bold;
-        text-align: center;
-        outline: none;
-        box-shadow: inset 0 0 10px rgba(0,0,0,0.6);
-        text-shadow: 0 0 5px rgba(0, 242, 254, 0.5);
-        transition: all 0.3s ease;
-    }
-    .nickname-edit input:focus {
-        border-color: #00f2fe !important;
-        box-shadow: 0 0 15px rgba(0, 242, 254, 0.4), inset 0 0 10px rgba(0,0,0,0.8) !important;
-        color: #fff !important; 
-        text-shadow: 0 0 8px #00f2fe;
-    }
-
-    .save-nick-btn, .cancel-nick-btn {
-        background: rgba(255, 255, 255, 0.03);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 50%; 
-        width: 36px;
-        height: 36px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-        padding: 0;
-        color: #bdc3c7; 
-    }
-
-    .save-nick-btn:hover {
-        background: rgba(46, 204, 113, 0.1) !important;
-        border-color: #2ecc71 !important;
-        color: #2ecc71 !important; 
-        box-shadow: 0 0 15px rgba(46, 204, 113, 0.4) !important;
-        transform: translateY(-2px) scale(1.05);
-    }
-
-    .cancel-nick-btn:hover {
-        background: rgba(231, 76, 60, 0.1) !important;
-        border-color: #e74c3c !important;
-        color: #e74c3c !important; 
-        box-shadow: 0 0 15px rgba(231, 76, 60, 0.4) !important;
-        transform: translateY(-2px) scale(1.05);
-    }
-
-    .wallet-badge {
-        background: rgba(46, 204, 113, 0.2);
-        border: 1px solid #2ecc71;
-        color: #2ecc71;
-        padding: 10px 20px;
-        border-radius: 20px;
-        font-size: 20px;
-        font-weight: bold;
-        margin-bottom: 30px;
-    }
-
-    /* Кнопки управления */
-    .file-upload-btn, .save-btn, .back-btn {
-        width: 100%;
-        padding: 15px;
-        border-radius: 10px;
-        cursor: pointer;
-        font-weight: bold;
-        text-transform: uppercase;
-        text-align: center;
-        transition: 0.3s;
-        box-sizing: border-box;
-        display: inline-block;
-        text-decoration: none;
-        margin-bottom: 15px;
-    }
-
-    .file-upload-btn { background: #34495e; color: white; border: 1px solid #3498db; }
-    .file-upload-btn:hover { background: #3498db; }
-    .hidden-input { display: none; }
-    
-    .save-btn { background: #27ae60; color: white; border: none; }
-    .save-btn:hover { background: #2ecc71; transform: scale(1.02); }
-
-    .back-btn { background: transparent; border: 2px solid #95a5a6; color: #95a5a6; margin-top: auto; }
-    .back-btn:hover { border-color: #f1c40f; color: #f1c40f; }
-
-    /* Элементы правой колонки */
-    .content-header {
-        font-size: 24px;
-        color: #bdc3c7;
-        border-bottom: 2px solid #34495e;
-        padding-bottom: 10px;
-        margin-top: 0;
-        margin-bottom: 30px;
-    }
-
-    .stats-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 20px;
-    }
-
-    .stat-card {
-        background: rgba(0, 0, 0, 0.3);
-        border: 1px solid #34495e;
-        padding: 20px;
-        border-radius: 15px;
-        text-align: center;
-        transition: transform 0.3s ease, box-shadow 0.3s ease; 
-    }
-
-    .stat-card:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 10px 20px rgba(0,0,0,0.5);
-        border-color: #3498db;
-    }
-
-    .rank-card {
-        background: linear-gradient(135deg, rgba(155, 89, 182, 0.1), rgba(142, 68, 173, 0.3));
-        border: 2px solid rgba(155, 89, 182, 0.5);
-        padding: 25px;
-        border-radius: 15px;
-        text-align: center;
-        margin-top: 20px; 
-        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
-    }
-
-    .rank-value {
-        color: #9b59b6;
-        font-size: 36px; 
-        font-weight: 900;
-        text-transform: uppercase;
-        letter-spacing: 2px;
-        text-shadow: 0 0 15px rgba(155, 89, 182, 0.6);
-        margin: 10px 0;
-    }    
-
-    .rank-progress-track {
-        width: 80%;
-        height: 6px;
-        background: rgba(0,0,0,0.5);
-        border-radius: 3px;
-        margin: 0 auto;
-        overflow: hidden;
-    }
-    
-    .rank-progress-fill {
-        height: 100%;
-        background: #9b59b6;
-        box-shadow: 0 0 10px #9b59b6;
-    }
-
-    .stat-title { color: #95a5a6; font-size: 14px; text-transform: uppercase; margin-bottom: 10px; }
-    .stat-value { color: white; font-size: 28px; font-weight: bold; }
-
-    .chip-icon {
-        display: inline-block;
-        width: 1.1em;
-        height: 1.1em;
-        background-image: url("/static/poker_chip.svg");
-        background-size: contain;
-        background-repeat: no-repeat;
-        background-position: center;
-        vertical-align: middle;
-        margin-right: 5px; 
-    }
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Профиль Игрока</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@400;600;700;800&family=Orbitron:wght@700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', path='css/profile.css') }}?v={{ v }}">
 </head>
 <body>
 
-<div class="dashboard-wrapper">
-    
-    <!-- ЛЕВАЯ КОЛОНКА: Аватар и Баланс -->
-    <div class="profile-sidebar">
-        <div class="avatar-preview" id="avatar-container">
-            <!-- Динамическое отображение аватара либо первой буквы ника -->
-            {% if user.avatar_url %}
-                <img src="{{ user.avatar_url }}" alt="Avatar">
-            {% else %}
-                {{ user.name[0] | upper }}
-            {% endif %}
-        </div>
-        
-        <div class="nickname-widget">
-            
-            <!-- Режим Чтения -->
-            <div class="nickname-view" id="nickname-view">
-                <h2 class="user-nickname" id="display-nickname">{{ user.name }}</h2>
-                <button class="edit-btn" onclick="toggleEditNickname()" title="Изменить ник">✏️</button>
-            </div>
+<div class="profile-scene">
+  <div class="profile-shell">
 
-            <!-- Режим Редактирования (Inline) -->
-            <div class="nickname-edit" id="edit-nick-form" style="display: none;">
-                <input type="text" id="new-nickname-input" value="{{ user.name }}" maxlength="20" placeholder="Новый ник">
-                
-                <!-- Кнопка Галочка (Зеленый неон) -->
-                <button class="save-nick-btn" onclick="saveNickname()" title="Сохранить">
-                    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
-                    </svg>
-                </button>
-                
-                <!-- Кнопка Крестик (Красный неон) -->
-                <button class="cancel-nick-btn" onclick="toggleEditNickname()" title="Отмена">
-                    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-                        <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
-                    </svg>
-                </button>
-            </div>
-            
+    <aside class="profile-identity">
+      <div class="profile-avatar-wrap">
+        <div class="profile-avatar-ring" aria-hidden="true"></div>
+        <div class="profile-avatar" id="avatar-container">
+          {% if user.avatar_url %}
+            <img src="{{ user.avatar_url }}" alt="Avatar">
+          {% else %}
+            {{ user.name[0] | upper }}
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="profile-nick-block">
+        <div class="profile-nick-view" id="nickname-view">
+          <h2 class="profile-nickname" id="display-nickname">{{ user.name }}</h2>
+          <button class="profile-icon-btn" type="button" onclick="toggleEditNickname()" title="Изменить ник" aria-label="Изменить ник">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">
+              <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1.003 1.003 0 0 0 0-1.42l-2.34-2.34a1.003 1.003 0 0 0-1.42 0l-1.83 1.83 3.75 3.75 1.84-1.82z"/>
+            </svg>
+          </button>
         </div>
 
-        <div class="wallet-badge"><span class="chip-icon"></span>{{ user.wallet_balance }}</div>
+        <div class="profile-nick-edit" id="edit-nick-form" style="display: none;">
+          <input type="text" id="new-nickname-input" value="{{ user.name }}" maxlength="20" placeholder="Новый ник">
+          <button class="profile-icon-btn" type="button" onclick="saveNickname()" title="Сохранить">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+          </button>
+          <button class="profile-icon-btn" type="button" onclick="toggleEditNickname()" title="Отмена">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+          </button>
+        </div>
+      </div>
 
-        <!-- Форма аватара -->
-        <form id="avatar-form" action="/api/upload-avatar" method="POST" enctype="multipart/form-data" style="width: 100%; margin-top: 20px;">
-            <label class="file-upload-btn">
-                📷 Выбрать фото
-                <input type="file" id="avatar-input" name="avatar" accept="image/png, image/jpeg, image/webp" class="hidden-input">
-            </label>
-            <button type="submit" class="save-btn" id="save-btn" style="display: none;">
-                💾 Сохранить аватар
-            </button>
+      <div class="profile-wallet">
+        <span class="profile-chip-icon"></span>{{ "{:,}".format(user.wallet_balance).replace(',', ' ') }}
+      </div>
+
+      <div class="profile-actions">
+        <form id="avatar-form" action="/api/upload-avatar" method="POST" enctype="multipart/form-data">
+          <label class="profile-btn profile-btn-upload">
+            📷 Выбрать фото
+            <input type="file" id="avatar-input" name="avatar" accept="image/png,image/jpeg,image/webp" class="profile-hidden-input">
+          </label>
+          <button type="submit" class="profile-btn profile-btn-save" id="save-btn">💾 Сохранить аватар</button>
         </form>
+        <a href="/lobby" class="profile-btn profile-btn-back">← Вернуться в лобби</a>
+      </div>
+    </aside>
 
-        <a href="/lobby" class="back-btn">← Вернуться в Лобби</a>
-    </div>
-
-    <!-- ПРАВАЯ КОЛОНКА: Статистика -->
-    <div class="profile-content">
-        <h2 class="content-header">Статистика Игрока</h2>
-        
-        <div class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-title">Сыграно раздач</div>
-                <div class="stat-value">{{ stats.hands_played }}</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-title">% Побед</div>
-                <div class="stat-value" style="color: #3498db;">{{ stats.win_ratio }}%</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-title">Выиграно фишек</div>
-                <div class="stat-value" style="color: #2ecc71;">{{ "{:,}".format(stats.total_won).replace(',', ' ') }}</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-title">Самый крупный банк</div>
-                <div class="stat-value" style="color: #f1c40f;">{{ "{:,}".format(stats.biggest_pot).replace(',', ' ') }}</div>
-            </div>
-
-            <!-- Карточка ранга -->
-            <div class="rank-card">
-                <div class="stat-title">Текущий ранг</div>
-                <div class="rank-value">{{ stats.rank }}</div>
-                <div class="rank-progress-track">
-                    <div class="rank-progress-fill" style="width: 15%;"></div>
-                </div>
-            </div>
+    <main class="profile-dashboard">
+      <header class="profile-dashboard-head">
+        <div>
+          <h1>Статистика игрока</h1>
+          <p>Твой прогресс за столами в реальном времени</p>
         </div>
-    </div>
+      </header>
 
+      <section class="profile-bento">
+        <article class="profile-stat profile-stat--hands">
+          <span class="profile-stat-icon">🃏</span>
+          <div class="profile-stat-label">Сыграно раздач</div>
+          <div class="profile-stat-value" data-count-target="{{ stats.hands_played }}">{{ stats.hands_played }}</div>
+        </article>
+
+        <article class="profile-stat profile-stat--win">
+          <span class="profile-stat-icon">🎯</span>
+          <div class="profile-stat-label">% Побед</div>
+          <div class="profile-stat-value">{{ stats.win_ratio }}%</div>
+        </article>
+
+        <article class="profile-stat profile-stat--won">
+          <span class="profile-stat-icon">💰</span>
+          <div class="profile-stat-label">Выиграно фишек</div>
+          <div class="profile-stat-value">{{ "{:,}".format(stats.total_won).replace(',', ' ') }}</div>
+        </article>
+
+        <article class="profile-stat profile-stat--pot">
+          <span class="profile-stat-icon">🏆</span>
+          <div class="profile-stat-label">Самый крупный банк</div>
+          <div class="profile-stat-value">{{ "{:,}".format(stats.biggest_pot).replace(',', ' ') }}</div>
+        </article>
+
+        <article class="profile-rank-hero">
+          <div class="profile-rank-badge">
+            <div class="profile-rank-kicker">Текущий ранг</div>
+            <h2 class="profile-rank-name">{{ stats.rank }}</h2>
+            <div class="profile-rank-meta">
+              {% if stats.next_rank %}
+                Следующий уровень — <strong>{{ stats.next_rank }}</strong>
+              {% else %}
+                Максимальный ранг достигнут
+              {% endif %}
+            </div>
+          </div>
+
+          <div class="profile-rank-progress-block">
+            <div class="profile-rank-progress-head">
+              <span>Прогресс ранга</span>
+              <strong>{{ stats.rank_progress_percent | default(0) }}%</strong>
+            </div>
+            <div class="profile-rank-track" role="progressbar"
+                 aria-valuenow="{{ stats.rank_progress_percent | default(0) }}"
+                 aria-valuemin="0" aria-valuemax="100">
+              <div class="profile-rank-fill" id="rank-progress-fill"
+                   data-progress="{{ stats.rank_progress_percent | default(0) }}"></div>
+            </div>
+            {% if stats.next_rank %}
+            <div class="profile-rank-caption">
+              Ещё {{ "{:,}".format(stats.chips_to_next_rank | default(0)).replace(',', ' ') }}
+              <span class="profile-chip-icon"></span> до {{ stats.next_rank }}
+            </div>
+            {% elif stats.rank_progress_percent is defined and stats.rank_progress_percent >= 100 %}
+            <div class="profile-rank-caption">Максимальный ранг достигнут</div>
+            {% endif %}
+          </div>
+        </article>
+      </section>
+    </main>
+
+  </div>
 </div>
 
 <script>
-    function toggleEditNickname() {
-        const viewBlock = document.querySelector('.nickname-view');
-        const editBlock = document.getElementById('edit-nick-form');
+  function toggleEditNickname() {
+    const viewBlock = document.getElementById('nickname-view');
+    const editBlock = document.getElementById('edit-nick-form');
+    const isHidden = editBlock.style.display === 'none';
+    viewBlock.style.display = isHidden ? 'none' : 'flex';
+    editBlock.style.display = isHidden ? 'flex' : 'none';
+  }
 
-        if (editBlock.style.display === 'none') {
-            viewBlock.style.display = 'none';
-            editBlock.style.display = 'flex';
-        } else {
-            viewBlock.style.display = 'flex';
-            editBlock.style.display = 'none';
-        }
+  async function saveNickname() {
+    const newNick = document.getElementById('new-nickname-input').value.trim();
+    if (!newNick || newNick.length > 20) {
+      alert('Ник должен состоять не более чем из 20 символов');
+      return;
     }
 
-    async function saveNickname() {
-        const newNick = document.getElementById('new-nickname-input').value.trim();
-        if (!newNick || newNick.length > 20) {
-            alert("Ник должен состоять не более чем из 20 символов")
-            return;
+    try {
+      const response = await fetch('/api/profile/nickname', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ new_nickname: newNick }),
+      });
+
+      const result = await response.json();
+
+      if (result.redirect) {
+        window.location.href = result.redirect;
+        return;
+      }
+
+      if (response.ok && !result.error) {
+        document.getElementById('display-nickname').innerText = result.new_nickname;
+        const avatarContainer = document.getElementById('avatar-container');
+        if (avatarContainer && !avatarContainer.querySelector('img')) {
+          avatarContainer.innerText = result.new_nickname.charAt(0).toUpperCase();
         }
+        toggleEditNickname();
+        alert('Никнейм успешно изменен.');
+      } else {
+        alert('Ошибка: ' + (result.detail || result.error || 'Неизвестная ошибка'));
+      }
+    } catch (err) {
+      console.error('Ошибка связи:', err);
+      alert('Ошибка связи с сервером');
+    }
+  }
 
-        try {
-            const response = await fetch('/api/profile/nickname', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ new_nickname: newNick })
-            });
+  const fileInput = document.getElementById('avatar-input');
+  const avatarContainer = document.getElementById('avatar-container');
+  const saveBtn = document.getElementById('save-btn');
 
-            const result = await response.json();
+  fileInput.addEventListener('change', (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
 
-            if (result.redirect) {
-                window.location.href = result.redirect;
-                return;
-            }
+    saveBtn.style.display = 'block';
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      avatarContainer.innerHTML = `<img src="${e.target.result}" alt="Preview">`;
+    };
+    reader.readAsDataURL(file);
+  });
 
-            if (response.ok && !result.error) {
-                document.getElementById('display-nickname').innerText = result.new_nickname;
+  requestAnimationFrame(() => {
+    const fill = document.getElementById('rank-progress-fill');
+    if (fill) {
+      const pct = Math.min(100, Math.max(0, Number(fill.dataset.progress) || 0));
+      fill.style.width = pct + '%';
+    }
+  });
 
-                const avatarContainer = document.getElementById('avatar-container');
-                if (avatarContainer && !avatarContainer.querySelector('img')) {
-                    avatarContainer.innerText = result.new_nickname.charAt(0).toUpperCase();
-                } 
+  (function animateCount() {
+    const el = document.querySelector('[data-count-target]');
+    if (!el) return;
+    const target = Number(el.dataset.countTarget) || 0;
+    if (target <= 0) return;
 
-                toggleEditNickname();
-                alert("Никнейм успешно изменен.");
-            } else {
-                alert("Ошибка: " + (result.detail || result.error || "Неизвестная ошибка"));
-            }
-        } catch (err) {
-            console.error("Ошибка связи:", err);
-            alert("Ошибка связи с сервером");
-        }
+    const duration = 900;
+    const start = performance.now();
+
+    function tick(now) {
+      const t = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - t, 3);
+      el.textContent = Math.round(target * eased).toLocaleString('ru-RU');
+      if (t < 1) requestAnimationFrame(tick);
     }
 
-    const fileInput = document.getElementById('avatar-input');
-    const avatarContainer = document.getElementById('avatar-container');
-    const saveBtn = document.getElementById('save-btn');
-
-    fileInput.addEventListener('change', function(event) {
-        const file = event.target.files[0];
-        if (file) {
-            saveBtn.style.display = 'block';
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                avatarContainer.innerHTML = `<img src="${e.target.result}" alt="Preview">`;
-            }
-            reader.readAsDataURL(file);
-        }
-    });
+    requestAnimationFrame(tick);
+  })();
 </script>
 </body>
 </html>
