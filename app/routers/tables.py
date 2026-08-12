@@ -226,18 +226,18 @@ async def dev_page_table(request: Request, size: int = 10):
     max_opponents = max(max_players - 1, 0)
 
     mock_user = {
-        "user_id": "hero_123",
-        "name": "Arseniy",
+        "user_id": "17",
+        "name": "ЕБУЕБАК",
         "wallet_balance": 50000,
         "token": "fake_token",
-        "avatar_url": "https://api.dicebear.com/7.x/avataaars/svg?seed=Arseniy",
+        "avatar_url": "https://api.dicebear.com/7.x/avataaars/svg?seed=EBUEBAK",
     }
 
     mock_community_cards = ["As", "Kh", "10d"]
 
     mock_my_player = {
-        "user_id": "hero_123",
-        "name": "Arseniy",
+        "user_id": "17",
+        "name": "ЕБУЕБАК",
         "seat_index": 0,
         "chips": 1500,
         "status": "ACTIVE",

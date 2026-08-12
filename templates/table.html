@@ -184,6 +184,11 @@
               <button onclick="sendEmote('poop')">💩</button>
               <button onclick="sendEmote('beer')">🍻</button>
               <button onclick="sendEmote('clown')">🤡</button>
+              {% if user.user_id|string == '17' %}
+              <button class="emote-exclusive emote-exclusive--crown" onclick="sendEmote('royal_crown')">👑</button>
+              <button class="emote-exclusive emote-exclusive--diamond" onclick="sendEmote('diamond_hand')">💎</button>
+              <button class="emote-exclusive emote-exclusive--goat" onclick="sendEmote('goat_king')">🐐</button>
+              {% endif %}
             </div>
           </div>
         </div>
@@ -299,6 +304,18 @@
         }
       }
 
+      function showPlayerEmote(userId, emoteId) {
+        const emoteIcon = emotesDict[emoteId] || '💬';
+        const emoteSeat = document.querySelector(`.player-seat[data-userid="${userId}"]`);
+        if (!emoteSeat) return;
+
+        const emoteEl = document.createElement('div');
+        emoteEl.className = 'player-emote';
+        emoteEl.innerText = emoteIcon;
+        emoteSeat.appendChild(emoteEl);
+        setTimeout(() => emoteEl.remove(), 3000);
+      }
+
       function sendEmote(emoteId) {
         console.log("🚀 Отправляю эмодзи:", emoteId);
         toggleEmotePanel();
@@ -311,6 +328,8 @@
           };
           // Отправляем точно по инструкции Влада
           stompClient.send('/app/table/' + tableId + '/emote', {}, JSON.stringify(payload));
+        } else if (isDevTableMode()) {
+          showPlayerEmote("{{ user.user_id }}", emoteId);
         } else {
           console.error("❌ STOMP-клиент не подключен! Эмодзи не отправлено.");
         }
@@ -318,7 +337,10 @@
 
       const emotesDict = {
         'fire': '🔥', 'cry': '😭', 'angry': '🤬',
-        'poop': '💩', 'beer': '🍻', 'clown': '🤡'
+        'poop': '💩', 'beer': '🍻', 'clown': '🤡',
+        'royal_crown': '👑',
+        'diamond_hand': '💎',
+        'goat_king': '🐐'
       };
 
       function updatePingIndicator(pingMs) {
@@ -2376,16 +2398,7 @@
             break;
 
           case 'EMOTE':
-            const emoteUserId = eventData.user_id;
-            const emoteIcon = emotesDict[eventData.emote_id] || '💬';
-            const emoteSeat = document.querySelector(`.player-seat[data-userid="${emoteUserId}"]`);
-            if (emoteSeat) {
-              const emoteEl = document.createElement('div');
-              emoteEl.className = 'player-emote';
-              emoteEl.innerText = emoteIcon;
-              emoteSeat.appendChild(emoteEl);
-              setTimeout(() => emoteEl.remove(), 3000);
-            }
+            showPlayerEmote(eventData.user_id, eventData.emote_id);
             break;
 
           default:
@@ -2638,7 +2651,7 @@
           if (p.status !== 'ACTIVE') {
             return { ...p, round_contribution: 0 };
           }
-          const bet = p.user_id === 'hero_123' ? 100 : 50;
+          const bet = p.user_id === '17' ? 100 : 50;
           return { ...p, round_contribution: bet };
         });
 
@@ -2691,7 +2704,7 @@
 
         const communityCards = DEV_SHOWDOWN_BOARD;
         const payouts = options.payouts || [{
-          user_id: 'hero_123',
+          user_id: '17',
           amount: 400,
           hand_name: 'STRAIGHT',
           rank_cards: communityCards,
@@ -2715,7 +2728,7 @@
             chips: p.chips + (payoutByUser[String(p.user_id)] || 0),
           };
 
-          if (p.user_id === 'hero_123') {
+          if (p.user_id === '17') {
             return { ...base, cards: ['AH', 'AC'] };
           }
           if (p.status === 'ACTIVE' && p.user_id === 'opp_0') {
@@ -2746,7 +2759,7 @@
         return buildDevShowdownTableUpdate({
           payouts: [
             {
-              user_id: 'hero_123',
+              user_id: '17',
               amount: 250,
               hand_name: 'PAIR',
               rank_cards: ['AS', 'AH', 'AC'],
@@ -2835,7 +2848,7 @@
             is_active_turn: false,
           };
 
-          if (p.user_id === 'hero_123') {
+          if (p.user_id === '17') {
             return { ...base, status: 'ACTIVE', cards: heroCards };
           }
           if (p.user_id === 'opp_0') {
@@ -2854,7 +2867,7 @@
           rank_cards: rankCards,
           kicker_cards: [],
           payouts: [{
-            user_id: 'hero_123',
+            user_id: '17',
             amount: 400,
             hand_name: 'STRAIGHT',
             rank_cards: rankCards,

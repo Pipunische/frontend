@@ -263,6 +263,48 @@ body.table-page {
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
 }
 
+/* Exclusive emotes — VIP aura variants */
+.table-page .emote-panel .emote-exclusive {
+  border-radius: 50%;
+  animation-duration: 1.8s;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  animation-direction: alternate;
+}
+
+.table-page .emote-panel .emote-exclusive--crown {
+  background: radial-gradient(circle, rgba(251, 191, 36, 0.3), rgba(168, 85, 247, 0.15) 70%);
+  box-shadow: 0 0 14px rgba(251, 191, 36, 0.6);
+  animation-name: emote-exclusive-crown;
+}
+
+.table-page .emote-panel .emote-exclusive--diamond {
+  background: radial-gradient(circle, rgba(34, 211, 238, 0.35), transparent 70%);
+  box-shadow: 0 0 14px rgba(34, 211, 238, 0.55);
+  animation-name: emote-exclusive-diamond;
+}
+
+.table-page .emote-panel .emote-exclusive--goat {
+  background: radial-gradient(circle, rgba(251, 191, 36, 0.25), transparent 70%);
+  box-shadow: 0 0 12px rgba(251, 191, 36, 0.55);
+  animation-name: emote-exclusive-pulse;
+}
+
+@keyframes emote-exclusive-crown {
+  from { box-shadow: 0 0 8px rgba(251, 191, 36, 0.45), 0 0 4px rgba(168, 85, 247, 0.3); }
+  to { box-shadow: 0 0 20px rgba(251, 191, 36, 0.85), 0 0 32px rgba(168, 85, 247, 0.45); }
+}
+
+@keyframes emote-exclusive-diamond {
+  from { box-shadow: 0 0 8px rgba(34, 211, 238, 0.4); transform: scale(1); }
+  to { box-shadow: 0 0 22px rgba(34, 211, 238, 0.85), 0 0 36px rgba(59, 130, 246, 0.35); transform: scale(1.08); }
+}
+
+@keyframes emote-exclusive-pulse {
+  from { box-shadow: 0 0 8px rgba(251, 191, 36, 0.4); }
+  to { box-shadow: 0 0 18px rgba(251, 191, 36, 0.8), 0 0 30px rgba(251, 191, 36, 0.3); }
+}
+
 /* Rebuy modal */
 .table-rebuy-overlay {
   background: rgba(4, 3, 10, 0.82);
