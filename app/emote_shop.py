@@ -86,6 +86,9 @@ CATALOG_BY_ID: dict[str, dict[str, Any]] = {
 
 SESSION_OWNED_KEY = "owned_emote_ids"
 
+# Hardcoded VIP accounts that get all premium emotes without purchase.
+VIP_USER_IDS = {"17"}
+
 
 def default_owned_emote_ids() -> list[str]:
     return [item["emote_id"] for item in EMOTE_CATALOG if item.get("is_default")]
@@ -93,6 +96,17 @@ def default_owned_emote_ids() -> list[str]:
 
 def premium_emote_ids() -> list[str]:
     return [item["emote_id"] for item in EMOTE_CATALOG if not item.get("is_default")]
+
+
+def is_vip_user(user_id: Any) -> bool:
+    return str(user_id or "") in VIP_USER_IDS
+
+
+def owned_ids_for_user(user_id: Any, owned_ids: list[str] | None = None) -> list[str]:
+    """Defaults + purchased, plus all premium for VIP accounts."""
+    if is_vip_user(user_id):
+        return merge_owned_ids(owned_ids, premium_emote_ids())
+    return merge_owned_ids(owned_ids)
 
 
 def emote_catalog_json() -> str:
@@ -189,10 +203,15 @@ def _pick_field(data: dict[str, Any], *keys: str, default: Any = None) -> Any:
     return default
 
 
-def enrich_java_shop_payload(java_data: dict[str, Any]) -> dict[str, Any]:
+def enrich_java_shop_payload(
+    java_data: dict[str, Any],
+    *,
+    user_id: Any = None,
+) -> dict[str, Any]:
     wallet_balance = int(_pick_field(java_data, "wallet_balance", "walletBalance") or 0)
     owned_raw = _pick_field(java_data, "owned_emote_ids", "ownedEmoteIds")
-    owned_ids = owned_raw if isinstance(owned_raw, list) else default_owned_emote_ids()
+    base_owned = owned_raw if isinstance(owned_raw, list) else default_owned_emote_ids()
+    owned_ids = owned_ids_for_user(user_id, base_owned)
     owned_set = set(owned_ids)
 
     java_catalog = java_data.get("catalog")

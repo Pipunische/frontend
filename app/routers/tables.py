@@ -11,6 +11,7 @@ from app.emote_shop import (
     get_session_owned_ids,
     java_emotes_unavailable,
     merge_owned_ids,
+    owned_ids_for_user,
     panel_emotes_for_owned,
     premium_emote_ids,
     set_session_owned_ids,
@@ -93,13 +94,13 @@ def _emote_panel_context(owned_ids: list[str] | None = None) -> dict:
 
 
 async def _resolve_owned_emotes(request: Request, my_user: dict) -> list[str]:
-    """Prefer Java ownership; fall back to session / defaults if Java is unavailable."""
+    """Prefer Java ownership; VIP accounts always get premium; else session/defaults."""
     session_owned = get_session_owned_ids(request.session)
+    user_id = my_user.get("user_id")
 
     if my_user.get("token") == "fake_token":
-        return session_owned
+        return owned_ids_for_user(user_id, session_owned)
 
-    user_id = my_user.get("user_id")
     if not user_id:
         return session_owned
 
@@ -107,18 +108,18 @@ async def _resolve_owned_emotes(request: Request, my_user: dict) -> list[str]:
     response = await java_request("GET", target_url, request)
 
     if is_core_unreachable(response) or java_emotes_unavailable(response):
-        return session_owned
+        return owned_ids_for_user(user_id, session_owned)
 
     if response.status_code == 200:
         try:
-            payload = enrich_java_shop_payload(response.json())
-            owned = payload.get("owned_emote_ids") or session_owned
+            payload = enrich_java_shop_payload(response.json(), user_id=user_id)
+            owned = payload.get("owned_emote_ids") or owned_ids_for_user(user_id, session_owned)
             set_session_owned_ids(request.session, owned)
             return owned
         except Exception as exc:
             logger.warning(f"Table emotes: failed to parse Java ownership: {exc}")
 
-    return session_owned
+    return owned_ids_for_user(user_id, session_owned)
 
 
 def _build_table_context(
@@ -349,10 +350,9 @@ async def dev_page_table(request: Request, size: int = 10, vip: int = 0):
     request.session["user"] = mock_user
 
     session_owned = get_session_owned_ids(request.session)
+    owned_emote_ids = owned_ids_for_user(mock_user["user_id"], session_owned)
     if vip:
-        owned_emote_ids = merge_owned_ids(session_owned, premium_emote_ids())
-    else:
-        owned_emote_ids = session_owned
+        owned_emote_ids = merge_owned_ids(owned_emote_ids, premium_emote_ids())
 
     context = _build_table_context(
         mock_game,

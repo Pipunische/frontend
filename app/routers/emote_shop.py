@@ -9,6 +9,7 @@ from app.emote_shop import (
     get_session_owned_ids,
     java_emotes_unavailable,
     mock_purchase,
+    owned_ids_for_user,
     set_session_owned_ids,
 )
 from app.models import EmotePurchaseRequest
@@ -50,7 +51,8 @@ async def _refresh_wallet_from_java(request: Request, user: dict) -> int:
 
 
 def _mock_shop_state(request: Request, user: dict) -> dict:
-    owned_ids = get_session_owned_ids(request.session)
+    owned_ids = owned_ids_for_user(user.get("user_id"), get_session_owned_ids(request.session))
+    set_session_owned_ids(request.session, owned_ids)
     wallet_balance = int(user.get("wallet_balance") or 0)
     return build_shop_response(wallet_balance, owned_ids, source="mock")
 
@@ -72,7 +74,8 @@ async def api_get_emotes(request: Request):
         logger.warning("Emote shop: Java недоступен, отдаём BFF mock")
         wallet_balance = await _refresh_wallet_from_java(request, user)
         user = request.session.get("user") or user
-        owned_ids = get_session_owned_ids(request.session)
+        owned_ids = owned_ids_for_user(user.get("user_id"), get_session_owned_ids(request.session))
+        set_session_owned_ids(request.session, owned_ids)
         return build_shop_response(wallet_balance, owned_ids, source="mock")
 
     if response.status_code == 401:
@@ -80,7 +83,7 @@ async def api_get_emotes(request: Request):
 
     if response.status_code == 200:
         try:
-            payload = enrich_java_shop_payload(response.json())
+            payload = enrich_java_shop_payload(response.json(), user_id=user_id)
         except Exception as exc:
             logger.error(f"Emote shop: не удалось разобрать ответ Java: {exc}")
             return JSONResponse(status_code=502, content={"errorType": "InvalidResponse", "message": "Некорректный ответ сервера"})
@@ -127,7 +130,7 @@ async def api_purchase_emote(request: Request, body: EmotePurchaseRequest):
 
     if is_core_unreachable(response):
         logger.warning("Emote shop purchase: Java недоступен, BFF mock")
-        owned_ids = get_session_owned_ids(request.session)
+        owned_ids = owned_ids_for_user(user.get("user_id"), get_session_owned_ids(request.session))
         success, error = mock_purchase(user, owned_ids, body.emote_id)
         if error:
             return JSONResponse(status_code=400, content=error)
@@ -140,7 +143,7 @@ async def api_purchase_emote(request: Request, body: EmotePurchaseRequest):
 
     if response.status_code == 200:
         try:
-            result = enrich_java_shop_payload(response.json())
+            result = enrich_java_shop_payload(response.json(), user_id=user_id)
         except Exception as exc:
             logger.error(f"Emote shop purchase: не удалось разобрать ответ Java: {exc}")
             return JSONResponse(status_code=502, content={"errorType": "InvalidResponse", "message": "Некорректный ответ сервера"})
@@ -153,7 +156,7 @@ async def api_purchase_emote(request: Request, body: EmotePurchaseRequest):
 
     if java_emotes_unavailable(response):
         logger.info(f"Emote shop purchase: Java API недоступен ({response.status_code}), BFF mock")
-        owned_ids = get_session_owned_ids(request.session)
+        owned_ids = owned_ids_for_user(user.get("user_id"), get_session_owned_ids(request.session))
         success, error = mock_purchase(user, owned_ids, body.emote_id)
         if error:
             status_code = 409 if error.get("errorType") == "AlreadyOwned" else 400
