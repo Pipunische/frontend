@@ -207,6 +207,14 @@
   animation: pp-rise 0.7s var(--ease-out) both;
 }
 
+.lobby-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
 .lobby-title {
   margin: 0;
   font-family: var(--font-display);

@@ -34,3 +34,7 @@ class ActionRequest(BaseModel):
 
 class GoogleAuthRequest(BaseModel):
     token: str
+
+
+class EmotePurchaseRequest(BaseModel):
+    emote_id: str

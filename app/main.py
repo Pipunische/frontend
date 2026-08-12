@@ -6,7 +6,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app.config import settings
 from app.services import templates, java_request, is_core_unreachable
-from app.routers import auth, lobby, tables
+from app.routers import auth, lobby, tables, emote_shop
 
 app = FastAPI(title="PoluPoker BFF", version="2.0.0")
 
@@ -42,6 +42,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 app.include_router(auth.router)
 app.include_router(lobby.router)
 app.include_router(tables.router)
+app.include_router(emote_shop.router)
 
 
 @app.get("/api/health")

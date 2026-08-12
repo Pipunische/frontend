@@ -1,0 +1,273 @@
+/* Emote shop modal — PoluPoker design system (theme.css) */
+
+.emote-shop-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10001;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(4, 3, 10, 0.86);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.emote-shop-panel {
+  width: min(640px, 100%);
+  max-height: calc(100vh - 40px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--stroke);
+  background: linear-gradient(160deg, rgba(16, 12, 32, 0.97), rgba(8, 6, 18, 0.99));
+  box-shadow:
+    0 32px 80px rgba(0, 0, 0, 0.7),
+    var(--glow-purple),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  animation: es-panel-in 0.35s var(--ease-out) both;
+}
+
+@keyframes es-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.emote-shop-header {
+  padding: 24px 24px 16px;
+  border-bottom: 1px solid rgba(168, 85, 247, 0.2);
+  text-align: center;
+}
+
+.emote-shop-header h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  background: linear-gradient(90deg, #fde68a, var(--gold), #f59e0b);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.emote-shop-subtitle {
+  margin: 8px 0 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.emote-shop-balance {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  background: rgba(251, 191, 36, 0.08);
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--gold);
+}
+
+.emote-shop-balance .pp-chip-icon {
+  width: 1.1em;
+  height: 1.1em;
+}
+
+.emote-shop-body {
+  padding: 18px 20px 20px;
+  overflow-y: auto;
+}
+
+.emote-shop-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 12px;
+}
+
+.emote-shop-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 12px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(168, 85, 247, 0.22);
+  background: rgba(255, 255, 255, 0.03);
+  text-align: center;
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+}
+
+.emote-shop-card:hover {
+  border-color: rgba(168, 85, 247, 0.45);
+  transform: translateY(-2px);
+}
+
+.emote-shop-card.is-owned {
+  border-color: rgba(52, 211, 153, 0.45);
+  background: rgba(52, 211, 153, 0.06);
+}
+
+.emote-shop-card.is-default {
+  border-color: rgba(148, 163, 184, 0.25);
+  opacity: 0.85;
+}
+
+.emote-shop-card.is-locked {
+  opacity: 0.65;
+}
+
+.emote-shop-card__icon {
+  width: 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  line-height: 1;
+  border-radius: 50%;
+}
+
+.emote-shop-card__icon.emote-exclusive--crown {
+  background: radial-gradient(circle, rgba(251, 191, 36, 0.3), rgba(168, 85, 247, 0.12) 70%);
+  box-shadow: 0 0 16px rgba(251, 191, 36, 0.45);
+}
+
+.emote-shop-card__icon.emote-exclusive--diamond {
+  background: radial-gradient(circle, rgba(34, 211, 238, 0.35), transparent 70%);
+  box-shadow: 0 0 16px rgba(34, 211, 238, 0.5);
+}
+
+.emote-shop-card__icon.emote-exclusive--goat {
+  background: radial-gradient(circle, rgba(251, 191, 36, 0.28), transparent 70%);
+  box-shadow: 0 0 16px rgba(251, 191, 36, 0.55);
+}
+
+.emote-shop-card__name {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.25;
+}
+
+.emote-shop-card__price {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--gold);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.emote-shop-card__price.is-free {
+  color: var(--muted);
+}
+
+.emote-shop-card__action {
+  width: 100%;
+  margin-top: 4px;
+  padding: 10px 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-body);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: 0.2s ease;
+}
+
+.emote-shop-card__action--buy {
+  color: #0c0818;
+  background: linear-gradient(135deg, #fde68a, var(--gold), #f59e0b);
+}
+
+.emote-shop-card__action--buy:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(251, 191, 36, 0.35);
+}
+
+.emote-shop-card__action--buy:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.emote-shop-card__action--owned {
+  color: var(--green);
+  background: rgba(52, 211, 153, 0.12);
+  border: 1px solid rgba(52, 211, 153, 0.35);
+  cursor: default;
+}
+
+.emote-shop-card__action--free {
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  cursor: default;
+}
+
+.emote-shop-card__action--soon {
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px dashed rgba(148, 163, 184, 0.35);
+  cursor: not-allowed;
+}
+
+.emote-shop-footer {
+  padding: 0 20px 20px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+
+.emote-shop-close,
+.emote-shop-test-table {
+  width: auto;
+  min-width: 140px;
+  padding: 12px 20px;
+  font-size: 0.72rem;
+}
+
+.emote-shop-test-table {
+  text-decoration: none;
+}
+
+.emote-shop-loading {
+  grid-column: 1 / -1;
+  padding: 28px 12px;
+  text-align: center;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+}
+
+.lobby-emote-shop-btn {
+  width: auto;
+  min-width: 160px;
+  padding: 13px 18px;
+  font-size: 0.78rem;
+}
+
+@media (max-width: 520px) {
+  .emote-shop-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .lobby-toolbar {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+}

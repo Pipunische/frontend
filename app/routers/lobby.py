@@ -2,7 +2,9 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from loguru import logger
 import asyncio
+import json
 
+from app.emote_shop import default_owned_emote_ids, emote_catalog_json
 from app.config import settings
 from app.models import CreateTableRequest
 from app.services import (
@@ -87,6 +89,8 @@ async def load_lobby_context(request: Request):
         "user_token": current_user.get("token") or "",
         "java_host": settings.FRONTEND_JAVA_HOST,
         "v": settings.APP_VERSION,
+        "emote_catalog_json": emote_catalog_json(),
+        "default_owned_emote_ids_json": json.dumps(default_owned_emote_ids()),
     }
 
 
@@ -146,6 +150,8 @@ async def page_lobby(request: Request, error: str = None):
             "user_token": "",
             "java_host": settings.FRONTEND_JAVA_HOST,
             "v": settings.APP_VERSION,
+            "emote_catalog_json": emote_catalog_json(),
+            "default_owned_emote_ids_json": json.dumps(default_owned_emote_ids()),
         }
     elif lobby_data.get("redirect"):
         return RedirectResponse(url=lobby_data["redirect"], status_code=303)
@@ -157,6 +163,8 @@ async def page_lobby(request: Request, error: str = None):
         **lobby_data,
         "error": error,
         "is_dev_lobby": False,
+        "emote_catalog_json": emote_catalog_json(),
+        "default_owned_emote_ids_json": json.dumps(default_owned_emote_ids()),
     }
 
     return templates.TemplateResponse(request=request, name="lobby.html", context=context)
@@ -229,11 +237,11 @@ async def dev_page_lobby(request: Request):
     """
     # 1. Фейковый юзер с ограниченным бюджетом (чтобы протестить блокировку VIP стола)
     mock_user = enrich_user_wallet_display({
-        "user_id": "hero_123",
-        "name": "Arseniy",
-        "wallet_balance": 1500, # Денег мало!
+        "user_id": "dev_shop_user",
+        "name": "ShopTester",
+        "wallet_balance": 50000,
         "token": "fake_token",
-        "avatar_url": "https://api.dicebear.com/7.x/avataaars/svg?seed=Arseniy"
+        "avatar_url": "https://api.dicebear.com/7.x/avataaars/svg?seed=ShopTester"
     })
 
     # 2. Фейковые столы всех возможных типов
@@ -305,6 +313,10 @@ async def dev_page_lobby(request: Request):
         "java_host": settings.FRONTEND_JAVA_HOST,
         "v": settings.APP_VERSION,
         "is_dev_lobby": True,
+        "emote_catalog_json": emote_catalog_json(),
+        "default_owned_emote_ids_json": json.dumps(default_owned_emote_ids()),
     }
+
+    request.session["user"] = mock_user
 
     return templates.TemplateResponse(request=request, name="lobby.html", context=context)

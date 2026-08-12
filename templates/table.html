@@ -178,17 +178,14 @@
             <button class="btn-emote" onclick="toggleEmotePanel()">💬</button>
 
             <div id="emote-panel" class="emote-panel">
-              <button onclick="sendEmote('fire')">🔥</button>
-              <button onclick="sendEmote('cry')">😭</button>
-              <button onclick="sendEmote('angry')">🤬</button>
-              <button onclick="sendEmote('poop')">💩</button>
-              <button onclick="sendEmote('beer')">🍻</button>
-              <button onclick="sendEmote('clown')">🤡</button>
-              {% if user.user_id|string == '17' %}
-              <button class="emote-exclusive emote-exclusive--crown" onclick="sendEmote('royal_crown')">👑</button>
-              <button class="emote-exclusive emote-exclusive--diamond" onclick="sendEmote('diamond_hand')">💎</button>
-              <button class="emote-exclusive emote-exclusive--goat" onclick="sendEmote('goat_king')">🐐</button>
-              {% endif %}
+              {% for emote in panel_emotes %}
+              <button
+                type="button"
+                {% if emote.style_class %}class="emote-exclusive {{ emote.style_class }}"{% endif %}
+                onclick="sendEmote('{{ emote.emote_id }}')"
+                title="{{ emote.name }}"
+              >{{ emote.emoji }}</button>
+              {% endfor %}
             </div>
           </div>
         </div>
@@ -335,13 +332,7 @@
         }
       }
 
-      const emotesDict = {
-        'fire': '🔥', 'cry': '😭', 'angry': '🤬',
-        'poop': '💩', 'beer': '🍻', 'clown': '🤡',
-        'royal_crown': '👑',
-        'diamond_hand': '💎',
-        'goat_king': '🐐'
-      };
+      const emotesDict = {{ emotes_dict | tojson }};
 
       function updatePingIndicator(pingMs) {
         const indicator = document.getElementById('ping-indicator');
@@ -1421,31 +1412,60 @@
 
         let html = '';
 
-        html += `<button class="btn btn-fold" onclick="sendPokerAction('FOLD')">FOLD</button>`
+        html += `<div class="action-panel__label">Ваш ход</div>`;
+
+        html += `
+          <button type="button" class="action-btn action-btn--fold" onclick="sendPokerAction('FOLD')">
+            <span class="action-btn__icon">✕</span>
+            <span class="action-btn__title">Fold</span>
+          </button>
+        `;
 
         if (toCall === 0) {
-          html += `<button class="btn btn-check" onclick="sendPokerAction('CHECK')">CHECK</button>`;
+          html += `
+            <button type="button" class="action-btn action-btn--check" onclick="sendPokerAction('CHECK')">
+              <span class="action-btn__icon">✓</span>
+              <span class="action-btn__title">Check</span>
+            </button>
+          `;
         } else {
-          html += `<button class="btn btn-call" onclick="sendPokerAction('CALL')" ${isCallAllIn ? 'style="background-color: #e74c3c;"' : ''}>
-                      ${isCallAllIn ? 'CALL (ALL-IN)' : `CALL (${toCall})`}
-                    </button>`;
+          html += `
+            <button type="button" class="action-btn ${isCallAllIn ? 'action-btn--allin' : 'action-btn--call'}" onclick="sendPokerAction('CALL')">
+              <span class="action-btn__icon">${isCallAllIn ? '⚡' : '→'}</span>
+              <span class="action-btn__text">
+                <span class="action-btn__title">${isCallAllIn ? 'Call all-in' : 'Call'}</span>
+                <span class="action-btn__amount">${toCall} <span class="chip-icon"></span></span>
+              </span>
+            </button>
+          `;
         }
 
         if (canMakeLegalRaise) {
           html += `
-            <div class="raise-group">
-              <input type="number" id="raise-amount"
-                    value="${minRaise}"
-                    step="${bigBlind}"
-                    min="${minRaise}"
-                    max="${totalMoneyForRound}" />
-              <button class="btn btn-raise-action" onclick="sendPokerAction('RAISE')">RAISE</button>
+            <div class="raise-dock">
+              <div class="raise-group raise-group--stacked">
+                <input type="number" id="raise-amount"
+                      value="${minRaise}"
+                      step="${bigBlind}"
+                      min="${minRaise}"
+                      max="${totalMoneyForRound}"
+                      aria-label="Сумма рейза" />
+                <button type="button" class="btn btn-raise-action action-btn--raise" onclick="sendPokerAction('RAISE')">Raise</button>
+              </div>
             </div>
           `;
         }
-        
+
         if (myChips > 0) {
-          html += `<button class="btn btn-allin" onclick="sendPokerAction('ALL_IN')">ALL-IN (${myChips})</button>`;
+          html += `
+            <button type="button" class="action-btn action-btn--allin" onclick="sendPokerAction('ALL_IN')">
+              <span class="action-btn__icon">♦</span>
+              <span class="action-btn__text">
+                <span class="action-btn__title">All-in</span>
+                <span class="action-btn__amount">${myChips} <span class="chip-icon"></span></span>
+              </span>
+            </button>
+          `;
         }
 
         panel.innerHTML = html
@@ -2400,6 +2420,20 @@
           case 'EMOTE':
             showPlayerEmote(eventData.user_id, eventData.emote_id);
             break;
+
+          case 'ERROR':
+          case 'EMOTE_REJECTED': {
+            const errorType = eventData.errorType || eventData.error_type || '';
+            const message = eventData.message || eventData.error_message || 'Действие отклонено';
+            const isEmoteError = eventData.event_type === 'EMOTE_REJECTED'
+              || /emote/i.test(errorType)
+              || /emote/i.test(message)
+              || eventData.emote_id;
+            if (isEmoteError) {
+              showToast('error', errorType || 'EmoteRejected', message);
+            }
+            break;
+          }
 
           default:
             console.warn("⚠️ Неизвестный тип ивента от Владоса:", eventData.event_type);

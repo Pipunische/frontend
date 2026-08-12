@@ -11,6 +11,7 @@
     <link rel="stylesheet" href="{{ url_for('static', path='css/theme.css') }}?v={{ v }}">
     <link rel="stylesheet" href="{{ url_for('static', path='css/lobby.css') }}?v={{ v }}">
     <link rel="stylesheet" href="{{ url_for('static', path='css/create_table_modal.css') }}?v={{ v }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/emote_shop_modal.css') }}?v={{ v }}">
     <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
 </head>
@@ -21,6 +22,7 @@
 
     <div id="lobby-metadata"
          data-wallet-balance="{{ user.wallet_balance | int if user else 0 }}"
+         data-user-id="{{ user.user_id if user else 'guest' }}"
          data-dev-lobby="{{ 'true' if is_dev_lobby else 'false' }}"
          hidden></div>
 
@@ -54,9 +56,14 @@
 
     <main class="lobby-shell">
         <div class="lobby-toolbar">
-            <button type="button" id="create-table-btn" class="pp-btn pp-btn-purple lobby-create-btn" onclick="toggleCreateTableModal()">
-                + Создать стол
-            </button>
+            <div class="lobby-toolbar-actions">
+                <button type="button" id="create-table-btn" class="pp-btn pp-btn-purple lobby-create-btn" onclick="toggleCreateTableModal()">
+                    + Создать стол
+                </button>
+                <button type="button" id="emote-shop-btn" class="pp-btn pp-btn-ghost lobby-emote-shop-btn" onclick="toggleEmoteShopModal()">
+                    🛒 Магазин эмодзи
+                </button>
+            </div>
             <h1 class="lobby-title">Выберите игровой стол</h1>
         </div>
 
@@ -213,7 +220,35 @@
         </div>
     </div>
 
+<div id="emote-shop-modal" class="emote-shop-overlay" onclick="closeEmoteShopOnBackdrop(event)">
+    <div class="emote-shop-panel" role="dialog" aria-labelledby="emote-shop-title" onclick="event.stopPropagation()">
+        <header class="emote-shop-header">
+            <h2 id="emote-shop-title">Магазин эмодзи</h2>
+            <p class="emote-shop-subtitle">Купите эксклюзивные эмодзи — они появятся за столом только у вас</p>
+            <div class="emote-shop-balance">
+                <span>Ваш баланс:</span>
+                <strong id="emote-shop-balance-amount">0</strong>
+                <span class="pp-chip-icon" aria-hidden="true"></span>
+            </div>
+        </header>
+
+        <div class="emote-shop-body">
+            <div id="emote-shop-grid" class="emote-shop-grid"></div>
+        </div>
+
+        <footer class="emote-shop-footer">
+            {% if is_dev_lobby %}
+            <a href="/dev-table?size=6" class="pp-btn pp-btn-purple emote-shop-test-table" title="Только купленные эмодзи. Для всех VIP: /dev-table?vip=1">Проверить за столом</a>
+            {% endif %}
+            <button type="button" class="pp-btn pp-btn-ghost emote-shop-close" onclick="toggleEmoteShopModal()">Закрыть</button>
+        </footer>
+    </div>
+</div>
+
     <div id="toast-container" class="toast-container lobby-toast-container"></div>
+
+<script id="emote-catalog-data" type="application/json">{{ emote_catalog_json | safe }}</script>
+<script id="default-owned-emotes-data" type="application/json">{{ default_owned_emote_ids_json | safe }}</script>
 
 </body>
 
@@ -225,7 +260,15 @@
         const errorTitles = {
             'TableFullException': 'Стол заполнен',
             'ChipAmountException': 'Ошибка фишек',
-            'PlayerAlreadyJoinedException': 'Вы уже за столом'
+            'PlayerAlreadyJoinedException': 'Вы уже за столом',
+            'InsufficientFunds': 'Недостаточно фишек',
+            'AlreadyOwned': 'Уже куплено',
+            'ComingSoon': 'Скоро',
+            'PurchaseSuccess': 'Эмодзи куплен',
+            'ShopError': 'Магазин',
+            'PurchaseFailed': 'Ошибка покупки',
+            'EmoteNotFound': 'Не найдено',
+            'EmoteNotPurchasable': 'Недоступно'
           };
 
           const titleText = errorTitles[errorType] || errorType || 'Уведомление'; 
@@ -268,6 +311,324 @@
     let walletBalance = lobbyMeta
         ? parseInt(lobbyMeta.dataset.walletBalance || '0', 10)
         : 0;
+
+    const emoteCatalog = JSON.parse(
+        document.getElementById('emote-catalog-data')?.textContent || '[]'
+    );
+    const defaultOwnedEmoteIds = JSON.parse(
+        document.getElementById('default-owned-emotes-data')?.textContent || '[]'
+    );
+    let ownedEmoteIds = [...defaultOwnedEmoteIds];
+    let emoteShopReady = false;
+    let emoteShopUsesLocalMock = false;
+    let emoteShopLoading = false;
+    let emotePurchaseInFlight = false;
+
+    function isEmoteShopOpen() {
+        const modal = document.getElementById('emote-shop-modal');
+        return modal && modal.style.display === 'flex';
+    }
+
+    function getLobbyUserId() {
+        return lobbyMeta?.dataset.userId || 'guest';
+    }
+
+    function devWalletStorageKey() {
+        return `polupoker_dev_wallet_${getLobbyUserId()}`;
+    }
+
+    function devOwnedEmotesStorageKey() {
+        return `polupoker_dev_owned_emotes_${getLobbyUserId()}`;
+    }
+
+    function applyEmoteShopData(data) {
+        if (data?.wallet_balance !== undefined) {
+            updateWalletDisplay(data.wallet_balance);
+        }
+        if (Array.isArray(data?.owned_emote_ids)) {
+            ownedEmoteIds = data.owned_emote_ids;
+            if (isDevLobbyMode()) {
+                saveDevOwnedEmotes();
+                saveDevWallet();
+            }
+        }
+        if (Array.isArray(data?.catalog) && data.catalog.length) {
+            data.catalog.forEach((entry) => {
+                const idx = emoteCatalog.findIndex((item) => item.emote_id === entry.emote_id);
+                if (idx === -1) return;
+                emoteCatalog[idx] = {
+                    ...emoteCatalog[idx],
+                    price: entry.price ?? emoteCatalog[idx].price,
+                    is_default: entry.is_default ?? emoteCatalog[idx].is_default,
+                };
+            });
+        }
+    }
+
+    function loadDevShopState() {
+        const savedWallet = localStorage.getItem(devWalletStorageKey());
+        if (savedWallet !== null) {
+            updateWalletDisplay(parseInt(savedWallet, 10));
+        }
+
+        const savedOwned = localStorage.getItem(devOwnedEmotesStorageKey());
+        if (savedOwned) {
+            try {
+                ownedEmoteIds = JSON.parse(savedOwned);
+            } catch (err) {
+                console.warn('Не удалось прочитать купленные эмодзи из localStorage', err);
+                ownedEmoteIds = [...defaultOwnedEmoteIds];
+            }
+        } else {
+            ownedEmoteIds = [...defaultOwnedEmoteIds];
+            saveDevOwnedEmotes();
+        }
+
+        emoteShopUsesLocalMock = true;
+        emoteShopReady = true;
+    }
+
+    function saveDevWallet() {
+        localStorage.setItem(devWalletStorageKey(), String(walletBalance));
+    }
+
+    function saveDevOwnedEmotes() {
+        localStorage.setItem(devOwnedEmotesStorageKey(), JSON.stringify(ownedEmoteIds));
+    }
+
+    async function refreshEmoteShopFromApi() {
+        emoteShopLoading = true;
+        renderEmoteShop();
+
+        try {
+            const response = await fetch('/api/emotes');
+            const data = await response.json().catch(() => ({}));
+
+            if (response.status === 401 || data.redirect) {
+                if (isDevLobbyMode()) {
+                    loadDevShopState();
+                    return;
+                }
+                window.location.href = data.redirect || '/login?error=session_expired';
+                return;
+            }
+
+            if (!response.ok) {
+                if (isDevLobbyMode()) {
+                    console.warn('Emote shop API недоступен в dev-lobby, fallback localStorage');
+                    loadDevShopState();
+                    return;
+                }
+                showToast(
+                    'error',
+                    data.errorType || 'ShopError',
+                    data.message || 'Не удалось загрузить магазин эмодзи'
+                );
+                emoteShopReady = false;
+                return;
+            }
+
+            applyEmoteShopData(data);
+            emoteShopUsesLocalMock = false;
+            emoteShopReady = true;
+        } catch (err) {
+            console.error('Emote shop load failed:', err);
+            if (isDevLobbyMode()) {
+                loadDevShopState();
+                return;
+            }
+            showToast('error', 'ShopError', 'Не удалось загрузить магазин эмодзи');
+            emoteShopReady = false;
+        } finally {
+            emoteShopLoading = false;
+        }
+    }
+
+    function isEmoteOwned(emoteId) {
+        return ownedEmoteIds.includes(emoteId);
+    }
+
+    function canPurchaseEmotes() {
+        return emoteShopReady && !emoteShopLoading;
+    }
+
+    function renderEmoteShop() {
+        const grid = document.getElementById('emote-shop-grid');
+        const balanceEl = document.getElementById('emote-shop-balance-amount');
+        if (balanceEl) {
+            balanceEl.textContent = formatPokerAmount(walletBalance);
+        }
+        if (!grid) return;
+
+        if (emoteShopLoading) {
+            grid.innerHTML = '<div class="emote-shop-loading">Загрузка магазина...</div>';
+            return;
+        }
+
+        grid.innerHTML = '';
+
+        emoteCatalog.forEach((item) => {
+            const owned = isEmoteOwned(item.emote_id);
+            const isDefault = Boolean(item.is_default);
+            const canAfford = walletBalance >= item.price;
+            const iconClass = item.style_class
+                ? `emote-shop-card__icon ${item.style_class}`
+                : 'emote-shop-card__icon';
+
+            const card = document.createElement('article');
+            card.className = 'emote-shop-card';
+            if (owned) card.classList.add('is-owned');
+            if (isDefault) card.classList.add('is-default');
+            if (!owned && !isDefault && !canAfford) card.classList.add('is-locked');
+
+            let actionHtml = '';
+            if (isDefault) {
+                actionHtml = '<button type="button" class="emote-shop-card__action emote-shop-card__action--free" disabled>Бесплатно</button>';
+            } else if (owned) {
+                actionHtml = '<button type="button" class="emote-shop-card__action emote-shop-card__action--owned" disabled>Куплено</button>';
+            } else if (canPurchaseEmotes() || emoteShopUsesLocalMock) {
+                if (!canAfford) {
+                    actionHtml = `<button type="button" class="emote-shop-card__action emote-shop-card__action--buy" onclick="notifyInsufficientFunds('${item.emote_id}')">Не хватает</button>`;
+                } else {
+                    actionHtml = `<button type="button" class="emote-shop-card__action emote-shop-card__action--buy" ${emotePurchaseInFlight ? 'disabled' : ''} onclick="purchaseEmote('${item.emote_id}')">${emotePurchaseInFlight ? 'Покупка...' : 'Купить'}</button>`;
+                }
+            } else {
+                actionHtml = '<button type="button" class="emote-shop-card__action emote-shop-card__action--soon" disabled>Скоро</button>';
+            }
+
+            const priceHtml = isDefault
+                ? '<span class="emote-shop-card__price is-free">Базовое</span>'
+                : `<span class="emote-shop-card__price">${formatPokerAmount(item.price)} <span class="pp-chip-icon"></span></span>`;
+
+            card.innerHTML = `
+                <div class="${iconClass}">${item.emoji}</div>
+                <div class="emote-shop-card__name">${item.name}</div>
+                ${priceHtml}
+                ${actionHtml}
+            `;
+
+            grid.appendChild(card);
+        });
+    }
+
+    function notifyInsufficientFunds(emoteId) {
+        const item = emoteCatalog.find((entry) => entry.emote_id === emoteId);
+        if (!item) return;
+        const need = Math.max(0, item.price - walletBalance);
+        showToast(
+            'error',
+            'InsufficientFunds',
+            `Нужно ещё ${formatPokerAmount(need)} фишек для «${item.name}»`
+        );
+    }
+
+    async function toggleEmoteShopModal() {
+        const modal = document.getElementById('emote-shop-modal');
+        if (!modal) return;
+
+        if (modal.style.display === 'flex') {
+            modal.style.display = 'none';
+            return;
+        }
+
+        modal.style.display = 'flex';
+        await refreshEmoteShopFromApi();
+        renderEmoteShop();
+    }
+
+    function closeEmoteShopOnBackdrop(event) {
+        if (event.target.id === 'emote-shop-modal') {
+            toggleEmoteShopModal();
+        }
+    }
+
+    function purchaseSuccessMessage(item) {
+        if (isDevLobbyMode()) {
+            return `${item.emoji} «${item.name}» куплен! Нажмите «Проверить за столом».`;
+        }
+        return `${item.emoji} «${item.name}» теперь ваш — появится в панели эмодзи за столом.`;
+    }
+
+    async function purchaseEmoteLocalMock(emoteId) {
+        const item = emoteCatalog.find((entry) => entry.emote_id === emoteId);
+        if (!item || item.is_default) return;
+
+        if (isEmoteOwned(emoteId)) {
+            showToast('error', 'AlreadyOwned', 'Это эмодзи уже куплено');
+            return;
+        }
+
+        if (walletBalance < item.price) {
+            notifyInsufficientFunds(emoteId);
+            return;
+        }
+
+        walletBalance -= item.price;
+        ownedEmoteIds.push(emoteId);
+        saveDevWallet();
+        saveDevOwnedEmotes();
+        updateWalletDisplay(walletBalance);
+        renderEmoteShop();
+        showToast('success', 'PurchaseSuccess', purchaseSuccessMessage(item));
+    }
+
+    async function purchaseEmote(emoteId) {
+        const item = emoteCatalog.find((entry) => entry.emote_id === emoteId);
+        if (!item || item.is_default) return;
+
+        if (isEmoteOwned(emoteId)) {
+            showToast('error', 'AlreadyOwned', 'Это эмодзи уже куплено');
+            return;
+        }
+
+        if (emotePurchaseInFlight) return;
+
+        if (emoteShopUsesLocalMock) {
+            await purchaseEmoteLocalMock(emoteId);
+            return;
+        }
+
+        emotePurchaseInFlight = true;
+        renderEmoteShop();
+
+        try {
+            const response = await fetch('/api/emotes/purchase', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ emote_id: emoteId }),
+            });
+            const data = await response.json().catch(() => ({}));
+
+            if (response.status === 401 || data.redirect) {
+                window.location.href = data.redirect || '/login?error=session_expired';
+                return;
+            }
+
+            if (!response.ok) {
+                showToast(
+                    'error',
+                    data.errorType || 'PurchaseFailed',
+                    data.message || 'Не удалось купить эмодзи'
+                );
+                return;
+            }
+
+            applyEmoteShopData(data);
+            renderEmoteShop();
+            showToast('success', 'PurchaseSuccess', purchaseSuccessMessage(item));
+        } catch (err) {
+            console.error('Emote purchase failed:', err);
+            if (isDevLobbyMode()) {
+                await purchaseEmoteLocalMock(emoteId);
+                return;
+            }
+            showToast('error', 'PurchaseFailed', 'Не удалось купить эмодзи');
+        } finally {
+            emotePurchaseInFlight = false;
+            renderEmoteShop();
+        }
+    }
+
     let stompClient = null;
     let isIntentionalReload = false;
 
@@ -332,6 +693,10 @@
                 </span>
                 <span class="lobby-wallet-amount">${formatted}</span>`;
         });
+        const shopBalanceEl = document.getElementById('emote-shop-balance-amount');
+        if (shopBalanceEl) {
+            shopBalanceEl.textContent = formatted;
+        }
     }
 
     async function fetchFreshToken() {
@@ -889,6 +1254,9 @@
                     if (amount) amount.style.color = '';
                 }, 500);
             });
+            if (isEmoteShopOpen()) {
+                renderEmoteShop();
+            }
         });
     }
 
@@ -1083,7 +1451,7 @@
         }
 
         if (isDevLobbyMode()) {
-            console.log('🛠️ Dev-lobby: локальный mock без сети и авторизации');
+            console.log('🛠️ Dev-lobby: магазин эмодзи — API + localStorage fallback');
         } else {
             connectLobbySocket();
             setupLobbyNetworkWatchers();

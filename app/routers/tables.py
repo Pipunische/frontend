@@ -5,6 +5,16 @@ from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from loguru import logger
 
 from app.config import settings
+from app.emote_shop import (
+    emotes_dict,
+    enrich_java_shop_payload,
+    get_session_owned_ids,
+    java_emotes_unavailable,
+    merge_owned_ids,
+    panel_emotes_for_owned,
+    premium_emote_ids,
+    set_session_owned_ids,
+)
 from app.models import ActionRequest
 from app.table_layouts import (
     build_opponent_seats_by_pos,
@@ -73,13 +83,58 @@ def _order_players(game_state: dict, my_id: str):
     return my_player, my_cards, ordered_others
 
 
-def _build_table_context(game_state: dict, table_id: str, my_user: dict) -> dict:
+def _emote_panel_context(owned_ids: list[str] | None = None) -> dict:
+    owned = merge_owned_ids(owned_ids)
+    return {
+        "owned_emote_ids": owned,
+        "panel_emotes": panel_emotes_for_owned(owned),
+        "emotes_dict": emotes_dict(),
+    }
+
+
+async def _resolve_owned_emotes(request: Request, my_user: dict) -> list[str]:
+    """Prefer Java ownership; fall back to session / defaults if Java is unavailable."""
+    session_owned = get_session_owned_ids(request.session)
+
+    if my_user.get("token") == "fake_token":
+        return session_owned
+
+    user_id = my_user.get("user_id")
+    if not user_id:
+        return session_owned
+
+    target_url = f"{settings.BASE_JAVA_URL}/user/{user_id}/emotes"
+    response = await java_request("GET", target_url, request)
+
+    if is_core_unreachable(response) or java_emotes_unavailable(response):
+        return session_owned
+
+    if response.status_code == 200:
+        try:
+            payload = enrich_java_shop_payload(response.json())
+            owned = payload.get("owned_emote_ids") or session_owned
+            set_session_owned_ids(request.session, owned)
+            return owned
+        except Exception as exc:
+            logger.warning(f"Table emotes: failed to parse Java ownership: {exc}")
+
+    return session_owned
+
+
+def _build_table_context(
+    game_state: dict,
+    table_id: str,
+    my_user: dict,
+    *,
+    owned_emote_ids: list[str] | None = None,
+) -> dict:
     my_id = str(my_user.get("user_id"))
     my_player, my_cards, ordered_others = _order_players(game_state, my_id)
     max_players = normalize_max_players(game_state.get("max_players"))
     seat_layout_opponents = get_opponent_pos_layout(max_players)
     opponent_seats_by_pos = build_opponent_seats_by_pos(ordered_others, max_players)
     game_with_size = {**game_state, "max_players": max_players}
+    emote_ctx = _emote_panel_context(owned_emote_ids)
 
     return {
         "my_player": my_player,
@@ -97,6 +152,7 @@ def _build_table_context(game_state: dict, table_id: str, my_user: dict) -> dict
         "java_host": settings.FRONTEND_JAVA_HOST,
         "v": settings.APP_VERSION,
         "is_dev_table": False,
+        **emote_ctx,
     }
 
 
@@ -179,7 +235,13 @@ async def load_table_context(
             return {"redirect": "/lobby", "error": "not_at_table"}
 
     my_user = request.session.get("user")
-    context = _build_table_context(game_state, table_id, my_user)
+    owned_emote_ids = await _resolve_owned_emotes(request, my_user)
+    context = _build_table_context(
+        game_state,
+        table_id,
+        my_user,
+        owned_emote_ids=owned_emote_ids,
+    )
     return {"context": context}
 
 
@@ -215,10 +277,12 @@ def _respond_table_result(result, *, json_mode: bool):
 
 
 @router.get("/dev-table", response_class=HTMLResponse)
-async def dev_page_table(request: Request, size: int = 10):
+async def dev_page_table(request: Request, size: int = 10, vip: int = 0):
     """
     Секретный эндпоинт для тестирования верстки без Java-бэкенда.
     Доступен по адресу: http://127.0.0.1:8000/dev-table?size=6
+    Купленные эмодзи берутся из session (после магазина в /dev-lobby).
+    ?vip=1 — открыть все VIP-эмодзи для превью панели.
     """
     from app.table_layouts import SEAT_LAYOUTS
 
@@ -278,7 +342,24 @@ async def dev_page_table(request: Request, size: int = 10):
         "time_to_act_ms": 15000,
     }
 
-    context = _build_table_context(mock_game, "dev_table_777", mock_user)
+    # Keep wallet/owned from shop session when possible; only replace identity for table hero.
+    existing_user = request.session.get("user") or {}
+    if existing_user.get("wallet_balance") is not None:
+        mock_user["wallet_balance"] = existing_user["wallet_balance"]
+    request.session["user"] = mock_user
+
+    session_owned = get_session_owned_ids(request.session)
+    if vip:
+        owned_emote_ids = merge_owned_ids(session_owned, premium_emote_ids())
+    else:
+        owned_emote_ids = session_owned
+
+    context = _build_table_context(
+        mock_game,
+        "dev_table_777",
+        mock_user,
+        owned_emote_ids=owned_emote_ids,
+    )
     context["table_name"] = f"Dev {max_players}-max"
     context["my_cards"] = ["Ah", "Ac"]
     context["is_dev_table"] = True
