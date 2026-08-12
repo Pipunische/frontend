@@ -7,7 +7,7 @@ body {
   margin: 0;
   height: 100vh;
   overflow: hidden;
-  font-family: "Times New Roman", Times, serif !important;
+  font-family: var(--font-body) !important;
 }
 
 .poker-room {
@@ -19,7 +19,7 @@ body {
   justify-content: center;
   position: relative;
   color: white;
-  font-family: "Segoe UI", Arial, sans-serif;
+  font-family: var(--font-body);
 }
 
 .poker-table {
@@ -1056,7 +1056,7 @@ body {
   font-size: 22px;
   color: #26b86a;
   text-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
-  font-family: "Times New Roman", Times, serif;
+  font-family: var(--font-display);
 }
 
 .table-header-bar {

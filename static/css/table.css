@@ -1,0 +1,360 @@
+/* Poker table page — PoluPoker design system (theme.css + poker_table.css layout) */
+
+.table-page {
+  overflow: hidden;
+}
+
+.pp-scene--table {
+  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.table-page .poker-room {
+  background: transparent;
+  z-index: 2;
+}
+
+.table-page body,
+.table-page {
+  background: var(--void) !important;
+}
+
+/* Top bar */
+.table-topbar {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(720px, calc(100% - 32px));
+  padding: 12px 18px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--stroke);
+  background: linear-gradient(160deg, rgba(16, 12, 32, 0.92), rgba(8, 6, 18, 0.96));
+  box-shadow:
+    0 16px 40px rgba(0, 0, 0, 0.55),
+    var(--glow-purple),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  justify-content: space-between;
+}
+
+.table-topbar__info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.table-topbar__label {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #c4b5fd;
+}
+
+.table-topbar .table-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text);
+  background: linear-gradient(90deg, #fde68a, var(--gold), #f59e0b);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 420px;
+}
+
+.table-ping {
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+/* Felt table refinements */
+.table-page .poker-table {
+  border: 14px solid rgba(61, 12, 12, 0.95) !important;
+  box-shadow:
+    0 35px 80px rgba(0, 0, 0, 0.85),
+    inset 0 0 80px rgba(0, 0, 0, 0.75),
+    0 0 0 2px rgba(251, 191, 36, 0.45),
+    0 0 40px rgba(168, 85, 247, 0.12) !important;
+}
+
+.table-page .table-pot {
+  background: linear-gradient(160deg, rgba(16, 12, 32, 0.95), rgba(8, 6, 18, 0.98)) !important;
+  border: 1px solid rgba(251, 191, 36, 0.45) !important;
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.7),
+    0 0 20px rgba(251, 191, 36, 0.15) !important;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+/* Seat badges */
+.table-page .seat-info-badge {
+  background: linear-gradient(160deg, rgba(16, 12, 32, 0.94), rgba(8, 6, 18, 0.98));
+  border: 1px solid rgba(168, 85, 247, 0.28);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.55);
+}
+
+.table-page .player-name {
+  font-weight: 600;
+  font-size: 0.82rem;
+}
+
+.table-page .player-name.active-turn {
+  color: var(--cyan);
+  text-shadow: 0 0 10px rgba(34, 211, 238, 0.35);
+}
+
+.table-page .player-chips {
+  color: var(--gold);
+  font-weight: 700;
+}
+
+.table-page .seat-avatar,
+.table-page .seat-avatar-default {
+  border: 2px solid rgba(251, 191, 36, 0.45) !important;
+  box-shadow: 0 0 16px rgba(168, 85, 247, 0.25);
+}
+
+.table-page .seat-avatar-default {
+  background: linear-gradient(135deg, #312e81, #6b21a8);
+}
+
+.table-page .empty-seat-text {
+  color: rgba(148, 163, 184, 0.55);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.table-page .dealer-button {
+  background: linear-gradient(135deg, #fde68a, var(--gold));
+  color: #1a1208;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  box-shadow: 0 4px 12px rgba(251, 191, 36, 0.35);
+  font-weight: 800;
+}
+
+/* Action panel */
+.table-page .action-panel {
+  padding: 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--stroke);
+  background: linear-gradient(160deg, rgba(16, 12, 32, 0.94), rgba(8, 6, 18, 0.98));
+  box-shadow:
+    0 20px 50px rgba(0, 0, 0, 0.65),
+    var(--glow-purple);
+  backdrop-filter: blur(14px);
+  width: 240px;
+}
+
+.table-page .action-panel .btn {
+  border: none;
+  border-radius: var(--radius-sm);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: 0.78rem;
+}
+
+.table-page .btn-fold {
+  background: linear-gradient(135deg, #6366f1, #4338ca);
+}
+
+.table-page .btn-check {
+  background: linear-gradient(135deg, #34d399, #10b981);
+}
+
+.table-page .btn-call {
+  background: linear-gradient(135deg, #a3e635, #84cc16);
+  color: #1a2e05 !important;
+}
+
+.table-page .btn-allin {
+  background: linear-gradient(135deg, #f87171, #dc2626);
+}
+
+.table-page .btn-raise-action {
+  background: linear-gradient(135deg, #fde68a, var(--gold), #f59e0b) !important;
+  color: #1a1208 !important;
+}
+
+.table-page #raise-amount {
+  border: 1px solid rgba(168, 85, 247, 0.35);
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--gold);
+  font-weight: 700;
+}
+
+.table-page .raise-group {
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+/* System panel */
+.table-system-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.table-leave-btn {
+  width: auto;
+  min-width: 200px;
+  padding: 12px 18px;
+  font-size: 0.72rem;
+}
+
+.table-page .dev-controls {
+  padding: 12px;
+  border-radius: var(--radius-sm);
+  border: 1px dashed rgba(34, 211, 238, 0.35);
+  background: rgba(34, 211, 238, 0.06);
+}
+
+.table-page .btn-dev-action {
+  border-radius: var(--radius-sm);
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+}
+
+/* Emote */
+.table-page .btn-emote {
+  border: 1px solid rgba(168, 85, 247, 0.35);
+  background: rgba(16, 12, 32, 0.85);
+  border-radius: 999px;
+  box-shadow: var(--glow-purple);
+}
+
+.table-page .emote-panel {
+  border: 1px solid var(--stroke);
+  background: linear-gradient(160deg, rgba(16, 12, 32, 0.96), rgba(8, 6, 18, 0.98));
+  border-radius: var(--radius-sm);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
+}
+
+/* Rebuy modal */
+.table-rebuy-overlay {
+  background: rgba(4, 3, 10, 0.82);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.table-rebuy-panel {
+  width: min(420px, calc(100% - 32px));
+  padding: 28px 24px 22px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--stroke);
+  background: linear-gradient(160deg, rgba(16, 12, 32, 0.96), rgba(8, 6, 18, 0.98));
+  box-shadow:
+    0 32px 80px rgba(0, 0, 0, 0.7),
+    var(--glow-purple);
+}
+
+.table-rebuy-header h2 {
+  margin: 0 0 10px;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--red);
+}
+
+.table-rebuy-header p {
+  margin: 0 0 18px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.table-rebuy-header strong {
+  color: var(--red);
+}
+
+.table-rebuy-field-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+  text-align: left;
+}
+
+.table-rebuy-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #c4b5fd;
+}
+
+.table-rebuy-input,
+.table-page .rebuy-input {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(168, 85, 247, 0.25);
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  font-weight: 600;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.table-rebuy-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.table-rebuy-actions .pp-btn {
+  padding: 13px 10px;
+  font-size: 0.72rem;
+}
+
+/* Toasts */
+.table-toast-container,
+.table-page .toast-container {
+  top: 80px;
+}
+
+.table-page .poker-toast {
+  background: rgba(12, 10, 24, 0.95);
+  border-left-width: 4px;
+  border-radius: var(--radius-sm);
+  backdrop-filter: blur(14px);
+}
+
+.table-page .toast-title {
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}
+
+/* Showdown badges */
+.table-page .hand-name-badge {
+  border: 1px solid rgba(168, 85, 247, 0.35);
+  background: linear-gradient(160deg, rgba(16, 12, 32, 0.95), rgba(8, 6, 18, 0.98));
+  box-shadow: var(--glow-purple);
+}
+
+@media (max-width: 768px) {
+  .table-topbar {
+    top: 10px;
+    width: calc(100% - 20px);
+    padding: 10px 14px;
+  }
+
+  .table-topbar .table-title {
+    max-width: 200px;
+    font-size: 0.92rem;
+  }
+}

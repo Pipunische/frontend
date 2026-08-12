@@ -2,7 +2,6 @@
   margin: 0;
   padding: 0;
   box-sizing: border-box;
-  font-family: "Poppins", sans-serif; /* Подключим его в HTML */
 }
 
 body {
@@ -10,6 +9,7 @@ body {
   justify-content: center;
   align-items: center;
   min-height: 100vh;
+  font-family: var(--font-body);
   background-image: url("/static/images/auth_fon.jpg");
   background-size: cover;
   background-position: center;

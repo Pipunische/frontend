@@ -211,7 +211,7 @@ def _respond_table_result(result, *, json_mode: bool):
     if json_mode:
         return JSONResponse(content=_table_state_json(context))
 
-    return templates.TemplateResponse(name="clear_index.html", context=context, request=result["request"])
+    return templates.TemplateResponse(name="table.html", context=context, request=result["request"])
 
 
 @router.get("/dev-table", response_class=HTMLResponse)
@@ -283,7 +283,7 @@ async def dev_page_table(request: Request, size: int = 10):
     context["my_cards"] = ["Ah", "Ac"]
     context["is_dev_table"] = True
 
-    return templates.TemplateResponse(name="clear_index.html", context=context, request=request)
+    return templates.TemplateResponse(name="table.html", context=context, request=request)
 
 
 @router.get("/table/{table_id}", response_class=HTMLResponse)

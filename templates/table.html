@@ -9,11 +9,13 @@
     <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', path='css/theme.css') }}?v={{ v }}">
     <link rel="stylesheet" href="{{ url_for('static', path='css/poker_table.css') }}?v={{ v }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/table.css') }}?v={{ v }}">
     <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
   </head>
 
-  <body>
+  <body class="table-page">
+    <div class="pp-scene pp-scene--table">
     <div class="poker-room">
 
       <div id="poker-metadata"
@@ -28,15 +30,18 @@
         style="display: none;">
       </div>
 
-      <div class="table-header-bar">
-        <h1 class="table-title">{{ table_name }}</h1> 
-        
-        <div id="ping-indicator" class="ping-indicator signal-good" title="Подключение стабильное">
+      <header class="table-header-bar table-topbar">
+        <div class="table-topbar__info">
+          <span class="table-topbar__label">Стол</span>
+          <h1 class="table-title">{{ table_name }}</h1>
+        </div>
+
+        <div id="ping-indicator" class="ping-indicator table-ping signal-good" title="Подключение стабильное">
             <div class="bar bar-1"></div>
             <div class="bar bar-2"></div>
             <div class="bar bar-3"></div>
         </div>
-      </div> 
+      </header>
       <!-- ИГРОВОЙ СТОЛ -->
       <div class="poker-table state-{{ game.state }}" data-max-players="{{ max_players | default(10) }}">
 
@@ -189,8 +194,8 @@
       </div>
 
 
-      <div class="system-panel">
-        <button class="btn-leave-table" onclick="leaveCurrentTable()">
+      <div class="system-panel table-system-panel">
+        <button type="button" class="pp-btn pp-btn-ghost table-leave-btn btn-leave-table" onclick="leaveCurrentTable()">
             Встать из-за стола
         </button>
 
@@ -218,21 +223,29 @@
         {% endif %}
       </div>
 
-        <div id="rebuy-modal" class="modal-overlay">
-          <div class="rebuy-box">
-              <h2>⚠️ Недостаточно фишек </h2>
-              <p>У вас меньше {{ game.big_blind }} фишек. <br> 
-                Докупитесь, или вы покинете стол через <strong id="rebuy-timer-text" style="color: #e74c3c;">30</strong> сек!</p>
-              <input type="number" id="rebuy-amount" class="rebuy-input">
-              <button class="btn-play" onclick="sendRebuy()" style="width: 100%; border: none;">ДОКУПИТЬ</button>
-              <button class="btn-leave-table" style="margin-top: 10px; width: 100%;" onclick="leaveCurrentTable()">
-                ВЫЙТИ
-              </button>
+        <div id="rebuy-modal" class="table-rebuy-overlay modal-overlay">
+          <div class="table-rebuy-panel rebuy-box">
+              <header class="table-rebuy-header">
+                <h2>Недостаточно фишек</h2>
+                <p>У вас меньше {{ game.big_blind }} фишек.<br>
+                  Докупитесь, или вы покинете стол через <strong id="rebuy-timer-text">30</strong> сек.</p>
+              </header>
+              <label class="table-rebuy-field-wrap">
+                <span class="table-rebuy-label">Сумма докупки</span>
+                <input type="number" id="rebuy-amount" class="table-rebuy-input rebuy-input">
+              </label>
+              <div class="table-rebuy-actions">
+                <button type="button" class="pp-btn pp-btn-play btn-play" onclick="sendRebuy()">Докупить</button>
+                <button type="button" class="pp-btn pp-btn-danger btn-leave-table" onclick="leaveCurrentTable()">Выйти</button>
+              </div>
           </div>
         </div>
 
-        <div id="toast-container" class="toast-container"></div>
+        <div id="toast-container" class="toast-container table-toast-container"></div>
 
+
+    </div>
+    </div>
 
     <script>
 

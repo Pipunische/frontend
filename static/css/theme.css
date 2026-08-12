@@ -16,8 +16,8 @@
   --glow-purple: 0 0 40px rgba(168, 85, 247, 0.35);
   --glow-pink: 0 0 35px rgba(236, 72, 153, 0.3);
   --glow-cyan: 0 0 28px rgba(34, 211, 238, 0.28);
-  --font-body: "Exo 2", "Segoe UI", sans-serif;
-  --font-display: "Orbitron", "Segoe UI", sans-serif;
+  --font-body: "Figtree", "Segoe UI", sans-serif;
+  --font-display: "Figtree", "Segoe UI", sans-serif;
   --radius-lg: 28px;
   --radius-md: 16px;
   --radius-sm: 12px;
@@ -37,6 +37,8 @@ body {
   color: var(--text);
   font-family: var(--font-body);
   background: var(--void);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* Full-page immersive backdrop */
@@ -80,6 +82,10 @@ body {
   --pp-scene-image: url("/static/images/lobbyFon2.png");
 }
 
+.pp-scene--table {
+  --pp-scene-image: url("/static/images/lobby_poker.png");
+}
+
 @keyframes pp-rise {
   from {
     opacity: 0;
@@ -104,8 +110,8 @@ body {
   cursor: pointer;
   font-family: var(--font-body);
   font-size: 0.82rem;
-  font-weight: 800;
-  letter-spacing: 0.14em;
+  font-weight: 700;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   text-decoration: none;
   text-align: center;

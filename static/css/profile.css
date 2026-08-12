@@ -25,7 +25,7 @@ body {
   margin: 0;
   min-height: 100vh;
   color: var(--text);
-  font-family: "Exo 2", "Segoe UI", sans-serif;
+  font-family: var(--font-body);
   background: var(--void);
   overflow-x: hidden;
 }
@@ -172,7 +172,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: "Orbitron", sans-serif;
+  font-family: var(--font-display);
   font-size: 56px;
   font-weight: 900;
   color: white;
@@ -202,7 +202,7 @@ body {
 
 .profile-nickname {
   margin: 0;
-  font-family: "Orbitron", sans-serif;
+  font-family: var(--font-display);
   font-size: 1.35rem;
   font-weight: 800;
   letter-spacing: 0.06em;
@@ -258,7 +258,7 @@ body {
   padding: 14px 17px;
   border-radius: 999px;
   margin-bottom: 28px;
-  font-family: "Orbitron", sans-serif;
+  font-family: var(--font-display);
   font-size: 1.15rem;
   font-weight: 700;
   color: #22d3ee;
@@ -291,7 +291,7 @@ body {
   border-radius: 14px;
   border: none;
   cursor: pointer;
-  font-family: "Exo 2", sans-serif;
+  font-family: var(--font-body);
   font-size: 0.82rem;
   font-weight: 800;
   letter-spacing: 0.12em;
@@ -373,7 +373,7 @@ body {
 
 .profile-dashboard-head h1 {
   margin: 0;
-  font-family: "Orbitron", sans-serif;
+  font-family: var(--font-display);
   font-size: clamp(1.4rem, 2vw, 1.85rem);
   font-weight: 800;
   letter-spacing: 0.08em;
@@ -465,7 +465,7 @@ body {
 }
 
 .profile-stat-value {
-  font-family: "Orbitron", sans-serif;
+  font-family: var(--font-display);
   font-size: clamp(1.5rem, 2.4vw, 2rem);
   font-weight: 800;
   line-height: 1.1;
@@ -530,7 +530,7 @@ body {
 
 .profile-rank-name {
   margin: 0;
-  font-family: "Orbitron", sans-serif;
+  font-family: var(--font-display);
   font-size: clamp(2.2rem, 4vw, 3.4rem);
   font-weight: 900;
   letter-spacing: 0.12em;
@@ -566,7 +566,7 @@ body {
 }
 
 .profile-rank-progress-head strong {
-  font-family: "Orbitron", sans-serif;
+  font-family: var(--font-display);
   font-size: 1rem;
   color: #f5d0fe;
 }
