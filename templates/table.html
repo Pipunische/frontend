@@ -10,9 +10,7 @@
     <link rel="stylesheet" href="{{ url_for('static', path='css/theme.css') }}?v={{ v }}">
     <link rel="stylesheet" href="{{ url_for('static', path='css/poker_table.css') }}?v={{ v }}">
     <link rel="stylesheet" href="{{ url_for('static', path='css/table.css') }}?v={{ v }}">
-    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
+    {% include 'partials/head_scripts.html' %}
   </head>
 
   <body class="table-page">
@@ -253,45 +251,12 @@
 
     <script>
 
-      function showToast(type, errorType, message) {
-
-          const errorTitles = {
-            'IllegalRaiseException': 'Ошибка при поднятия ставки',
-            'IllegalCallException': 'Ошибка при уравнивании ставки',
-            'IllegalCheckException': 'Ошибка при пропуске хода',
-            'NotYourTurnException': 'Не ваш ход',
-            'TableFullException': 'Стол заполнен',
-            'ChipAmountException': 'Ошибка фишек',
-            'PlayerAlreadyJoinedException': 'Вы уже за столом'
-          };
-
-          const titleText = errorTitles[errorType] || errorType || 'Уведомление';
-
-          const container = document.getElementById('toast-container')
-          if (!container) return;
-
-          const toast = document.createElement('div');
-          let icon = '⚠️'; let colorClass = 'toast-warning';
-
-          if (type === 'error') { icon = '❌'; colorClass = 'toast-error'; }
-          else if (type === 'success') { icon = '✅'; colorClass = 'toast-success'; }
-
-          toast.className =  `poker-toast ${colorClass}`;
-          toast.innerHTML = `
-              <div class="toast-icon">${icon}</div>
-              <div class="toast-content">
-                  <span class="toast-title">${titleText}</span>
-                  <span>${message}</span>
-              </div>
-          `;
-
-          container.appendChild(toast);
-          setTimeout(() => toast.classList.add('show'), 10);
-          setTimeout(() => {
-          toast.classList.remove('show');
-           setTimeout(() => toast.remove(), 400);
-           }, 4000);
-      }
+      PP.registerToastTitles({
+        IllegalRaiseException: 'Ошибка при поднятия ставки',
+        IllegalCallException: 'Ошибка при уравнивании ставки',
+        IllegalCheckException: 'Ошибка при пропуске хода',
+        NotYourTurnException: 'Не ваш ход'
+      });
 
       function toggleEmotePanel() {
         console.log("🔘 Клик по кнопке эмодзи!");
@@ -500,31 +465,6 @@
         MAIN_POT: 'Основной банк',
         SIDE_POT: 'Доп. банк',
       };
-
-      function formatPokerAmount(value) {
-        const n = parseInt(value, 10);
-        if (Number.isNaN(n)) {
-          return value != null ? String(value) : '0';
-        }
-
-        if (n >= 1_000_000) {
-          const scaled = n / 1_000_000;
-          if (scaled === Math.floor(scaled)) {
-            return `${Math.floor(scaled)}M`;
-          }
-          return `${parseFloat(scaled.toFixed(1))}M`;
-        }
-
-        if (n >= 1_000) {
-          const scaled = n / 1_000;
-          if (scaled === Math.floor(scaled)) {
-            return `${Math.floor(scaled)}K`;
-          }
-          return `${parseFloat(scaled.toFixed(1))}K`;
-        }
-
-        return String(n);
-      }
 
       function normalizeLabelKey(label) {
         return String(label ?? '').trim().toUpperCase().replace(/[\s-]+/g, '_');
@@ -2011,9 +1951,9 @@
 
       const PING_INTERVAL_MS = 3000;
       const PONG_TIMEOUT_MS = PING_INTERVAL_MS * 2;
-      const RECONNECT_DELAYS = [500, 1000, 2000, 5000];
-      const FAST_RECONNECT_DELAY_MS = 500;
-      const RESYNC_RETRY_DELAYS = [500, 1000, 2000];
+      const RECONNECT_DELAYS = PP.RECONNECT_DELAYS;
+      const FAST_RECONNECT_DELAY_MS = PP.FAST_RECONNECT_DELAY_MS;
+      const RESYNC_RETRY_DELAYS = PP.RESYNC_RETRY_DELAYS;
       const SNAPSHOT_POLL_INTERVAL_MS = 30000;
       const ACTIVE_HAND_STATES = ['PRE_FLOP', 'FLOP', 'TURN', 'RIVER', 'SHOWDOWN', 'CLEANUP'];
 
@@ -2066,47 +2006,7 @@
       }
 
       async function fetchWithRetry(url, options = {}, retries = 3) {
-        let lastError = null;
-
-        for (let attempt = 0; attempt < retries; attempt++) {
-          try {
-            const response = await fetch(url, options);
-            let data = {};
-            try {
-              data = await response.json();
-            } catch (_) {
-              data = {};
-            }
-
-            if (response.status === 401 || data.redirect) {
-              if (isDevTableMode()) {
-                console.warn('Dev-table: пропускаем редирект на login для', url);
-                return null;
-              }
-              window.location.href = data.redirect || '/login?error=session_expired';
-              return null;
-            }
-
-            if (response.status === 503 && data.retry) {
-              throw new Error(data.message || 'Сервис временно недоступен');
-            }
-
-            if (!response.ok) {
-              throw new Error(`HTTP ${response.status}`);
-            }
-
-            return { response, data };
-          } catch (err) {
-            lastError = err;
-            if (attempt < retries - 1) {
-              const delay = RESYNC_RETRY_DELAYS[attempt] || 2000;
-              console.warn(`🔁 Retry ${attempt + 1}/${retries - 1} для ${url} через ${delay}ms`);
-              await sleep(delay);
-            }
-          }
-        }
-
-        throw lastError || new Error('Запрос не удался');
+        return PP.fetchWithRetry(url, options, retries, { isDevMode: isDevTableMode });
       }
 
       function isSocketConnected() {
@@ -2174,25 +2074,12 @@
       }
 
       async function fetchFreshToken() {
-        if (isDevTableMode()) return true;
-
-        try {
-          const response = await fetch('/api/session/token');
-          const data = await response.json();
-
-          if (response.status === 401 || data.redirect) {
-            window.location.href = data.redirect || '/login?error=session_expired';
-            return false;
-          }
-
-          if (data.token) {
-            userToken = data.token;
-          }
-          return Boolean(userToken && userToken !== "None" && userToken.trim() !== "");
-        } catch (err) {
-          console.error("Не удалось получить актуальный токен:", err);
-          return false;
-        }
+        return PP.fetchFreshToken({
+          isDevMode: isDevTableMode,
+          getToken: () => userToken,
+          setToken: (token) => { userToken = token; },
+          onDevMode: () => true,
+        });
       }
 
       function updateTableStateClass(state) {
@@ -2380,27 +2267,17 @@
         updatePingIndicator(9999);
       }
 
-      function scheduleReconnect(reason, fast = false) {
-        if (isDevTableMode()) return;
-        if (isIntentionalReload || isReconnectScheduled) return;
-
-        cleanupWebSocketConnection();
-
-        const delay = fast
-          ? FAST_RECONNECT_DELAY_MS
-          : RECONNECT_DELAYS[Math.min(reconnectAttempt, RECONNECT_DELAYS.length - 1)];
-
-        reconnectAttempt++;
-        isReconnectScheduled = true;
-
-        console.log(`⏳ ${reason}. Переподключение через ${delay} мс (попытка ${reconnectAttempt})...`);
-
-        reconnectTimer = setTimeout(() => {
-          isReconnectScheduled = false;
-          reconnectTimer = null;
-          connectWebSocket();
-        }, delay);
-      }
+      const scheduleReconnect = PP.createReconnectScheduler({
+        isDevMode: isDevTableMode,
+        getFlags: () => ({ isIntentionalReload, isReconnectScheduled, reconnectAttempt }),
+        setFlags: (partial) => {
+          if (partial.reconnectAttempt !== undefined) reconnectAttempt = partial.reconnectAttempt;
+          if (partial.isReconnectScheduled !== undefined) isReconnectScheduled = partial.isReconnectScheduled;
+        },
+        setTimer: (timer) => { reconnectTimer = timer; },
+        cleanup: cleanupWebSocketConnection,
+        connect: connectWebSocket,
+      });
 
       function handleTableEvent(eventData) {
         markEventReceived();

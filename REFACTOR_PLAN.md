@@ -7,7 +7,7 @@
 **Статус фаз:**
 
 - [x] Фаза 0 — удаления и rename
-- [ ] Фаза 1 — общий JS
+- [x] Фаза 1 — общий JS
 - [ ] Фаза 2 — Python session/auth utils
 - [ ] Фаза 3 — CSS consolidation
 - [ ] Фаза 4 — Jinja partials

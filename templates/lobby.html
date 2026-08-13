@@ -12,9 +12,7 @@
     <link rel="stylesheet" href="{{ url_for('static', path='css/lobby.css') }}?v={{ v }}">
     <link rel="stylesheet" href="{{ url_for('static', path='css/create_table_modal.css') }}?v={{ v }}">
     <link rel="stylesheet" href="{{ url_for('static', path='css/emote_shop_modal.css') }}?v={{ v }}">
-    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
+    {% include 'partials/head_scripts.html' %}
 </head>
 
 <body>
@@ -256,49 +254,16 @@
 
 <script>
 
-    function showToast(type, errorType, message) {
-
-        const errorTitles = {
-            'TableFullException': 'Стол заполнен',
-            'ChipAmountException': 'Ошибка фишек',
-            'PlayerAlreadyJoinedException': 'Вы уже за столом',
-            'InsufficientFunds': 'Недостаточно фишек',
-            'AlreadyOwned': 'Уже куплено',
-            'ComingSoon': 'Скоро',
-            'PurchaseSuccess': 'Эмодзи куплен',
-            'ShopError': 'Магазин',
-            'PurchaseFailed': 'Ошибка покупки',
-            'EmoteNotFound': 'Не найдено',
-            'EmoteNotPurchasable': 'Недоступно'
-          };
-
-          const titleText = errorTitles[errorType] || errorType || 'Уведомление'; 
-
-        const container = document.getElementById('toast-container')
-        if (!container) return;
-
-        const toast = document.createElement('div');
-        let icon = '⚠️'; let colorClass = 'toast-warning';
-
-        if (type === 'error') { icon = '❌'; colorClass = 'toast-error'; }
-        else if (type === 'success') { icon = '✅'; colorClass = 'toast-success'; }
-
-        toast.className =  `poker-toast ${colorClass}`;
-        toast.innerHTML = `
-            <div class="toast-icon">${icon}</div>
-            <div class="toast-content">
-                <span class="toast-title">${titleText}</span>
-                <span>${message}</span>
-            </div>
-        `;
-
-        container.appendChild(toast);
-        setTimeout(() => toast.classList.add('show'), 10);
-        setTimeout(() => {
-            toast.classList.remove('show');
-            setTimeout(() => toast.remove(), 400);
-        }, 4000);
-    }
+    PP.registerToastTitles({
+        InsufficientFunds: 'Недостаточно фишек',
+        AlreadyOwned: 'Уже куплено',
+        ComingSoon: 'Скоро',
+        PurchaseSuccess: 'Эмодзи куплен',
+        ShopError: 'Магазин',
+        PurchaseFailed: 'Ошибка покупки',
+        EmoteNotFound: 'Не найдено',
+        EmoteNotPurchasable: 'Недоступно'
+    });
 
     const javaHost = "{{ java_host }}";
     let userToken = "{{ user_token if user else '' }}";
@@ -648,31 +613,6 @@
     let stompClient = null;
     let isIntentionalReload = false;
 
-    function formatPokerAmount(value) {
-        const n = parseInt(value, 10);
-        if (Number.isNaN(n)) {
-            return value != null ? String(value) : '0';
-        }
-
-        if (n >= 1_000_000) {
-            const scaled = n / 1_000_000;
-            if (scaled === Math.floor(scaled)) {
-                return `${Math.floor(scaled)}M`;
-            }
-            return `${parseFloat(scaled.toFixed(1))}M`;
-        }
-
-        if (n >= 1_000) {
-            const scaled = n / 1_000;
-            if (scaled === Math.floor(scaled)) {
-                return `${Math.floor(scaled)}K`;
-            }
-            return `${parseFloat(scaled.toFixed(1))}K`;
-        }
-
-        return String(n);
-    }
-
     function formatBlinds(blinds) {
         const text = String(blinds ?? '').trim();
         if (!text) return '0/0';
@@ -716,31 +656,16 @@
     }
 
     async function fetchFreshToken() {
-        if (isDevLobbyMode()) {
-            console.log('🛠️ Dev-lobby: используем mock-токен из шаблона, без /api/session/token');
-            return Boolean(userToken && userToken !== 'None' && userToken.trim() !== '');
-        }
-
-        try {
-            const response = await fetch('/api/session/token');
-            const data = await response.json();
-
-            if (response.status === 401 || data.redirect) {
-                window.location.href = data.redirect || '/login?error=session_expired';
-                return false;
-            }
-
-            if (data.token) {
-                userToken = data.token;
-            }
-            if (data.wallet_balance !== undefined) {
-                updateWalletDisplay(data.wallet_balance);
-            }
-            return Boolean(userToken && userToken !== "None" && userToken.trim() !== "");
-        } catch (err) {
-            console.error("Не удалось получить актуальный токен:", err);
-            return false;
-        }
+        return PP.fetchFreshToken({
+            isDevMode: isDevLobbyMode,
+            getToken: () => userToken,
+            setToken: (token) => { userToken = token; },
+            onWalletBalance: updateWalletDisplay,
+            onDevMode: () => {
+                console.log('🛠️ Dev-lobby: используем mock-токен из шаблона, без /api/session/token');
+                return Boolean(userToken && userToken !== 'None' && userToken.trim() !== '');
+            },
+        });
     }
 
     function getStakeClass(minBuyIn) {
@@ -920,9 +845,9 @@
 
     const PING_INTERVAL_MS = 3000;
     const PONG_TIMEOUT_MS = PING_INTERVAL_MS * 2;
-    const RECONNECT_DELAYS = [500, 1000, 2000, 5000];
-    const FAST_RECONNECT_DELAY_MS = 500;
-    const RESYNC_RETRY_DELAYS = [500, 1000, 2000];
+    const RECONNECT_DELAYS = PP.RECONNECT_DELAYS;
+    const FAST_RECONNECT_DELAY_MS = PP.FAST_RECONNECT_DELAY_MS;
+    const RESYNC_RETRY_DELAYS = PP.RESYNC_RETRY_DELAYS;
     const LOBBY_POLL_INTERVAL_MS = 30000;
 
     let pingInterval = null;
@@ -934,47 +859,11 @@
     let isReconnectScheduled = false;
 
     function lobbySleep(ms) {
-        return new Promise(resolve => setTimeout(resolve, ms));
+        return PP.sleep(ms);
     }
 
     async function fetchWithRetry(url, options = {}, retries = 3) {
-        let lastError = null;
-
-        for (let attempt = 0; attempt < retries; attempt++) {
-            try {
-                const response = await fetch(url, options);
-                let data = {};
-                try {
-                    data = await response.json();
-                } catch (_) {
-                    data = {};
-                }
-
-                if (!isDevLobbyMode() && (response.status === 401 || data.redirect)) {
-                    window.location.href = data.redirect || '/login?error=session_expired';
-                    return null;
-                }
-
-                if (response.status === 503 && data.retry) {
-                    throw new Error(data.message || 'Сервис временно недоступен');
-                }
-
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}`);
-                }
-
-                return { response, data };
-            } catch (err) {
-                lastError = err;
-                if (attempt < retries - 1) {
-                    const delay = RESYNC_RETRY_DELAYS[attempt] || 2000;
-                    console.warn(`🔁 Retry ${attempt + 1}/${retries - 1} для ${url} через ${delay}ms`);
-                    await lobbySleep(delay);
-                }
-            }
-        }
-
-        throw lastError || new Error('Запрос не удался');
+        return PP.fetchWithRetry(url, options, retries, { isDevMode: isDevLobbyMode });
     }
 
     function isLobbySocketConnected() {
@@ -1097,26 +986,17 @@
         }
     }
 
-    function scheduleLobbyReconnect(reason, fast = false) {
-        if (isIntentionalReload || isReconnectScheduled) return;
-
-        cleanupLobbySocket();
-
-        const delay = fast
-            ? FAST_RECONNECT_DELAY_MS
-            : RECONNECT_DELAYS[Math.min(reconnectAttempt, RECONNECT_DELAYS.length - 1)];
-
-        reconnectAttempt++;
-        isReconnectScheduled = true;
-
-        console.log(`⏳ ${reason}. Переподключение лобби через ${delay} мс (попытка ${reconnectAttempt})...`);
-
-        reconnectTimer = setTimeout(() => {
-            isReconnectScheduled = false;
-            reconnectTimer = null;
-            connectLobbySocket();
-        }, delay);
-    }
+    const scheduleLobbyReconnect = PP.createReconnectScheduler({
+        getFlags: () => ({ isIntentionalReload, isReconnectScheduled, reconnectAttempt }),
+        setFlags: (partial) => {
+            if (partial.reconnectAttempt !== undefined) reconnectAttempt = partial.reconnectAttempt;
+            if (partial.isReconnectScheduled !== undefined) isReconnectScheduled = partial.isReconnectScheduled;
+        },
+        setTimer: (timer) => { reconnectTimer = timer; },
+        cleanup: cleanupLobbySocket,
+        connect: connectLobbySocket,
+        logSuffix: 'лобби',
+    });
 
     function updateOnlineIndicator(count) {
         if (count === undefined || count === null || Number.isNaN(Number(count))) return;
