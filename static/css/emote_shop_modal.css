@@ -157,6 +157,11 @@
   box-shadow: 0 0 16px rgba(251, 113, 133, 0.4);
 }
 
+.emote-shop-card__icon.emote-exclusive--sad {
+  background: radial-gradient(circle, rgba(96, 165, 250, 0.28), transparent 70%);
+  box-shadow: 0 0 16px rgba(96, 165, 250, 0.4);
+}
+
 .emote-shop-card__icon--lottie {
   font-size: 0;
   overflow: hidden;

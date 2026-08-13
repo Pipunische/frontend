@@ -88,6 +88,15 @@ EMOTE_CATALOG: list[dict[str, Any]] = [
         "style_class": "emote-lottie emote-exclusive--piggy",
         "lottie": "piggy.json",
     },
+    {
+        "emote_id": "sad_emoji",
+        "emoji": "😢",
+        "name": "Грусть",
+        "price": 15_000,
+        "is_default": False,
+        "style_class": "emote-lottie emote-exclusive--sad",
+        "lottie": "sad_emoji.json",
+    },
 ]
 
 CATALOG_BY_ID: dict[str, dict[str, Any]] = {

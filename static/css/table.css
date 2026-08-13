@@ -476,6 +476,16 @@ body.table-page {
   animation-name: emote-exclusive-pulse;
 }
 
+.table-page .emote-panel .emote-exclusive--sad {
+  background: radial-gradient(
+    circle,
+    rgba(96, 165, 250, 0.3),
+    transparent 70%
+  );
+  box-shadow: 0 0 12px rgba(96, 165, 250, 0.5);
+  animation-name: emote-exclusive-pulse;
+}
+
 @keyframes emote-exclusive-crown {
   from {
     box-shadow:
