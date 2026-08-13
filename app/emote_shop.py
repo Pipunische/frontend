@@ -5,6 +5,12 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from loguru import logger
+
+from app.config import settings
+from app.services import is_core_unreachable, java_request
+from app.session_utils import is_dev_mock_user
+
 EMOTE_CATALOG: list[dict[str, Any]] = [
     {
         "emote_id": "fire",
@@ -188,10 +194,6 @@ def emotes_lottie_dict(*, include_mock: bool = False) -> dict[str, str]:
     }
 
 
-def emotes_dict_json(*, include_mock: bool = False) -> str:
-    return json.dumps(emotes_dict(include_mock=include_mock), ensure_ascii=False)
-
-
 def panel_emotes_for_owned(
     owned_ids: list[str] | None = None,
     *,
@@ -366,3 +368,36 @@ def java_emotes_unavailable(response) -> bool:
     if response is None:
         return True
     return response.status_code in (404, 501, 502, 503, 504)
+
+
+async def fetch_owned_emote_ids(request, user: dict) -> list[str]:
+    """Prefer Java ownership; VIP accounts always get premium; else session/defaults."""
+    session_owned = get_session_owned_ids(request.session)
+    user_id = user.get("user_id")
+
+    if is_dev_mock_user(user):
+        return owned_ids_for_user(
+            user_id,
+            get_session_owned_ids(request.session, include_mock=True),
+            include_mock=True,
+        )
+
+    if not user_id:
+        return session_owned
+
+    target_url = f"{settings.BASE_JAVA_URL}/user/{user_id}/emotes"
+    response = await java_request("GET", target_url, request)
+
+    if is_core_unreachable(response) or java_emotes_unavailable(response):
+        return owned_ids_for_user(user_id, session_owned)
+
+    if response.status_code == 200:
+        try:
+            payload = enrich_java_shop_payload(response.json(), user_id=user_id)
+            owned = payload.get("owned_emote_ids") or owned_ids_for_user(user_id, session_owned)
+            set_session_owned_ids(request.session, owned)
+            return owned
+        except Exception as exc:
+            logger.warning(f"Emotes: failed to parse Java ownership: {exc}")
+
+    return owned_ids_for_user(user_id, session_owned)

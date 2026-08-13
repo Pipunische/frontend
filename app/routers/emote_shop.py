@@ -14,44 +14,19 @@ from app.emote_shop import (
 )
 from app.models import EmotePurchaseRequest
 from app.services import is_core_unreachable, java_request
+from app.session_utils import (
+    is_dev_mock_user,
+    refresh_wallet_from_java,
+    require_user,
+    sync_user_wallet,
+    unauthorized_json,
+)
 
 router = APIRouter(tags=["Emote Shop"])
 
 
-def _is_dev_mock_user(user: dict) -> bool:
-    return user.get("token") == "fake_token"
-
-
-def _unauthorized():
-    return JSONResponse(
-        status_code=401,
-        content={"redirect": "/login?error=session_expired"},
-    )
-
-
-def _sync_user_wallet(request: Request, wallet_balance: int) -> None:
-    user = request.session.get("user")
-    if not user:
-        return
-    user["wallet_balance"] = wallet_balance
-    request.session["user"] = user
-
-
-async def _refresh_wallet_from_java(request: Request, user: dict) -> int:
-    balance_url = f"{settings.JAVA_AUTH_URL}/{user['user_id']}/balance"
-    balance_res = await java_request("GET", balance_url, request)
-
-    if balance_res and balance_res.status_code == 200:
-        wallet_balance = balance_res.json().get("wallet_balance")
-        if wallet_balance is not None:
-            _sync_user_wallet(request, int(wallet_balance))
-            return int(wallet_balance)
-
-    return int(user.get("wallet_balance") or 0)
-
-
 def _mock_shop_state(request: Request, user: dict, *, include_mock: bool | None = None) -> dict:
-    use_mock_catalog = _is_dev_mock_user(user) if include_mock is None else include_mock
+    use_mock_catalog = is_dev_mock_user(user) if include_mock is None else include_mock
     owned_ids = owned_ids_for_user(
         user.get("user_id"),
         get_session_owned_ids(request.session, include_mock=use_mock_catalog),
@@ -67,13 +42,30 @@ def _mock_shop_state(request: Request, user: dict, *, include_mock: bool | None 
     )
 
 
+def _apply_mock_purchase(
+    request: Request,
+    user: dict,
+    owned_ids: list[str],
+    emote_id: str,
+    *,
+    conflict_on_owned: bool = True,
+):
+    success, error = mock_purchase(user, owned_ids, emote_id)
+    if error:
+        status_code = 409 if conflict_on_owned and error.get("errorType") == "AlreadyOwned" else 400
+        return JSONResponse(status_code=status_code, content=error)
+    set_session_owned_ids(request.session, success["owned_emote_ids"])
+    sync_user_wallet(request, success["wallet_balance"])
+    return success
+
+
 @router.get("/api/emotes")
 async def api_get_emotes(request: Request):
-    user = request.session.get("user")
+    user = require_user(request)
     if not user:
-        return _unauthorized()
+        return unauthorized_json()
 
-    if _is_dev_mock_user(user):
+    if is_dev_mock_user(user):
         return _mock_shop_state(request, user)
 
     user_id = user.get("user_id")
@@ -82,14 +74,14 @@ async def api_get_emotes(request: Request):
 
     if is_core_unreachable(response):
         logger.warning("Emote shop: Java недоступен, отдаём BFF mock")
-        wallet_balance = await _refresh_wallet_from_java(request, user)
-        user = request.session.get("user") or user
+        wallet_balance = await refresh_wallet_from_java(request, user)
+        user = require_user(request) or user
         owned_ids = owned_ids_for_user(user.get("user_id"), get_session_owned_ids(request.session))
         set_session_owned_ids(request.session, owned_ids)
         return build_shop_response(wallet_balance, owned_ids, source="mock")
 
     if response.status_code == 401:
-        return _unauthorized()
+        return unauthorized_json()
 
     if response.status_code == 200:
         try:
@@ -99,13 +91,13 @@ async def api_get_emotes(request: Request):
             return JSONResponse(status_code=502, content={"errorType": "InvalidResponse", "message": "Некорректный ответ сервера"})
 
         set_session_owned_ids(request.session, payload.get("owned_emote_ids", []))
-        _sync_user_wallet(request, payload.get("wallet_balance", 0))
+        sync_user_wallet(request, payload.get("wallet_balance", 0))
         return payload
 
     if java_emotes_unavailable(response):
         logger.info(f"Emote shop: Java emotes API недоступен ({response.status_code}), BFF mock")
-        wallet_balance = await _refresh_wallet_from_java(request, user)
-        user = request.session.get("user") or user
+        await refresh_wallet_from_java(request, user)
+        user = require_user(request) or user
         return _mock_shop_state(request, user)
 
     try:
@@ -118,19 +110,13 @@ async def api_get_emotes(request: Request):
 
 @router.post("/api/emotes/purchase")
 async def api_purchase_emote(request: Request, body: EmotePurchaseRequest):
-    user = request.session.get("user")
+    user = require_user(request)
     if not user:
-        return _unauthorized()
+        return unauthorized_json()
 
-    if _is_dev_mock_user(user):
+    if is_dev_mock_user(user):
         owned_ids = get_session_owned_ids(request.session)
-        success, error = mock_purchase(user, owned_ids, body.emote_id)
-        if error:
-            status_code = 409 if error.get("errorType") == "AlreadyOwned" else 400
-            return JSONResponse(status_code=status_code, content=error)
-        set_session_owned_ids(request.session, success["owned_emote_ids"])
-        _sync_user_wallet(request, success["wallet_balance"])
-        return success
+        return _apply_mock_purchase(request, user, owned_ids, body.emote_id)
 
     user_id = user.get("user_id")
     target_url = f"{settings.BASE_JAVA_URL}/user/{user_id}/emotes/purchase"
@@ -141,15 +127,12 @@ async def api_purchase_emote(request: Request, body: EmotePurchaseRequest):
     if is_core_unreachable(response):
         logger.warning("Emote shop purchase: Java недоступен, BFF mock")
         owned_ids = owned_ids_for_user(user.get("user_id"), get_session_owned_ids(request.session))
-        success, error = mock_purchase(user, owned_ids, body.emote_id)
-        if error:
-            return JSONResponse(status_code=400, content=error)
-        set_session_owned_ids(request.session, success["owned_emote_ids"])
-        _sync_user_wallet(request, success["wallet_balance"])
-        return success
+        return _apply_mock_purchase(
+            request, user, owned_ids, body.emote_id, conflict_on_owned=False
+        )
 
     if response.status_code == 401:
-        return _unauthorized()
+        return unauthorized_json()
 
     if response.status_code == 200:
         try:
@@ -159,7 +142,7 @@ async def api_purchase_emote(request: Request, body: EmotePurchaseRequest):
             return JSONResponse(status_code=502, content={"errorType": "InvalidResponse", "message": "Некорректный ответ сервера"})
 
         set_session_owned_ids(request.session, result.get("owned_emote_ids", []))
-        _sync_user_wallet(request, result.get("wallet_balance", 0))
+        sync_user_wallet(request, result.get("wallet_balance", 0))
         result["status"] = "success"
         result["source"] = "java"
         return result
@@ -167,13 +150,7 @@ async def api_purchase_emote(request: Request, body: EmotePurchaseRequest):
     if java_emotes_unavailable(response):
         logger.info(f"Emote shop purchase: Java API недоступен ({response.status_code}), BFF mock")
         owned_ids = owned_ids_for_user(user.get("user_id"), get_session_owned_ids(request.session))
-        success, error = mock_purchase(user, owned_ids, body.emote_id)
-        if error:
-            status_code = 409 if error.get("errorType") == "AlreadyOwned" else 400
-            return JSONResponse(status_code=status_code, content=error)
-        set_session_owned_ids(request.session, success["owned_emote_ids"])
-        _sync_user_wallet(request, success["wallet_balance"])
-        return success
+        return _apply_mock_purchase(request, user, owned_ids, body.emote_id)
 
     try:
         error_payload = response.json()

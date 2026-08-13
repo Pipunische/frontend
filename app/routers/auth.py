@@ -1,11 +1,16 @@
 import httpx
 from fastapi import APIRouter, FastAPI, Request, Form, UploadFile, File
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from loguru import logger
 
 from app.config import settings
 from app.models import GoogleAuthRequest, NicknameRequest
 from app.services import templates, java_request, core_unreachable_json, is_core_unreachable, normalize_user_stats
+from app.session_utils import (
+    require_user,
+    sync_user_wallet,
+    unauthorized_json,
+)
 
 router = APIRouter(tags=["Authentication & Profile"])
 
@@ -61,7 +66,7 @@ async def google_auth_process(request: Request, data: GoogleAuthRequest):
 
 @router.post("/api/upload-avatar")
 async def upload_avatar(request: Request, avatar: UploadFile = File(...)):
-    user = request.session.get("user")
+    user = require_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=303)
     
@@ -109,9 +114,9 @@ async def upload_avatar(request: Request, avatar: UploadFile = File(...)):
 
 @router.post("/api/profile/nickname")
 async def update_nickname(request: Request, data: NicknameRequest):
-    user = request.session.get("user")
+    user = require_user(request)
     if not user:
-        return {"redirect": "/login?error=session_expired"}
+        return unauthorized_json()
 
     user_id = user.get("user_id")
     target_url = f"{settings.JAVA_AUTH_URL}/{user_id}/nickname"
@@ -125,7 +130,7 @@ async def update_nickname(request: Request, data: NicknameRequest):
     logger.info(f"Java-ответ: Статус: {status}")
 
     if not response or response.status_code == 401:
-        return {"redirect": "/login?error=session_expired"}
+        return unauthorized_json()
     
     if response.status_code == 200:
         user['name'] = data.new_nickname
@@ -145,7 +150,7 @@ async def update_nickname(request: Request, data: NicknameRequest):
 
 @router.get("/profile", response_class=HTMLResponse)
 async def page_profile(request: Request):
-    current_user = request.session.get("user")
+    current_user = require_user(request)
     if not current_user:
         return RedirectResponse(url="/login", status_code=303)
 
@@ -182,12 +187,9 @@ async def page_profile(request: Request):
 
 @router.get("/api/session/token")
 async def get_session_token(request: Request):
-    user = request.session.get("user")
+    user = require_user(request)
     if not user:
-        return JSONResponse(
-            status_code=401,
-            content={"redirect": "/login?error=session_expired"}
-        )
+        return unauthorized_json()
 
     balance_url = f"{settings.JAVA_AUTH_URL}/{user['user_id']}/balance"
     balance_res = await java_request("GET", balance_url, request)
@@ -197,19 +199,15 @@ async def get_session_token(request: Request):
 
     if balance_res.status_code == 401:
         request.session.clear()
-        return JSONResponse(
-            status_code=401,
-            content={"redirect": "/login?error=session_expired"}
-        )
+        return unauthorized_json()
 
-    user = request.session.get("user")
-    wallet_balance = user.get("wallet_balance", 0)
+    wallet_balance = int(user.get("wallet_balance") or 0)
     if balance_res.status_code == 200:
         new_balance = balance_res.json().get("wallet_balance")
         if new_balance is not None:
-            wallet_balance = new_balance
-            user["wallet_balance"] = new_balance
-            request.session["user"] = user
+            sync_user_wallet(request, int(new_balance))
+            wallet_balance = int(new_balance)
+            user = require_user(request) or user
 
     return {
         "token": user.get("token"),
@@ -219,7 +217,7 @@ async def get_session_token(request: Request):
 
 @router.get("/logout")
 async def logout(request: Request):
-    user = request.session.get("user")
+    user = require_user(request)
 
     if user:
         user_name = user.get('name', 'Unknown')

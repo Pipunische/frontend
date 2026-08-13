@@ -8,14 +8,12 @@ from app.config import settings
 from app.emote_shop import (
     emotes_dict,
     emotes_lottie_dict,
-    enrich_java_shop_payload,
+    fetch_owned_emote_ids,
     get_session_owned_ids,
-    java_emotes_unavailable,
     merge_owned_ids,
     owned_ids_for_user,
     panel_emotes_for_owned,
     premium_emote_ids,
-    set_session_owned_ids,
 )
 from app.models import ActionRequest
 from app.table_layouts import (
@@ -29,6 +27,12 @@ from app.services import (
     extract_cards,
     core_unreachable_json,
     is_core_unreachable,
+)
+from app.session_utils import (
+    require_user,
+    respond_page_or_json,
+    sync_user_wallet,
+    unauthorized_json,
 )
 
 router = APIRouter(tags=["Game Tables"])
@@ -95,39 +99,6 @@ def _emote_panel_context(owned_ids: list[str] | None = None, *, include_mock: bo
     }
 
 
-async def _resolve_owned_emotes(request: Request, my_user: dict) -> list[str]:
-    """Prefer Java ownership; VIP accounts always get premium; else session/defaults."""
-    session_owned = get_session_owned_ids(request.session)
-    user_id = my_user.get("user_id")
-
-    if my_user.get("token") == "fake_token":
-        return owned_ids_for_user(
-            user_id,
-            get_session_owned_ids(request.session, include_mock=True),
-            include_mock=True,
-        )
-
-    if not user_id:
-        return session_owned
-
-    target_url = f"{settings.BASE_JAVA_URL}/user/{user_id}/emotes"
-    response = await java_request("GET", target_url, request)
-
-    if is_core_unreachable(response) or java_emotes_unavailable(response):
-        return owned_ids_for_user(user_id, session_owned)
-
-    if response.status_code == 200:
-        try:
-            payload = enrich_java_shop_payload(response.json(), user_id=user_id)
-            owned = payload.get("owned_emote_ids") or owned_ids_for_user(user_id, session_owned)
-            set_session_owned_ids(request.session, owned)
-            return owned
-        except Exception as exc:
-            logger.warning(f"Table emotes: failed to parse Java ownership: {exc}")
-
-    return owned_ids_for_user(user_id, session_owned)
-
-
 def _build_table_context(
     game_state: dict,
     table_id: str,
@@ -176,7 +147,7 @@ async def load_table_context(
     passcode: str = "",
     allow_join: bool = False,
 ):
-    my_user = request.session.get("user")
+    my_user = require_user(request)
     if not my_user:
         return None
 
@@ -242,8 +213,8 @@ async def load_table_context(
         else:
             return {"redirect": "/lobby", "error": "not_at_table"}
 
-    my_user = request.session.get("user")
-    owned_emote_ids = await _resolve_owned_emotes(request, my_user)
+    my_user = require_user(request)
+    owned_emote_ids = await fetch_owned_emote_ids(request, my_user)
     context = _build_table_context(
         game_state,
         table_id,
@@ -254,34 +225,17 @@ async def load_table_context(
 
 
 def _respond_table_result(result, *, json_mode: bool):
-    if result is None:
+    def on_success(payload):
+        context = payload["context"]
         if json_mode:
-            return JSONResponse(
-                status_code=401,
-                content={"redirect": "/login?error=session_expired"},
-            )
-        return RedirectResponse(url="/login", status_code=303)
+            return JSONResponse(content=_table_state_json(context))
+        return templates.TemplateResponse(
+            name="table.html",
+            context=context,
+            request=payload["request"],
+        )
 
-    if result.get("error") == "core_unreachable":
-        if json_mode:
-            return core_unreachable_json()
-        return RedirectResponse(url="/lobby?error=server_down", status_code=303)
-
-    redirect = result.get("redirect")
-    if redirect:
-        if json_mode:
-            status_code = 401 if "login" in redirect else 403
-            payload = {"redirect": redirect}
-            if result.get("error"):
-                payload["error"] = result["error"]
-            return JSONResponse(status_code=status_code, content=payload)
-        return RedirectResponse(url=redirect, status_code=303)
-
-    context = result["context"]
-    if json_mode:
-        return JSONResponse(content=_table_state_json(context))
-
-    return templates.TemplateResponse(name="table.html", context=context, request=result["request"])
+    return respond_page_or_json(result, json_mode=json_mode, on_success=on_success)
 
 
 @router.get("/dev-table", response_class=HTMLResponse)
@@ -412,12 +366,9 @@ async def api_table_state(request: Request, table_id: str):
 
 @router.get("/api/table/{table_id}/events")
 async def api_table_events(request: Request, table_id: str, since: int = 0):
-    my_user = request.session.get("user")
+    my_user = require_user(request)
     if not my_user:
-        return JSONResponse(
-            status_code=401,
-            content={"redirect": "/login?error=session_expired"},
-        )
+        return unauthorized_json()
 
     target_url = f"{settings.JAVA_TABLES_URL}/{table_id}/events"
     response = await java_request("GET", target_url, request, params={"since": since})
@@ -426,10 +377,8 @@ async def api_table_events(request: Request, table_id: str, since: int = 0):
         return core_unreachable_json("Не удалось получить пропущенные события")
 
     if response.status_code == 401:
-        return JSONResponse(
-            status_code=401,
-            content={"redirect": "/login?error=session_expired"},
-        )
+        return unauthorized_json()
+
 
     if response.status_code != 200:
         try:
@@ -443,9 +392,9 @@ async def api_table_events(request: Request, table_id: str, since: int = 0):
 
 @router.post("/table/{table_id}/action")
 async def handle_action_(table_id: str, action: ActionRequest, request: Request):
-    my_user = request.session.get("user")
+    my_user = require_user(request)
     if not my_user:
-        return {"error": "unauthorized", "redirect": "/login"}
+        return unauthorized_json(error="unauthorized")
 
     target_url = f"{settings.JAVA_TABLES_URL}/{table_id}/action"
     payload = action.model_dump()
@@ -465,7 +414,7 @@ async def handle_action_(table_id: str, action: ActionRequest, request: Request)
         }
 
     if status == 401:
-        return {"redirect": "/login?error=session_expired"}
+        return unauthorized_json()
 
     if response.status_code != 200:
         try:
@@ -485,9 +434,9 @@ async def handle_action_(table_id: str, action: ActionRequest, request: Request)
 
 @router.post("/table/{table_id}/rebuy")
 async def rebuy_process(table_id: str, request: Request, amount: int = Form(...)):
-    user = request.session.get("user")
+    user = require_user(request)
     if not user:
-        return {"error": "unauthorized", "redirect": "/login"}
+        return unauthorized_json(error="unauthorized")
 
     target_url = f"{settings.JAVA_TABLES_URL}/{table_id}/rebuy"
     payload = {"user_id": user.get("user_id"), "amount": amount}
@@ -505,11 +454,13 @@ async def rebuy_process(table_id: str, request: Request, amount: int = Form(...)
         }
 
     if response.status_code == 401:
-        return {"redirect": "/login?error=session_expired"}
+        return unauthorized_json()
 
     if response.status_code == 200:
         data = response.json()
-        user["wallet_balance"] = data.get("wallet_balance")
+        if data.get("wallet_balance") is not None:
+            sync_user_wallet(request, int(data.get("wallet_balance")))
+        user = require_user(request) or user
         user["chips"] = data.get("chips", user.get("chips", 0))
         request.session["user"] = user
 
@@ -530,7 +481,7 @@ async def rebuy_process(table_id: str, request: Request, amount: int = Form(...)
 
 @router.post("/table/{table_id}/leave")
 async def leave_table(request: Request, table_id: str, user_id: str = Form(None)):
-    user = request.session.get("user")
+    user = require_user(request)
     action_user_id = user.get("user_id") if user else user_id
     user_name = user.get("name") if user else "Spectator"
 

@@ -7,6 +7,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.config import settings
 from app.services import templates, java_request, is_core_unreachable
 from app.routers import auth, lobby, tables, emote_shop
+from app.session_utils import require_user, unauthorized_json
 
 app = FastAPI(title="PoluPoker BFF", version="2.0.0")
 
@@ -52,12 +53,9 @@ async def api_health():
 
 @app.get("/api/health/core")
 async def api_health_core(request: Request):
-    user = request.session.get("user")
+    user = require_user(request)
     if not user:
-        return JSONResponse(
-            status_code=401,
-            content={"redirect": "/login?error=session_expired"},
-        )
+        return unauthorized_json()
 
     response = await java_request("GET", settings.JAVA_TABLES_URL, request)
     if is_core_unreachable(response):
