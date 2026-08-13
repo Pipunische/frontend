@@ -1,9 +1,5 @@
 /* Lobby page — PoluPoker design system (theme.css) */
 
-.pp-scene--lobby {
-  --pp-scene-image: url("/static/images/lobby_poker.png");
-}
-
 .lobby-topbar {
   position: fixed;
   top: 0;
@@ -705,89 +701,9 @@
   text-align: center;
 }
 
-/* Toasts */
-.lobby-toast-container,
-.toast-container {
-  position: fixed;
+/* Toast sits outside .pp-scene in lobby markup */
+.lobby-toast-container {
   top: 80px;
-  right: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  z-index: 10001;
-  pointer-events: none;
-}
-
-.poker-toast {
-  background: rgba(12, 10, 24, 0.95);
-  backdrop-filter: blur(14px);
-  border-left: 4px solid var(--gold);
-  color: var(--text);
-  padding: 12px 18px;
-  border-radius: var(--radius-sm);
-  font-size: 0.85rem;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 260px;
-  max-width: 380px;
-  pointer-events: auto;
-  transform: translateX(120%);
-  opacity: 0;
-  transition: all 0.4s var(--ease-out);
-}
-
-.poker-toast.show {
-  transform: translateX(0);
-  opacity: 1;
-}
-
-.toast-error {
-  border-left-color: var(--red);
-}
-.toast-error .toast-icon {
-  color: var(--red);
-}
-.toast-warning {
-  border-left-color: var(--gold);
-}
-.toast-warning .toast-icon {
-  color: var(--gold);
-}
-.toast-success {
-  border-left-color: var(--green);
-}
-.toast-success .toast-icon {
-  color: var(--green);
-}
-
-.toast-icon {
-  font-size: 1.1rem;
-  flex-shrink: 0;
-}
-
-.toast-content {
-  display: flex;
-  flex-direction: column;
-  text-align: left;
-  gap: 2px;
-}
-
-.toast-title {
-  font-weight: 800;
-  font-size: 0.68rem;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-}
-
-.chip-icon {
-  display: inline-block;
-  width: 1.05em;
-  height: 1.05em;
-  background: url("/static/poker_chip.svg") center / contain no-repeat;
-  vertical-align: -0.12em;
 }
 
 .lobby-table:hover .lobby-chip,

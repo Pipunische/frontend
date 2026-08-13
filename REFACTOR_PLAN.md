@@ -9,7 +9,7 @@
 - [x] Фаза 0 — удаления и rename
 - [x] Фаза 1 — общий JS
 - [x] Фаза 2 — Python session/auth utils
-- [ ] Фаза 3 — CSS consolidation
+- [x] Фаза 3 — CSS consolidation
 - [ ] Фаза 4 — Jinja partials
 - [ ] Фаза 5 — dev-mock (опционально)
 

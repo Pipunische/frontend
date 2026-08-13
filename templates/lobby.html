@@ -10,8 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', path='css/theme.css') }}?v={{ v }}">
     <link rel="stylesheet" href="{{ url_for('static', path='css/lobby.css') }}?v={{ v }}">
-    <link rel="stylesheet" href="{{ url_for('static', path='css/create_table_modal.css') }}?v={{ v }}">
-    <link rel="stylesheet" href="{{ url_for('static', path='css/emote_shop_modal.css') }}?v={{ v }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/modals.css') }}?v={{ v }}">
     {% include 'partials/head_scripts.html' %}
 </head>
 
@@ -160,8 +159,8 @@
 
 </div>
 
-<div id="create-table-modal" class="create-table-overlay" onclick="closeCreateTableModalOnBackdrop(event)">
-        <div class="create-table-panel" role="dialog" aria-labelledby="create-table-title" onclick="event.stopPropagation()">
+<div id="create-table-modal" class="pp-modal-overlay create-table-overlay" onclick="closeCreateTableModalOnBackdrop(event)">
+        <div class="pp-modal-panel create-table-panel" role="dialog" aria-labelledby="create-table-title" onclick="event.stopPropagation()">
             <header class="create-table-header">
                 <h2 id="create-table-title">Настройка стола</h2>
                 <p class="create-table-subtitle">Создайте кастомный стол для игры</p>
@@ -219,8 +218,8 @@
         </div>
     </div>
 
-<div id="emote-shop-modal" class="emote-shop-overlay" onclick="closeEmoteShopOnBackdrop(event)">
-    <div class="emote-shop-panel" role="dialog" aria-labelledby="emote-shop-title" onclick="event.stopPropagation()">
+<div id="emote-shop-modal" class="pp-modal-overlay emote-shop-overlay" onclick="closeEmoteShopOnBackdrop(event)">
+    <div class="pp-modal-panel emote-shop-panel" role="dialog" aria-labelledby="emote-shop-title" onclick="event.stopPropagation()">
         <header class="emote-shop-header">
             <h2 id="emote-shop-title">Магазин эмодзи</h2>
             <p class="emote-shop-subtitle">Купите эксклюзивные эмодзи — они появятся за столом только у вас</p>

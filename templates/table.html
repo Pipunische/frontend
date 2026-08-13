@@ -225,8 +225,8 @@
         {% endif %}
       </div>
 
-        <div id="rebuy-modal" class="table-rebuy-overlay modal-overlay">
-          <div class="table-rebuy-panel rebuy-box">
+        <div id="rebuy-modal" class="pp-modal-overlay table-rebuy-overlay">
+          <div class="pp-modal-panel table-rebuy-panel">
               <header class="table-rebuy-header">
                 <h2>Недостаточно фишек</h2>
                 <p>У вас меньше {{ game.big_blind }} фишек.<br>
@@ -234,11 +234,11 @@
               </header>
               <label class="table-rebuy-field-wrap">
                 <span class="table-rebuy-label">Сумма докупки</span>
-                <input type="number" id="rebuy-amount" class="table-rebuy-input rebuy-input">
+                <input type="number" id="rebuy-amount" class="table-rebuy-input">
               </label>
               <div class="table-rebuy-actions">
-                <button type="button" class="pp-btn pp-btn-play btn-play" onclick="sendRebuy()">Докупить</button>
-                <button type="button" class="pp-btn pp-btn-danger btn-leave-table" onclick="leaveCurrentTable()">Выйти</button>
+                <button type="button" class="pp-btn pp-btn-play" onclick="sendRebuy()">Докупить</button>
+                <button type="button" class="pp-btn pp-btn-danger" onclick="leaveCurrentTable()">Выйти</button>
               </div>
           </div>
         </div>

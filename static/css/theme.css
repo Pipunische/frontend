@@ -22,6 +22,9 @@
   --radius-md: 16px;
   --radius-sm: 12px;
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --pp-chip-size: 1.05em;
+  --pp-toast-top: 20px;
+  --pp-scene-image: url("/static/images/homeFon.png");
 }
 
 *,
@@ -56,7 +59,7 @@ body {
     radial-gradient(circle at 15% 20%, rgba(236, 72, 153, 0.22), transparent 42%),
     radial-gradient(circle at 85% 15%, rgba(168, 85, 247, 0.25), transparent 40%),
     radial-gradient(circle at 50% 85%, rgba(34, 211, 238, 0.12), transparent 45%),
-    var(--pp-scene-image, url("/static/images/homeFon.png")) center / cover no-repeat;
+    var(--pp-scene-image) center / cover no-repeat;
   filter: saturate(1.12) brightness(0.52);
   z-index: 0;
 }
@@ -79,11 +82,14 @@ body {
 }
 
 .pp-scene--lobby {
-  --pp-scene-image: url("/static/images/lobbyFon2.png");
+  --pp-scene-image: url("/static/images/lobby_poker.png");
+  --pp-toast-top: 80px;
 }
 
 .pp-scene--table {
   --pp-scene-image: url("/static/images/lobby_poker.png");
+  --pp-toast-top: 80px;
+  --pp-chip-size: 1.2em;
 }
 
 @keyframes pp-rise {
@@ -187,10 +193,126 @@ body {
   transform: translateY(-2px);
 }
 
-.pp-chip-icon {
+.pp-chip-icon,
+.chip-icon {
   display: inline-block;
-  width: 1.05em;
-  height: 1.05em;
+  width: var(--pp-chip-size);
+  height: var(--pp-chip-size);
   background: url("/static/poker_chip.svg") center / contain no-repeat;
   vertical-align: -0.12em;
+  flex-shrink: 0;
 }
+
+/* Shared toast shell */
+.toast-container {
+  position: fixed;
+  top: var(--pp-toast-top);
+  right: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 10001;
+  pointer-events: none;
+}
+
+.poker-toast {
+  background: rgba(12, 10, 24, 0.95);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-left: 4px solid var(--gold);
+  color: var(--text);
+  padding: 12px 18px;
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 260px;
+  max-width: 380px;
+  pointer-events: auto;
+  transform: translateX(120%);
+  opacity: 0;
+  transition: all 0.4s var(--ease-out);
+}
+
+.poker-toast.show {
+  transform: translateX(0);
+  opacity: 1;
+}
+
+.toast-error {
+  border-left-color: var(--red);
+}
+.toast-error .toast-icon {
+  color: var(--red);
+}
+.toast-warning {
+  border-left-color: var(--gold);
+}
+.toast-warning .toast-icon {
+  color: var(--gold);
+}
+.toast-success {
+  border-left-color: var(--green);
+}
+.toast-success .toast-icon {
+  color: var(--green);
+}
+
+.toast-icon {
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.toast-content {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  gap: 2px;
+}
+
+.toast-title {
+  font-weight: 800;
+  font-size: 0.68rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+/* Shared modal shell */
+.pp-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(4, 3, 10, 0.82);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.pp-modal-panel {
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--stroke);
+  background: linear-gradient(160deg, rgba(16, 12, 32, 0.96), rgba(8, 6, 18, 0.98));
+  box-shadow:
+    0 32px 80px rgba(0, 0, 0, 0.7),
+    var(--glow-purple),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  animation: pp-modal-in 0.35s var(--ease-out) both;
+}
+
+@keyframes pp-modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
