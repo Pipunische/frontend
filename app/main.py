@@ -87,5 +87,5 @@ def page_home(request: Request):
         "v": settings.APP_VERSION,
     }
     return templates.TemplateResponse(
-        request=request, name="clear_home.html", context=context
+        request=request, name="home.html", context=context
     )

@@ -19,10 +19,6 @@ class CreateTableRequest(BaseModel):
             raise ValueError(f"max_players_num must be one of: {allowed}")
         return value
 
-class PasswordRequest(BaseModel):
-    old_password: str
-    new_password: str
-
 class NicknameRequest(BaseModel):
     new_nickname: str
 
