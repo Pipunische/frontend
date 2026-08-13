@@ -4,11 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PoluPoker - Авторизация</title>
-    
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', path='css/theme.css') }}?v={{ v }}">
+    {% include 'partials/head_assets.html' %}
     <link rel="stylesheet" href="{{ url_for('static', path='css/glass_auth.css') }}?v={{ v }}">
     
     <!-- 🔥 ОФИЦИАЛЬНЫЙ СКРИПТ GOOGLE IDENTITY -->
@@ -149,5 +145,6 @@
             document.getElementById('loading-spinner').style.display = 'none';
         }
     </script>
+{% include 'partials/toast_container.html' %}
 </body>
 </html>
