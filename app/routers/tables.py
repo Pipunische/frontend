@@ -7,6 +7,7 @@ from loguru import logger
 from app.config import settings
 from app.emote_shop import (
     emotes_dict,
+    emotes_lottie_dict,
     enrich_java_shop_payload,
     get_session_owned_ids,
     java_emotes_unavailable,
@@ -84,12 +85,13 @@ def _order_players(game_state: dict, my_id: str):
     return my_player, my_cards, ordered_others
 
 
-def _emote_panel_context(owned_ids: list[str] | None = None) -> dict:
-    owned = merge_owned_ids(owned_ids)
+def _emote_panel_context(owned_ids: list[str] | None = None, *, include_mock: bool = False) -> dict:
+    owned = merge_owned_ids(owned_ids, include_mock=include_mock)
     return {
         "owned_emote_ids": owned,
-        "panel_emotes": panel_emotes_for_owned(owned),
-        "emotes_dict": emotes_dict(),
+        "panel_emotes": panel_emotes_for_owned(owned, include_mock=include_mock),
+        "emotes_dict": emotes_dict(include_mock=include_mock),
+        "emotes_lottie_dict": emotes_lottie_dict(include_mock=include_mock),
     }
 
 
@@ -99,7 +101,11 @@ async def _resolve_owned_emotes(request: Request, my_user: dict) -> list[str]:
     user_id = my_user.get("user_id")
 
     if my_user.get("token") == "fake_token":
-        return owned_ids_for_user(user_id, session_owned)
+        return owned_ids_for_user(
+            user_id,
+            get_session_owned_ids(request.session, include_mock=True),
+            include_mock=True,
+        )
 
     if not user_id:
         return session_owned
@@ -128,6 +134,7 @@ def _build_table_context(
     my_user: dict,
     *,
     owned_emote_ids: list[str] | None = None,
+    include_mock_emotes: bool = False,
 ) -> dict:
     my_id = str(my_user.get("user_id"))
     my_player, my_cards, ordered_others = _order_players(game_state, my_id)
@@ -135,7 +142,7 @@ def _build_table_context(
     seat_layout_opponents = get_opponent_pos_layout(max_players)
     opponent_seats_by_pos = build_opponent_seats_by_pos(ordered_others, max_players)
     game_with_size = {**game_state, "max_players": max_players}
-    emote_ctx = _emote_panel_context(owned_emote_ids)
+    emote_ctx = _emote_panel_context(owned_emote_ids, include_mock=include_mock_emotes)
 
     return {
         "my_player": my_player,
@@ -349,16 +356,21 @@ async def dev_page_table(request: Request, size: int = 10, vip: int = 0):
         mock_user["wallet_balance"] = existing_user["wallet_balance"]
     request.session["user"] = mock_user
 
-    session_owned = get_session_owned_ids(request.session)
-    owned_emote_ids = owned_ids_for_user(mock_user["user_id"], session_owned)
+    session_owned = get_session_owned_ids(request.session, include_mock=True)
+    owned_emote_ids = owned_ids_for_user(mock_user["user_id"], session_owned, include_mock=True)
     if vip:
-        owned_emote_ids = merge_owned_ids(owned_emote_ids, premium_emote_ids())
+        owned_emote_ids = merge_owned_ids(
+            owned_emote_ids,
+            premium_emote_ids(include_mock=True),
+            include_mock=True,
+        )
 
     context = _build_table_context(
         mock_game,
         "dev_table_777",
         mock_user,
         owned_emote_ids=owned_emote_ids,
+        include_mock_emotes=True,
     )
     context["table_name"] = f"Dev {max_players}-max"
     context["my_cards"] = ["Ah", "Ac"]

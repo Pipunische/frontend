@@ -12,6 +12,7 @@
     <link rel="stylesheet" href="{{ url_for('static', path='css/table.css') }}?v={{ v }}">
     <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
   </head>
 
   <body class="table-page">
@@ -181,10 +182,11 @@
               {% for emote in panel_emotes %}
               <button
                 type="button"
-                {% if emote.style_class %}class="emote-exclusive {{ emote.style_class }}"{% endif %}
+                class="{% if emote.style_class %}emote-exclusive {{ emote.style_class }}{% endif %}{% if emote.lottie_url %} emote-btn--lottie{% endif %}"
                 onclick="sendEmote('{{ emote.emote_id }}')"
                 title="{{ emote.name }}"
-              >{{ emote.emoji }}</button>
+                {% if emote.lottie_url %}data-lottie-url="{{ emote.lottie_url }}"{% endif %}
+              >{% if emote.lottie_url %}<span class="emote-lottie-thumb" data-lottie-url="{{ emote.lottie_url }}"></span>{% else %}{{ emote.emoji }}{% endif %}</button>
               {% endfor %}
             </div>
           </div>
@@ -301,15 +303,38 @@
         }
       }
 
+      function playLottieIn(container, url, { loop = false, autoplay = true } = {}) {
+        if (!container || !url || typeof lottie === 'undefined') return null;
+        container.innerHTML = '';
+        return lottie.loadAnimation({
+          container,
+          renderer: 'svg',
+          loop,
+          autoplay,
+          path: url,
+        });
+      }
+
       function showPlayerEmote(userId, emoteId) {
-        const emoteIcon = emotesDict[emoteId] || '💬';
         const emoteSeat = document.querySelector(`.player-seat[data-userid="${userId}"]`);
         if (!emoteSeat) return;
 
+        const lottieUrl = emotesLottieDict[emoteId];
         const emoteEl = document.createElement('div');
         emoteEl.className = 'player-emote';
-        emoteEl.innerText = emoteIcon;
-        emoteSeat.appendChild(emoteEl);
+
+        if (lottieUrl) {
+          emoteEl.classList.add('player-emote--lottie');
+          const stage = document.createElement('div');
+          stage.className = 'player-emote__lottie';
+          emoteEl.appendChild(stage);
+          emoteSeat.appendChild(emoteEl);
+          playLottieIn(stage, lottieUrl, { loop: true, autoplay: true });
+        } else {
+          emoteEl.innerText = emotesDict[emoteId] || '💬';
+          emoteSeat.appendChild(emoteEl);
+        }
+
         setTimeout(() => emoteEl.remove(), 3000);
       }
 
@@ -333,6 +358,13 @@
       }
 
       const emotesDict = {{ emotes_dict | tojson }};
+      const emotesLottieDict = {{ emotes_lottie_dict | default({}) | tojson }};
+
+      function initEmotePanelLottieThumbs() {
+        document.querySelectorAll('.emote-lottie-thumb[data-lottie-url]').forEach((el) => {
+          playLottieIn(el, el.dataset.lottieUrl, { loop: true, autoplay: true });
+        });
+      }
 
       function updatePingIndicator(pingMs) {
         const indicator = document.getElementById('ping-indicator');
@@ -2990,6 +3022,7 @@
 
       window.addEventListener('DOMContentLoaded', () => {
         console.log("Интерфейс загружен. Все запускаем...");
+        initEmotePanelLottieThumbs();
 
         if (window.location.search.includes('buy_in')) {
           const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;

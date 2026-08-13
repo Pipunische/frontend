@@ -313,8 +313,8 @@ async def dev_page_lobby(request: Request):
         "java_host": settings.FRONTEND_JAVA_HOST,
         "v": settings.APP_VERSION,
         "is_dev_lobby": True,
-        "emote_catalog_json": emote_catalog_json(),
-        "default_owned_emote_ids_json": json.dumps(default_owned_emote_ids()),
+        "emote_catalog_json": emote_catalog_json(include_mock=True),
+        "default_owned_emote_ids_json": json.dumps(default_owned_emote_ids(include_mock=True)),
     }
 
     request.session["user"] = mock_user

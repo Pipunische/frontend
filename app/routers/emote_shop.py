@@ -50,11 +50,21 @@ async def _refresh_wallet_from_java(request: Request, user: dict) -> int:
     return int(user.get("wallet_balance") or 0)
 
 
-def _mock_shop_state(request: Request, user: dict) -> dict:
-    owned_ids = owned_ids_for_user(user.get("user_id"), get_session_owned_ids(request.session))
+def _mock_shop_state(request: Request, user: dict, *, include_mock: bool | None = None) -> dict:
+    use_mock_catalog = _is_dev_mock_user(user) if include_mock is None else include_mock
+    owned_ids = owned_ids_for_user(
+        user.get("user_id"),
+        get_session_owned_ids(request.session, include_mock=use_mock_catalog),
+        include_mock=use_mock_catalog,
+    )
     set_session_owned_ids(request.session, owned_ids)
     wallet_balance = int(user.get("wallet_balance") or 0)
-    return build_shop_response(wallet_balance, owned_ids, source="mock")
+    return build_shop_response(
+        wallet_balance,
+        owned_ids,
+        source="mock",
+        include_mock=use_mock_catalog,
+    )
 
 
 @router.get("/api/emotes")

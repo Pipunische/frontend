@@ -78,6 +78,16 @@ EMOTE_CATALOG: list[dict[str, Any]] = [
         "is_default": False,
         "style_class": "emote-exclusive--goat",
     },
+    {
+        "emote_id": "piggy",
+        "emoji": "🐷",
+        "name": "Копилка",
+        # BFF display price until Java catalog price is confirmed.
+        "price": 15_000,
+        "is_default": False,
+        "style_class": "emote-lottie emote-exclusive--piggy",
+        "lottie": "piggy.json",
+    },
 ]
 
 CATALOG_BY_ID: dict[str, dict[str, Any]] = {
@@ -85,50 +95,107 @@ CATALOG_BY_ID: dict[str, dict[str, Any]] = {
 }
 
 SESSION_OWNED_KEY = "owned_emote_ids"
+LOTTIE_STATIC_PREFIX = "/static/lottie"
 
 # Hardcoded VIP accounts that get all premium emotes without purchase.
 VIP_USER_IDS = {"17"}
 
 
-def default_owned_emote_ids() -> list[str]:
-    return [item["emote_id"] for item in EMOTE_CATALOG if item.get("is_default")]
+def lottie_static_url(filename: str) -> str:
+    name = (filename or "").lstrip("/")
+    return f"{LOTTIE_STATIC_PREFIX}/{name}"
 
 
-def premium_emote_ids() -> list[str]:
-    return [item["emote_id"] for item in EMOTE_CATALOG if not item.get("is_default")]
+def enrich_emote_entry(item: dict[str, Any]) -> dict[str, Any]:
+    entry = dict(item)
+    if item.get("lottie"):
+        entry["lottie_url"] = lottie_static_url(item["lottie"])
+    return entry
+
+
+def visible_catalog(*, include_mock: bool = False) -> list[dict[str, Any]]:
+    return [
+        enrich_emote_entry(item)
+        for item in EMOTE_CATALOG
+        if include_mock or not item.get("mock_only")
+    ]
+
+
+def default_owned_emote_ids(*, include_mock: bool = False) -> list[str]:
+    return [
+        item["emote_id"]
+        for item in EMOTE_CATALOG
+        if item.get("is_default") and (include_mock or not item.get("mock_only"))
+    ]
+
+
+def premium_emote_ids(*, include_mock: bool = False) -> list[str]:
+    return [
+        item["emote_id"]
+        for item in EMOTE_CATALOG
+        if not item.get("is_default") and (include_mock or not item.get("mock_only"))
+    ]
 
 
 def is_vip_user(user_id: Any) -> bool:
     return str(user_id or "") in VIP_USER_IDS
 
 
-def owned_ids_for_user(user_id: Any, owned_ids: list[str] | None = None) -> list[str]:
+def owned_ids_for_user(
+    user_id: Any,
+    owned_ids: list[str] | None = None,
+    *,
+    include_mock: bool = False,
+) -> list[str]:
     """Defaults + purchased, plus all premium for VIP accounts."""
     if is_vip_user(user_id):
-        return merge_owned_ids(owned_ids, premium_emote_ids())
-    return merge_owned_ids(owned_ids)
+        return merge_owned_ids(
+            owned_ids,
+            premium_emote_ids(include_mock=include_mock),
+            include_mock=include_mock,
+        )
+    return merge_owned_ids(owned_ids, include_mock=include_mock)
 
 
-def emote_catalog_json() -> str:
-    return json.dumps(EMOTE_CATALOG, ensure_ascii=False)
+def emote_catalog_json(*, include_mock: bool = False) -> str:
+    return json.dumps(visible_catalog(include_mock=include_mock), ensure_ascii=False)
 
 
-def emotes_dict() -> dict[str, str]:
+def emotes_dict(*, include_mock: bool = False) -> dict[str, str]:
     """Full id → emoji map so every client can render any emote over seats."""
-    return {item["emote_id"]: item["emoji"] for item in EMOTE_CATALOG}
+    return {
+        item["emote_id"]: item["emoji"]
+        for item in EMOTE_CATALOG
+        if include_mock or not item.get("mock_only")
+    }
 
 
-def emotes_dict_json() -> str:
-    return json.dumps(emotes_dict(), ensure_ascii=False)
+def emotes_lottie_dict(*, include_mock: bool = False) -> dict[str, str]:
+    """emote_id → /static/lottie/*.json for animated assets."""
+    return {
+        item["emote_id"]: lottie_static_url(item["lottie"])
+        for item in EMOTE_CATALOG
+        if item.get("lottie") and (include_mock or not item.get("mock_only"))
+    }
 
 
-def panel_emotes_for_owned(owned_ids: list[str] | None = None) -> list[dict[str, Any]]:
+def emotes_dict_json(*, include_mock: bool = False) -> str:
+    return json.dumps(emotes_dict(include_mock=include_mock), ensure_ascii=False)
+
+
+def panel_emotes_for_owned(
+    owned_ids: list[str] | None = None,
+    *,
+    include_mock: bool = False,
+) -> list[dict[str, Any]]:
     """Emotes shown in the table picker: defaults + purchased premium."""
-    owned = set(owned_ids or default_owned_emote_ids())
+    owned = set(owned_ids or default_owned_emote_ids(include_mock=include_mock))
     panel: list[dict[str, Any]] = []
     for item in EMOTE_CATALOG:
+        if item.get("mock_only") and not include_mock:
+            continue
         if item.get("is_default") or item["emote_id"] in owned:
-            panel.append(dict(item))
+            panel.append(enrich_emote_entry(item))
     return panel
 
 
@@ -136,37 +203,37 @@ def get_catalog_item(emote_id: str) -> dict[str, Any] | None:
     return CATALOG_BY_ID.get(emote_id)
 
 
-def merge_owned_ids(*id_lists: list[str] | None) -> list[str]:
-    merged = list(default_owned_emote_ids())
+def merge_owned_ids(*id_lists: list[str] | None, include_mock: bool = False) -> list[str]:
+    merged = list(default_owned_emote_ids(include_mock=include_mock))
     for ids in id_lists:
         if not ids:
             continue
         for emote_id in ids:
-            if emote_id and emote_id not in merged:
-                merged.append(emote_id)
+            if not emote_id or emote_id in merged:
+                continue
+            item = CATALOG_BY_ID.get(emote_id)
+            if item and item.get("mock_only") and not include_mock:
+                continue
+            merged.append(emote_id)
     return merged
 
 
-def get_session_owned_ids(session: dict) -> list[str]:
+def get_session_owned_ids(session: dict, *, include_mock: bool = False) -> list[str]:
     owned = session.get(SESSION_OWNED_KEY)
     if isinstance(owned, list) and owned:
-        merged = list(default_owned_emote_ids())
-        for emote_id in owned:
-            if emote_id not in merged:
-                merged.append(emote_id)
-        return merged
-    return default_owned_emote_ids()
+        return merge_owned_ids(owned, include_mock=include_mock)
+    return default_owned_emote_ids(include_mock=include_mock)
 
 
 def set_session_owned_ids(session: dict, owned_ids: list[str]) -> None:
     session[SESSION_OWNED_KEY] = list(owned_ids)
 
 
-def build_client_catalog(owned_ids: list[str]) -> list[dict[str, Any]]:
+def build_client_catalog(owned_ids: list[str], *, include_mock: bool = False) -> list[dict[str, Any]]:
     owned_set = set(owned_ids)
     catalog: list[dict[str, Any]] = []
 
-    for item in EMOTE_CATALOG:
+    for item in visible_catalog(include_mock=include_mock):
         entry = dict(item)
         entry["owned"] = item["emote_id"] in owned_set
         catalog.append(entry)
@@ -181,12 +248,13 @@ def build_shop_response(
     source: str = "mock",
     price_paid: int | None = None,
     purchased_emote_id: str | None = None,
+    include_mock: bool = False,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "status": "success",
         "wallet_balance": int(wallet_balance),
         "owned_emote_ids": list(owned_ids),
-        "catalog": build_client_catalog(owned_ids),
+        "catalog": build_client_catalog(owned_ids, include_mock=include_mock),
         "source": source,
     }
     if price_paid is not None:
@@ -221,8 +289,10 @@ def enrich_java_shop_payload(
             emote_id = _pick_field(row, "emote_id", "emoteId")
             if not emote_id:
                 continue
-            front = dict(CATALOG_BY_ID.get(emote_id, {}))
-            merged = {**front, **row, "emote_id": emote_id}
+            front = CATALOG_BY_ID.get(emote_id) or {}
+            if front.get("mock_only"):
+                continue
+            merged = enrich_emote_entry({**front, **row, "emote_id": emote_id})
             merged["owned"] = bool(_pick_field(row, "owned")) or emote_id in owned_set
             catalog.append(merged)
     else:
@@ -277,6 +347,7 @@ def mock_purchase(user: dict, owned_ids: list[str], emote_id: str) -> tuple[dict
             source="mock",
             price_paid=price,
             purchased_emote_id=emote_id,
+            include_mock=True,
         ),
         None,
     )

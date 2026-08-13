@@ -466,6 +466,16 @@ body.table-page {
   animation-name: emote-exclusive-pulse;
 }
 
+.table-page .emote-panel .emote-exclusive--piggy {
+  background: radial-gradient(
+    circle,
+    rgba(251, 113, 133, 0.3),
+    transparent 70%
+  );
+  box-shadow: 0 0 12px rgba(251, 113, 133, 0.5);
+  animation-name: emote-exclusive-pulse;
+}
+
 @keyframes emote-exclusive-crown {
   from {
     box-shadow:
