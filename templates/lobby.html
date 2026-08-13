@@ -252,16 +252,57 @@
 
 <script>
 
-    PP.registerToastTitles({
-        InsufficientFunds: 'Недостаточно фишек',
-        AlreadyOwned: 'Уже куплено',
-        ComingSoon: 'Скоро',
-        PurchaseSuccess: 'Эмодзи куплен',
-        ShopError: 'Магазин',
-        PurchaseFailed: 'Ошибка покупки',
-        EmoteNotFound: 'Не найдено',
-        EmoteNotPurchasable: 'Недоступно'
-    });
+    // Modal toggles first — must work even if pp-common.js fails to load.
+    function toggleCreateTableModal() {
+        const modal = document.getElementById('create-table-modal');
+        if (!modal) return;
+        modal.style.display = modal.style.display === 'flex' ? 'none' : 'flex';
+    }
+
+    function closeCreateTableModalOnBackdrop(event) {
+        if (event.target.id === 'create-table-modal') {
+            toggleCreateTableModal();
+        }
+    }
+
+    async function toggleEmoteShopModal() {
+        const modal = document.getElementById('emote-shop-modal');
+        if (!modal) return;
+
+        if (modal.style.display === 'flex') {
+            modal.style.display = 'none';
+            return;
+        }
+
+        modal.style.display = 'flex';
+        if (typeof refreshEmoteShopFromApi === 'function') {
+            await refreshEmoteShopFromApi();
+        }
+        if (typeof renderEmoteShop === 'function') {
+            renderEmoteShop();
+        }
+    }
+
+    function closeEmoteShopOnBackdrop(event) {
+        if (event.target.id === 'emote-shop-modal') {
+            toggleEmoteShopModal();
+        }
+    }
+
+    if (window.PP && typeof PP.registerToastTitles === 'function') {
+        PP.registerToastTitles({
+            InsufficientFunds: 'Недостаточно фишек',
+            AlreadyOwned: 'Уже куплено',
+            ComingSoon: 'Скоро',
+            PurchaseSuccess: 'Эмодзи куплен',
+            ShopError: 'Магазин',
+            PurchaseFailed: 'Ошибка покупки',
+            EmoteNotFound: 'Не найдено',
+            EmoteNotPurchasable: 'Недоступно'
+        });
+    } else {
+        console.error('pp-common.js не загружен — сеть/reconnect будут ограничены');
+    }
 
     const javaHost = "{{ java_host }}";
     let userToken = "{{ user_token if user else '' }}";
@@ -501,26 +542,6 @@
         );
     }
 
-    async function toggleEmoteShopModal() {
-        const modal = document.getElementById('emote-shop-modal');
-        if (!modal) return;
-
-        if (modal.style.display === 'flex') {
-            modal.style.display = 'none';
-            return;
-        }
-
-        modal.style.display = 'flex';
-        await refreshEmoteShopFromApi();
-        renderEmoteShop();
-    }
-
-    function closeEmoteShopOnBackdrop(event) {
-        if (event.target.id === 'emote-shop-modal') {
-            toggleEmoteShopModal();
-        }
-    }
-
     function purchaseSuccessMessage(item) {
         if (isDevLobbyMode()) {
             return `${item.emoji} «${item.name}» куплен! Нажмите «Проверить за столом».`;
@@ -654,16 +675,19 @@
     }
 
     async function fetchFreshToken() {
-        return PP.fetchFreshToken({
-            isDevMode: isDevLobbyMode,
-            getToken: () => userToken,
-            setToken: (token) => { userToken = token; },
-            onWalletBalance: updateWalletDisplay,
-            onDevMode: () => {
-                console.log('🛠️ Dev-lobby: используем mock-токен из шаблона, без /api/session/token');
-                return Boolean(userToken && userToken !== 'None' && userToken.trim() !== '');
-            },
-        });
+        if (window.PP && typeof PP.fetchFreshToken === 'function') {
+            return PP.fetchFreshToken({
+                isDevMode: isDevLobbyMode,
+                getToken: () => userToken,
+                setToken: (token) => { userToken = token; },
+                onWalletBalance: updateWalletDisplay,
+                onDevMode: () => {
+                    console.log('🛠️ Dev-lobby: используем mock-токен из шаблона, без /api/session/token');
+                    return Boolean(userToken && userToken !== 'None' && userToken.trim() !== '');
+                },
+            });
+        }
+        return Boolean(userToken && userToken !== 'None' && String(userToken).trim() !== '');
     }
 
     function getStakeClass(minBuyIn) {
@@ -843,9 +867,9 @@
 
     const PING_INTERVAL_MS = 3000;
     const PONG_TIMEOUT_MS = PING_INTERVAL_MS * 2;
-    const RECONNECT_DELAYS = PP.RECONNECT_DELAYS;
-    const FAST_RECONNECT_DELAY_MS = PP.FAST_RECONNECT_DELAY_MS;
-    const RESYNC_RETRY_DELAYS = PP.RESYNC_RETRY_DELAYS;
+    const RECONNECT_DELAYS = (window.PP && PP.RECONNECT_DELAYS) || [500, 1000, 2000, 5000];
+    const FAST_RECONNECT_DELAY_MS = (window.PP && PP.FAST_RECONNECT_DELAY_MS) || 500;
+    const RESYNC_RETRY_DELAYS = (window.PP && PP.RESYNC_RETRY_DELAYS) || [500, 1000, 2000];
     const LOBBY_POLL_INTERVAL_MS = 30000;
 
     let pingInterval = null;
@@ -857,11 +881,17 @@
     let isReconnectScheduled = false;
 
     function lobbySleep(ms) {
-        return PP.sleep(ms);
+        return (window.PP && PP.sleep) ? PP.sleep(ms) : new Promise((resolve) => setTimeout(resolve, ms));
     }
 
     async function fetchWithRetry(url, options = {}, retries = 3) {
-        return PP.fetchWithRetry(url, options, retries, { isDevMode: isDevLobbyMode });
+        if (window.PP && typeof PP.fetchWithRetry === 'function') {
+            return PP.fetchWithRetry(url, options, retries, { isDevMode: isDevLobbyMode });
+        }
+        const response = await fetch(url, options);
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return { response, data };
     }
 
     function isLobbySocketConnected() {
@@ -984,17 +1014,22 @@
         }
     }
 
-    const scheduleLobbyReconnect = PP.createReconnectScheduler({
-        getFlags: () => ({ isIntentionalReload, isReconnectScheduled, reconnectAttempt }),
-        setFlags: (partial) => {
-            if (partial.reconnectAttempt !== undefined) reconnectAttempt = partial.reconnectAttempt;
-            if (partial.isReconnectScheduled !== undefined) isReconnectScheduled = partial.isReconnectScheduled;
-        },
-        setTimer: (timer) => { reconnectTimer = timer; },
-        cleanup: cleanupLobbySocket,
-        connect: connectLobbySocket,
-        logSuffix: 'лобби',
-    });
+    const scheduleLobbyReconnect = (window.PP && typeof PP.createReconnectScheduler === 'function')
+        ? PP.createReconnectScheduler({
+            getFlags: () => ({ isIntentionalReload, isReconnectScheduled, reconnectAttempt }),
+            setFlags: (partial) => {
+                if (partial.reconnectAttempt !== undefined) reconnectAttempt = partial.reconnectAttempt;
+                if (partial.isReconnectScheduled !== undefined) isReconnectScheduled = partial.isReconnectScheduled;
+            },
+            setTimer: (timer) => { reconnectTimer = timer; },
+            cleanup: cleanupLobbySocket,
+            connect: connectLobbySocket,
+            logSuffix: 'лобби',
+        })
+        : function scheduleLobbyReconnectFallback(reason) {
+            console.warn('Reconnect scheduler unavailable:', reason);
+            setTimeout(() => connectLobbySocket(), 1000);
+        };
 
     function updateOnlineIndicator(count) {
         if (count === undefined || count === null || Number.isNaN(Number(count))) return;
@@ -1212,21 +1247,6 @@
 
             scheduleLobbyReconnect('Ошибка WebSocket лобби');
         });
-    }
-
-    function toggleCreateTableModal() {
-        const modal = document.getElementById('create-table-modal');
-        if (modal.style.display === 'flex') {
-            modal.style.display = 'none';
-        } else {
-            modal.style.display = 'flex';
-        }
-    }
-
-    function closeCreateTableModalOnBackdrop(event) {
-        if (event.target.id === 'create-table-modal') {
-            toggleCreateTableModal();
-        }
     }
 
     async function sendCreateTable() {

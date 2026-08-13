@@ -1,5 +1,24 @@
 /* Lobby modals content — shell lives in theme.css (.pp-modal-*) */
 
+/* Keep overlays self-sufficient if theme cache is stale */
+.create-table-overlay,
+.emote-shop-overlay {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+.create-table-overlay {
+  z-index: 10000;
+  background: rgba(4, 3, 10, 0.82);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
 .create-table-panel {
   width: min(440px, 100%);
   max-height: calc(100vh - 40px);
@@ -122,6 +141,8 @@ select.ct-field {
 .emote-shop-overlay {
   z-index: 10001;
   background: rgba(4, 3, 10, 0.86);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
 }
 
 .emote-shop-panel {

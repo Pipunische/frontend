@@ -222,24 +222,6 @@
         {% endif %}
       </div>
 
-        <div id="rebuy-modal" class="pp-modal-overlay table-rebuy-overlay">
-          <div class="pp-modal-panel table-rebuy-panel">
-              <header class="table-rebuy-header">
-                <h2>Недостаточно фишек</h2>
-                <p>У вас меньше {{ game.big_blind }} фишек.<br>
-                  Докупитесь, или вы покинете стол через <strong id="rebuy-timer-text">30</strong> сек.</p>
-              </header>
-              <label class="table-rebuy-field-wrap">
-                <span class="table-rebuy-label">Сумма докупки</span>
-                <input type="number" id="rebuy-amount" class="table-rebuy-input">
-              </label>
-              <div class="table-rebuy-actions">
-                <button type="button" class="pp-btn pp-btn-play" onclick="sendRebuy()">Докупить</button>
-                <button type="button" class="pp-btn pp-btn-danger" onclick="leaveCurrentTable()">Выйти</button>
-              </div>
-          </div>
-        </div>
-
         {% with toast_class='table-toast-container' %}
         {% include 'partials/toast_container.html' %}
         {% endwith %}
@@ -248,17 +230,39 @@
     </div>
     </div>
 
+    <div id="rebuy-modal" class="pp-modal-overlay table-rebuy-overlay">
+      <div class="pp-modal-panel table-rebuy-panel">
+          <header class="table-rebuy-header">
+            <h2>Недостаточно фишек</h2>
+            <p>У вас меньше {{ game.big_blind }} фишек.<br>
+              Докупитесь, или вы покинете стол через <strong id="rebuy-timer-text">30</strong> сек.</p>
+          </header>
+          <label class="table-rebuy-field-wrap">
+            <span class="table-rebuy-label">Сумма докупки</span>
+            <input type="number" id="rebuy-amount" class="table-rebuy-input">
+          </label>
+          <div class="table-rebuy-actions">
+            <button type="button" class="pp-btn pp-btn-play" onclick="sendRebuy()">Докупить</button>
+            <button type="button" class="pp-btn pp-btn-danger" onclick="leaveCurrentTable()">Выйти</button>
+          </div>
+      </div>
+    </div>
+
     <script id="emotes-dict-data" type="application/json">{{ emotes_dict | tojson }}</script>
     <script id="emotes-lottie-dict-data" type="application/json">{{ emotes_lottie_dict | default({}) | tojson }}</script>
 
     <script>
 
-      PP.registerToastTitles({
-        IllegalRaiseException: 'Ошибка при поднятия ставки',
-        IllegalCallException: 'Ошибка при уравнивании ставки',
-        IllegalCheckException: 'Ошибка при пропуске хода',
-        NotYourTurnException: 'Не ваш ход'
-      });
+      if (window.PP && typeof PP.registerToastTitles === 'function') {
+        PP.registerToastTitles({
+          IllegalRaiseException: 'Ошибка при поднятия ставки',
+          IllegalCallException: 'Ошибка при уравнивании ставки',
+          IllegalCheckException: 'Ошибка при пропуске хода',
+          NotYourTurnException: 'Не ваш ход'
+        });
+      } else {
+        console.error('pp-common.js не загружен — сеть/reconnect будут ограничены');
+      }
 
       const emotesDict = JSON.parse(
         document.getElementById('emotes-dict-data')?.textContent || '{}'
@@ -686,16 +690,20 @@
       function checkRebuy(myPlayerState, tableBigBlind) {
         if (!myPlayerState) return;
 
-        const chips = parseInt(myPlayerState.chips);
-        const bigBlind = parseInt(tableBigBlind);
-
-        const modal = document.getElementById('rebuy-modal');
-        const input = document.getElementById('rebuy-amount'); 
-        const timerText = document.getElementById('rebuy-timer-text');
-
+        const chips = Number(myPlayerState.chips);
+        const bigBlind = Number(tableBigBlind);
+        const status = String(myPlayerState.status || '');
         const deadline = myPlayerState.sit_out_deadline;
 
-        if (chips >= bigBlind) {
+        const modal = document.getElementById('rebuy-modal');
+        const input = document.getElementById('rebuy-amount');
+        const timerText = document.getElementById('rebuy-timer-text');
+
+        const broke = Number.isFinite(chips) && Number.isFinite(bigBlind) && bigBlind > 0 && chips < bigBlind;
+        // Only the bankrupt sit-out flow — never flash on join while chips briefly look low.
+        const canPrompt = status === 'SITTING_OUT' || Boolean(deadline && deadline > 0);
+
+        if (!broke || !canPrompt) {
           if (modal) modal.style.display = 'none';
           if (rebuyCountdownInterval) {
             clearInterval(rebuyCountdownInterval);
@@ -703,7 +711,7 @@
           }
           currentSitOutDeadline = 0;
           rebuyDefaultsApplied = false;
-          return; 
+          return;
         }
 
         if (modal && input) {

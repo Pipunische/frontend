@@ -542,15 +542,34 @@ body.table-page {
   }
 }
 
-/* Rebuy modal */
+/* Rebuy modal — full overlay here so it never depends on theme-only shell */
 .table-rebuy-overlay {
-  z-index: 10002;
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 10002 !important;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  box-sizing: border-box;
   background: rgba(4, 3, 10, 0.82);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
 }
 
 .table-rebuy-panel {
   width: min(420px, calc(100% - 32px));
   padding: 28px 24px 22px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--stroke);
+  background: linear-gradient(
+    160deg,
+    rgba(16, 12, 32, 0.96),
+    rgba(8, 6, 18, 0.98)
+  );
+  box-shadow:
+    0 32px 80px rgba(0, 0, 0, 0.7),
+    var(--glow-purple);
 }
 
 .table-rebuy-header h2 {

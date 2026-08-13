@@ -56,9 +56,21 @@ body {
   position: fixed;
   inset: 0;
   background:
-    radial-gradient(circle at 15% 20%, rgba(236, 72, 153, 0.22), transparent 42%),
-    radial-gradient(circle at 85% 15%, rgba(168, 85, 247, 0.25), transparent 40%),
-    radial-gradient(circle at 50% 85%, rgba(34, 211, 238, 0.12), transparent 45%),
+    radial-gradient(
+      circle at 15% 20%,
+      rgba(236, 72, 153, 0.22),
+      transparent 42%
+    ),
+    radial-gradient(
+      circle at 85% 15%,
+      rgba(168, 85, 247, 0.25),
+      transparent 40%
+    ),
+    radial-gradient(
+      circle at 50% 85%,
+      rgba(34, 211, 238, 0.12),
+      transparent 45%
+    ),
     var(--pp-scene-image) center / cover no-repeat;
   filter: saturate(1.12) brightness(0.52);
   z-index: 0;
@@ -104,8 +116,12 @@ body {
 }
 
 @keyframes pp-shimmer {
-  0% { background-position: 0% center; }
-  100% { background-position: 200% center; }
+  0% {
+    background-position: 0% center;
+  }
+  100% {
+    background-position: 200% center;
+  }
 }
 
 .pp-btn {
@@ -142,7 +158,11 @@ body {
 
 .pp-btn-purple {
   color: white;
-  background: linear-gradient(135deg, rgba(79, 70, 229, 0.9), rgba(124, 58, 237, 0.9));
+  background: linear-gradient(
+    135deg,
+    rgba(79, 70, 229, 0.9),
+    rgba(124, 58, 237, 0.9)
+  );
   border: 1px solid rgba(167, 139, 250, 0.45);
 }
 
@@ -159,8 +179,14 @@ body {
 }
 
 @keyframes pp-play-pulse {
-  from { box-shadow: 0 6px 20px rgba(52, 211, 153, 0.35); }
-  to { box-shadow: 0 8px 32px rgba(52, 211, 153, 0.55), 0 0 16px rgba(52, 211, 153, 0.25); }
+  from {
+    box-shadow: 0 6px 20px rgba(52, 211, 153, 0.35);
+  }
+  to {
+    box-shadow:
+      0 8px 32px rgba(52, 211, 153, 0.55),
+      0 0 16px rgba(52, 211, 153, 0.25);
+  }
 }
 
 .pp-btn-play:hover {
@@ -292,12 +318,17 @@ body {
   background: rgba(4, 3, 10, 0.82);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
+  box-sizing: border-box;
 }
 
 .pp-modal-panel {
   border-radius: var(--radius-lg);
   border: 1px solid var(--stroke);
-  background: linear-gradient(160deg, rgba(16, 12, 32, 0.96), rgba(8, 6, 18, 0.98));
+  background: linear-gradient(
+    160deg,
+    rgba(16, 12, 32, 0.96),
+    rgba(8, 6, 18, 0.98)
+  );
   box-shadow:
     0 32px 80px rgba(0, 0, 0, 0.7),
     var(--glow-purple),
@@ -315,4 +346,3 @@ body {
     transform: translateY(0) scale(1);
   }
 }
-
