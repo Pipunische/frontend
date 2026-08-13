@@ -12,15 +12,15 @@ templates = Jinja2Templates(directory="templates")
 
 
 def card_png_url(card: str) -> str:
-    """Normalize card id to a Linux-safe static PNG path (e.g. Ad -> /static/AD.png)."""
+    """Normalize card id to a Linux-safe static PNG path (e.g. Ad -> /static/cards/AD.png)."""
     if not card:
-        return "/static/card_back.png"
+        return "/static/cards/card_back.png"
 
     normalized = str(card).strip()
     if normalized.lower() in ("card_back", "back"):
-        return "/static/card_back.png"
+        return "/static/cards/card_back.png"
 
-    return f"/static/{normalized.upper()}.png"
+    return f"/static/cards/{normalized.upper()}.png"
 
 
 templates.env.filters["card_png"] = card_png_url

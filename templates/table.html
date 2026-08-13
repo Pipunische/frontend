@@ -47,7 +47,7 @@
 
         <div id="chip-animation-layer" aria-hidden="true"></div>
         <div class="deck-pile">
-          <img src="/static/card_back.png" alt="Deck">
+          <img src="/static/cards/card_back.png" alt="Deck">
         </div>  
 
         <div class="community-cards">
@@ -248,6 +248,9 @@
     </div>
     </div>
 
+    <script id="emotes-dict-data" type="application/json">{{ emotes_dict | tojson }}</script>
+    <script id="emotes-lottie-dict-data" type="application/json">{{ emotes_lottie_dict | default({}) | tojson }}</script>
+
     <script>
 
       PP.registerToastTitles({
@@ -256,6 +259,13 @@
         IllegalCheckException: 'Ошибка при пропуске хода',
         NotYourTurnException: 'Не ваш ход'
       });
+
+      const emotesDict = JSON.parse(
+        document.getElementById('emotes-dict-data')?.textContent || '{}'
+      );
+      const emotesLottieDict = JSON.parse(
+        document.getElementById('emotes-lottie-dict-data')?.textContent || '{}'
+      );
 
       function toggleEmotePanel() {
         console.log("🔘 Клик по кнопке эмодзи!");
@@ -321,9 +331,6 @@
         }
       }
 
-      const emotesDict = {{ emotes_dict | tojson }};
-      const emotesLottieDict = {{ emotes_lottie_dict | default({}) | tojson }};
-
       function initEmotePanelLottieThumbs() {
         document.querySelectorAll('.emote-lottie-thumb[data-lottie-url]').forEach((el) => {
           playLottieIn(el, el.dataset.lottieUrl, { loop: true, autoplay: true });
@@ -372,7 +379,7 @@
       }
 
       function cardImageSrc(card) {
-        return `/static/${normalizeCardFileName(card)}.png`;
+        return `/static/cards/${normalizeCardFileName(card)}.png`;
       }
 
       function findCardImages(card) {
@@ -1001,8 +1008,8 @@
             // Рисуем рубашки только если руки пустые
             if (handContainer.children.length === 0) {
               handContainer.innerHTML = `
-                <img src="/static/card_back.png" class="hand-card" alt="back">
-                <img src="/static/card_back.png" class="hand-card" alt="back">
+                <img src="/static/cards/card_back.png" class="hand-card" alt="back">
+                <img src="/static/cards/card_back.png" class="hand-card" alt="back">
               `;
             }
           } else if (p.status === 'FOLDED' || p.status === 'SITTING_OUT') {
