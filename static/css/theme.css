@@ -55,7 +55,7 @@ body {
 
 .pp-scene::before {
   content: "";
-  position: fixed;
+  position: absolute;
   inset: 0;
   pointer-events: none;
   background:
@@ -81,7 +81,7 @@ body {
 
 .pp-scene::after {
   content: "";
-  position: fixed;
+  position: absolute;
   inset: 0;
   background:
     linear-gradient(180deg, rgba(7, 5, 15, 0.3), rgba(7, 5, 15, 0.9)),
@@ -240,7 +240,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  z-index: 10001;
+  z-index: 30000;
   pointer-events: none;
 }
 
@@ -313,7 +313,7 @@ body {
 .pp-modal-overlay {
   position: fixed;
   inset: 0;
-  z-index: 10000;
+  z-index: 20000;
   display: none;
   align-items: center;
   justify-content: center;
@@ -323,13 +323,25 @@ body {
   -webkit-backdrop-filter: blur(14px);
   box-sizing: border-box;
   pointer-events: auto;
+  isolation: isolate;
 }
 
 .pp-modal-overlay.is-open {
   display: flex;
 }
 
+.pp-modal-overlay::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: rgba(4, 3, 10, 0.82);
+  pointer-events: none;
+}
+
 .pp-modal-panel {
+  position: relative;
+  z-index: 1;
   border-radius: var(--radius-lg);
   border: 1px solid var(--stroke);
   background: linear-gradient(

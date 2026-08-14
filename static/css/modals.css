@@ -11,6 +11,8 @@
   padding: 20px;
   box-sizing: border-box;
   pointer-events: auto;
+  isolation: isolate;
+  background: rgba(4, 3, 10, 0.82);
 }
 
 .create-table-overlay.is-open,
@@ -19,10 +21,26 @@
 }
 
 .create-table-overlay {
-  z-index: 10000;
+  z-index: 20000;
   background: rgba(4, 3, 10, 0.82);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
+}
+
+.create-table-overlay::before,
+.emote-shop-overlay::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: rgba(4, 3, 10, 0.82);
+  pointer-events: none;
+}
+
+.create-table-panel,
+.emote-shop-panel {
+  position: relative;
+  z-index: 1;
 }
 
 .create-table-panel {
@@ -145,7 +163,7 @@ select.ct-field {
 /* Emote shop */
 
 .emote-shop-overlay {
-  z-index: 10001;
+  z-index: 20001;
   background: rgba(4, 3, 10, 0.86);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
