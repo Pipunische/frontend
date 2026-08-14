@@ -253,10 +253,30 @@
 <script>
 
     // Modal toggles first — must work even if pp-common.js fails to load.
+    // Inline position/z-index survive a stale theme.css cache after the CSS split.
+    function isOverlayOpen(modal) {
+        return Boolean(modal) && (modal.classList.contains('is-open') || modal.style.display === 'flex');
+    }
+
+    function setOverlayOpen(modal, open, zIndex) {
+        if (!modal) return;
+        modal.classList.toggle('is-open', open);
+        if (open) {
+            modal.style.display = 'flex';
+            modal.style.position = 'fixed';
+            modal.style.inset = '0';
+            modal.style.zIndex = String(zIndex);
+            modal.style.alignItems = 'center';
+            modal.style.justifyContent = 'center';
+            return;
+        }
+        modal.style.display = 'none';
+    }
+
     function toggleCreateTableModal() {
         const modal = document.getElementById('create-table-modal');
         if (!modal) return;
-        modal.style.display = modal.style.display === 'flex' ? 'none' : 'flex';
+        setOverlayOpen(modal, !isOverlayOpen(modal), 10000);
     }
 
     function closeCreateTableModalOnBackdrop(event) {
@@ -269,12 +289,12 @@
         const modal = document.getElementById('emote-shop-modal');
         if (!modal) return;
 
-        if (modal.style.display === 'flex') {
-            modal.style.display = 'none';
+        if (isOverlayOpen(modal)) {
+            setOverlayOpen(modal, false, 10001);
             return;
         }
 
-        modal.style.display = 'flex';
+        setOverlayOpen(modal, true, 10001);
         if (typeof refreshEmoteShopFromApi === 'function') {
             await refreshEmoteShopFromApi();
         }
@@ -304,8 +324,8 @@
         console.error('pp-common.js не загружен — сеть/reconnect будут ограничены');
     }
 
-    const javaHost = "{{ java_host }}";
-    let userToken = "{{ user_token if user else '' }}";
+    const javaHost = {{ java_host | tojson }};
+    let userToken = {{ (user_token if user else '') | tojson }};
 
     function isDevLobbyMode() {
         const meta = document.getElementById('lobby-metadata');
@@ -330,8 +350,7 @@
     let emotePurchaseInFlight = false;
 
     function isEmoteShopOpen() {
-        const modal = document.getElementById('emote-shop-modal');
-        return modal && modal.style.display === 'flex';
+        return isOverlayOpen(document.getElementById('emote-shop-modal'));
     }
 
     function getLobbyUserId() {
