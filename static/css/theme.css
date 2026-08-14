@@ -342,15 +342,12 @@ body {
 .pp-modal-panel {
   position: relative;
   z-index: 1;
+  isolation: isolate;
   border-radius: var(--radius-lg);
   border: 1px solid var(--stroke);
-  background: linear-gradient(
-    160deg,
-    rgba(16, 12, 32, 0.96),
-    rgba(8, 6, 18, 0.98)
-  );
+  background: linear-gradient(160deg, #16122c, #0a0814);
   box-shadow:
-    0 32px 80px rgba(0, 0, 0, 0.7),
+    0 32px 80px rgba(0, 0, 0, 0.85),
     var(--glow-purple),
     inset 0 1px 0 rgba(255, 255, 255, 0.07);
   animation: pp-modal-in 0.35s var(--ease-out) both;
