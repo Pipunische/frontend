@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -37,6 +38,15 @@ app.add_middleware(
     secret_key=settings.SESSION_KEY,
     max_age=604800
 )
+
+if settings.SPA_DEV:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[settings.SPA_DEV_ORIGIN],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 

@@ -23,6 +23,9 @@ class Settings(BaseSettings):
 
     JAVA_PROTOCOL: str = "http"
 
+    SPA_DEV: bool = False
+    SPA_DEV_ORIGIN: str = "http://127.0.0.1:5173"
+
     APP_VERSION: str = Field(default_factory=_resolve_app_version)
 
     @property

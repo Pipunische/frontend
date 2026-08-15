@@ -24,3 +24,7 @@ pip-wheel-metadata/
 .cursor/
 
 .DS_Store
+
+# SPA (Vite)
+web/node_modules/
+web/dist/
