@@ -4,6 +4,9 @@ const GIS_SRC = "https://accounts.google.com/gsi/client";
 const LEGACY_GOOGLE_CLIENT_ID =
   "41278678885-60fb3n16bsodd83dnevm9cdg29m5l6j4.apps.googleusercontent.com";
 
+let initializedClientId: string | null = null;
+let credentialCallback: ((credential: string) => void) | null = null;
+
 export function getGoogleClientId(): string {
   const fromEnv = import.meta.env.VITE_GOOGLE_CLIENT_ID?.trim();
   return fromEnv || LEGACY_GOOGLE_CLIENT_ID;
@@ -43,24 +46,38 @@ export function loadGisScript(): Promise<void> {
   });
 }
 
-export function renderGoogleButton(
-  container: HTMLElement,
-  onCredential: (credential: string) => void,
-) {
-  const clientId = getGoogleClientId();
-  if (!window.google?.accounts?.id) {
+function ensureInitialized(clientId: string) {
+  const gsi = window.google?.accounts?.id;
+  if (!gsi) {
     return;
   }
-
-  container.replaceChildren();
-  window.google.accounts.id.initialize({
+  if (initializedClientId === clientId) {
+    return;
+  }
+  gsi.initialize({
     client_id: clientId,
-    callback: (response) => onCredential(response.credential),
+    callback: (response) => credentialCallback?.(response.credential),
     ux_mode: "popup",
     auto_select: false,
     context: "signin",
   });
-  window.google.accounts.id.renderButton(container, {
+  initializedClientId = clientId;
+}
+
+export function renderGoogleButton(
+  container: HTMLElement,
+  onCredential: (credential: string) => void,
+) {
+  const gsi = window.google?.accounts?.id;
+  const clientId = getGoogleClientId();
+  if (!gsi) {
+    return;
+  }
+
+  credentialCallback = onCredential;
+  ensureInitialized(clientId);
+  container.replaceChildren();
+  gsi.renderButton(container, {
     type: "standard",
     theme: "outline",
     size: "large",

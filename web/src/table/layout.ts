@@ -1,3 +1,4 @@
+import { realHoleCards } from "../lib/cards";
 import type { TableGame, TablePlayer, TableSnapshot } from "../api/table";
 
 const SEAT_LAYOUTS: Record<number, number[]> = {
@@ -176,17 +177,14 @@ export function buildSnapshotFromGame(
     opponent_seats_by_pos[String(pos)] = orderedOthers[rel] ?? null;
   });
 
-  const activePhases = ["PRE_FLOP", "FLOP", "TURN", "RIVER"];
+  const activePhases = ["PRE_FLOP", "FLOP", "TURN", "RIVER", "SHOWDOWN"];
   let heroCards = myCardsHint?.length ? myCardsHint : myCards;
-  if (state === "WAITING_FOR_PLAYERS") {
+  if (state === "WAITING_FOR_PLAYERS" || state === "CLEANUP") {
     heroCards = [];
   } else if (activePhases.includes(state || "")) {
-    const real = (heroCards || []).filter((c) => c && c !== "card_back");
-    if (real.length > 0) {
-      heroCards = real;
-    } else if (prev.my_cards?.length) {
-      heroCards = prev.my_cards;
-    }
+    const incoming = realHoleCards(heroCards);
+    const kept = realHoleCards(prev.my_cards);
+    heroCards = incoming.length ? incoming : kept;
   }
 
   const board = game.community_cards ?? prev.community_cards ?? [];

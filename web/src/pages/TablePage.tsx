@@ -27,12 +27,7 @@ import { useTableStore } from "../table/tableStore";
 import { playSound } from "../lib/sounds";
 import { useTableRealtime } from "../ws/useTableRealtime";
 
-const TABLE_CSS = [
-  "https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&display=swap",
-  "/static/css/theme.css",
-  "/static/css/poker_table.css",
-  "/static/css/table.css",
-] as const;
+const TABLE_CSS = ["/static/css/poker_table.css", "/static/css/table.css"] as const;
 
 function commandFailed(result: TableCommandResult): boolean {
   return result.error === true || (typeof result.error === "string" && Boolean(result.error));

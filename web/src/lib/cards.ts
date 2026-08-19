@@ -1,12 +1,23 @@
+export function isFaceDownCard(card: unknown): boolean {
+  if (card == null) {
+    return true;
+  }
+  const value = String(card).trim().toLowerCase();
+  return !value || value === "card_back" || value === "back";
+}
+
+export function realHoleCards(cards: unknown): string[] {
+  if (!Array.isArray(cards)) {
+    return [];
+  }
+  return cards.filter((card): card is string => typeof card === "string" && !isFaceDownCard(card));
+}
+
 export function normalizeCardFileName(card: string | null | undefined): string {
-  if (!card) {
+  if (isFaceDownCard(card)) {
     return "card_back";
   }
-  const value = String(card).trim();
-  if (!value || value.toLowerCase() === "card_back" || value.toLowerCase() === "back") {
-    return "card_back";
-  }
-  return value.toUpperCase();
+  return String(card).trim().toUpperCase();
 }
 
 export function parseCardToken(card: unknown): string | null {

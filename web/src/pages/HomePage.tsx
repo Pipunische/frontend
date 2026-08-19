@@ -2,11 +2,7 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { useStaticCss } from "../hooks/useStaticCss";
 
-const HOME_CSS = [
-  "https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&display=swap",
-  "/static/css/theme.css",
-  "/static/css/home.css",
-] as const;
+const HOME_CSS = ["/static/css/home.css"] as const;
 
 const CLUB_NAME = "PoluPoker";
 const CREATOR_NAME = "SiliVal";

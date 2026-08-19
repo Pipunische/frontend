@@ -14,12 +14,7 @@ import { toastFromUnknown } from "../lib/toast";
 import { useLobbyRealtime } from "../ws/useLobbyRealtime";
 import "./LobbyPage.css";
 
-const LOBBY_CSS = [
-  "https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&display=swap",
-  "/static/css/theme.css",
-  "/static/css/lobby.css",
-  "/static/css/modals.css",
-] as const;
+const LOBBY_CSS = ["/static/css/lobby.css", "/static/css/modals.css"] as const;
 
 export function LobbyPage() {
   useStaticCss(LOBBY_CSS);

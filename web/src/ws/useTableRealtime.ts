@@ -78,7 +78,7 @@ export function useTableRealtime({
         })
         .catch((err: unknown) => {
           const message = err instanceof Error ? err.message : "";
-          if (message === "not_at_table") {
+          if (message === "not_at_table" && !useTableStore.getState().snapshot?.my_player) {
             onNotAtTableRef.current();
             return;
           }

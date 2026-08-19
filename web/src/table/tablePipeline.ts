@@ -1,6 +1,8 @@
 import type { Client } from "@stomp/stompjs";
 import type { TableSnapshot } from "../api/table";
+import { fetchHeroHoleCards } from "../api/table";
 import { playSound } from "../lib/sounds";
+import { realHoleCards } from "../lib/cards";
 import {
   applyPlayerActionEvent,
   applyStreetEndEvent,
@@ -45,7 +47,9 @@ let collectGen = 0;
 let pendingTableUpdate: Record<string, unknown> | null = null;
 let pendingPostShowdown: Record<string, unknown> | null = null;
 let showdownHighlightDone = false;
+let showdownSequenceLock = false;
 let showdownAbort = false;
+let holeCardsInflight: Promise<void> | null = null;
 
 export function setTableToastHandler(fn: ToastFn | null) {
   toastFn = fn;
@@ -61,6 +65,7 @@ export function resetTablePipeline() {
   pendingTableUpdate = null;
   pendingPostShowdown = null;
   showdownHighlightDone = false;
+  showdownSequenceLock = false;
   showdownAbort = true;
   patchFx({
     hideBets: false,
@@ -241,6 +246,37 @@ async function payPotToWinner(userId: string, amount: number) {
   }, 500);
 }
 
+function needsPrivateHeroCards(data: TableSnapshot | null): boolean {
+  if (!data || data.is_dev_table) {
+    return false;
+  }
+  const state = data.game.state || "";
+  if (!["PRE_FLOP", "FLOP", "TURN", "RIVER", "SHOWDOWN"].includes(state)) {
+    return false;
+  }
+  return realHoleCards(data.my_cards).length === 0;
+}
+
+function requestHeroHoleCards(id: string) {
+  if (!id || holeCardsInflight) {
+    return;
+  }
+  holeCardsInflight = fetchHeroHoleCards(id)
+    .then((cards) => {
+      if (!cards.length) {
+        return;
+      }
+      const prev = snapshot();
+      if (!prev || prev.table_id !== id || !needsPrivateHeroCards(prev)) {
+        return;
+      }
+      setSnapshot({ ...prev, my_cards: cards });
+    })
+    .finally(() => {
+      holeCardsInflight = null;
+    });
+}
+
 function applySnapshotFromEvent(
   event: Record<string, unknown>,
   options: { myCards?: string[]; dealFrom?: number } = {},
@@ -273,6 +309,9 @@ function applySnapshotFromEvent(
   }
   setSnapshot(next);
   patchFx({ dealFrom });
+  if (needsPrivateHeroCards(next)) {
+    requestHeroHoleCards(next.table_id);
+  }
 }
 
 function applyStreetEndSnapshot(event: Record<string, unknown>) {
@@ -296,6 +335,9 @@ function applyStreetEndSnapshot(event: Record<string, unknown>) {
     for (let i = 0; i < nextBoardLen - prevBoardLen; i += 1) {
       playSound("card");
     }
+  }
+  if (needsPrivateHeroCards(next)) {
+    requestHeroHoleCards(next.table_id);
   }
 }
 
@@ -358,9 +400,10 @@ function prepareShowdownChipOverrides(
 
 async function playShowdownSequence(details: ShowdownDetails) {
   const raw = details.payouts || [];
-  if (!raw.length || getFx().showdownRunning) {
+  if (!raw.length || showdownSequenceLock || getFx().showdownRunning) {
     return;
   }
+  showdownSequenceLock = true;
   showdownAbort = false;
   patchFx({ showdownRunning: true });
   const unique = new Set(raw.map((p) => String(p.user_id)));
@@ -387,6 +430,7 @@ async function playShowdownSequence(details: ShowdownDetails) {
     await sleep(800);
     clearShowdownFx();
     showdownHighlightDone = true;
+    showdownSequenceLock = false;
     patchFx({ displayedPot: 0, chipOverrides: {}, showdownRunning: false });
     if (pendingPostShowdown) {
       const pending = pendingPostShowdown;
@@ -397,6 +441,7 @@ async function playShowdownSequence(details: ShowdownDetails) {
       });
     }
   } else {
+    showdownSequenceLock = false;
     patchFx({ showdownRunning: false });
   }
 }
@@ -426,7 +471,7 @@ function applyShowdownPhase(
   if (!isShowdownPhase(gameState)) {
     return;
   }
-  if (options.skipShowdownHighlight || showdownHighlightDone) {
+  if (options.skipShowdownHighlight || showdownHighlightDone || showdownSequenceLock) {
     return;
   }
   const details = getShowdownDetails(state as { showdown_details?: ShowdownDetails });
@@ -495,6 +540,7 @@ async function applyFullTableState(
 
   if (nextState === "WAITING_FOR_PLAYERS") {
     showdownHighlightDone = false;
+    showdownSequenceLock = false;
     clearShowdownFx();
     patchFx({ displayedPot: null, chipOverrides: {}, dealFrom: 99 });
   }
@@ -529,24 +575,38 @@ async function applyFullTableState(
 export async function applyHttpTableSnapshot(data: TableSnapshot, reason: string) {
   console.log(`🔄 HTTP resync стола (${reason})`);
   const prev = snapshot();
+  const canPaintShowdown =
+    isShowdownPhase(data.game.state) &&
+    Boolean(data.game.showdown_details?.payouts?.length) &&
+    !showdownSequenceLock &&
+    !showdownHighlightDone &&
+    !getFx().showdownRunning;
+
   if (!prev) {
     setSnapshot(data);
     patchFx({ dealFrom: 99, displayedPot: data.game.pot ?? null });
-    if (isShowdownPhase(data.game.state) && data.game.showdown_details?.payouts?.length) {
+    if (canPaintShowdown && data.game.showdown_details) {
       applyStaticShowdown(data.game.showdown_details);
+    }
+    if (needsPrivateHeroCards(data)) {
+      requestHeroHoleCards(data.table_id);
     }
     return;
   }
-  setSnapshot({
+  const next = {
     ...buildSnapshotFromGame(data.game, { ...prev, ...data }, data.my_cards),
     panel_emotes: data.panel_emotes || prev.panel_emotes,
     emotes_dict: data.emotes_dict || prev.emotes_dict,
     emotes_lottie_dict: data.emotes_lottie_dict || prev.emotes_lottie_dict,
     is_dev_table: data.is_dev_table ?? prev.is_dev_table,
-  });
+  };
+  setSnapshot(next);
   patchFx({ dealFrom: 99, displayedPot: data.game.pot ?? getFx().displayedPot });
-  if (isShowdownPhase(data.game.state) && data.game.showdown_details?.payouts?.length) {
+  if (canPaintShowdown && data.game.showdown_details) {
     applyStaticShowdown(data.game.showdown_details);
+  }
+  if (needsPrivateHeroCards(next)) {
+    requestHeroHoleCards(next.table_id);
   }
 }
 
@@ -655,10 +715,14 @@ export function seedInitialTableFx(data: TableSnapshot) {
   if (isShowdownPhase(data.game.state) && data.game.showdown_details?.payouts?.length) {
     applyStaticShowdown(data.game.showdown_details);
   }
+  if (needsPrivateHeroCards(data)) {
+    requestHeroHoleCards(data.table_id);
+  }
 }
 
 export function resetShowdownPipelineFlags() {
   showdownHighlightDone = false;
+  showdownSequenceLock = false;
   showdownAbort = true;
   pendingTableUpdate = null;
   pendingPostShowdown = null;

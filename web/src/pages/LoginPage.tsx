@@ -149,7 +149,7 @@ export function LoginPage() {
           </p>
           <div
             ref={buttonRef}
-            className="g_id_signin"
+            className="pp-google-signin"
             hidden={busy}
           />
           {busy ? (

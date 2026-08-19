@@ -1,5 +1,6 @@
 import { apiFetch, ApiError } from "./client";
 import { hydrateSnapshot } from "../table/layout";
+import { realHoleCards } from "../lib/cards";
 import type { ShowdownDetails } from "../table/showdown";
 
 export type TablePlayer = {
@@ -114,12 +115,25 @@ export async function fetchTableState(tableId: string): Promise<TableSnapshot> {
       ),
     );
   } catch (error) {
-    if (
-      error instanceof ApiError &&
-      (error.status === 403 || error.redirect?.startsWith("/lobby"))
-    ) {
-      throw new ApiError("not_at_table", 403, error.payload, "/lobby");
+    if (error instanceof ApiError && error.status === 403) {
+      const payload = error.payload;
+      const explicit =
+        payload &&
+        typeof payload === "object" &&
+        (payload as { error?: string }).error === "not_at_table";
+      if (explicit) {
+        throw new ApiError("not_at_table", 403, error.payload, "/lobby");
+      }
     }
     throw error;
+  }
+}
+
+export async function fetchHeroHoleCards(tableId: string): Promise<string[]> {
+  try {
+    const data = await fetchTableState(tableId);
+    return realHoleCards(data.my_cards);
+  } catch {
+    return [];
   }
 }

@@ -6,11 +6,7 @@ import { useAuth } from "../auth/AuthProvider";
 import { useStaticCss } from "../hooks/useStaticCss";
 import { formatSpacedInt } from "../lib/format";
 
-const PROFILE_CSS = [
-  "https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&display=swap",
-  "/static/css/theme.css",
-  "/static/css/profile.css",
-] as const;
+const PROFILE_CSS = ["/static/css/profile.css"] as const;
 
 function CountUp({ target }: { target: number }) {
   const [value, setValue] = useState(0);

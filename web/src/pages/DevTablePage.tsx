@@ -14,12 +14,7 @@ import { useTableStore } from "../table/tableStore";
 import { getOpponentPosLayout, hydrateSnapshot } from "../table/layout";
 import { playSound } from "../lib/sounds";
 
-const TABLE_CSS = [
-  "https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&display=swap",
-  "/static/css/theme.css",
-  "/static/css/poker_table.css",
-  "/static/css/table.css",
-] as const;
+const TABLE_CSS = ["/static/css/poker_table.css", "/static/css/table.css"] as const;
 
 function buildLocalDevSnapshot(
   user: {

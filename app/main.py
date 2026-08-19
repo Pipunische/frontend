@@ -42,6 +42,15 @@ app.add_middleware(
     max_age=604800
 )
 
+if spa_enabled():
+    class CoopAllowPopupsMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request: Request, call_next):
+            response = await call_next(request)
+            response.headers["Cross-Origin-Opener-Policy"] = "same-origin-allow-popups"
+            return response
+
+    app.add_middleware(CoopAllowPopupsMiddleware)
+
 if settings.SPA_DEV:
     app.add_middleware(
         CORSMiddleware,
