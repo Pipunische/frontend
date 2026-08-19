@@ -160,13 +160,13 @@ export function cardFxClass(
 ): string {
   const token = cardToken(card);
   if (rankTokens.includes(token)) {
-    return "card-static card-winner-rank";
+    return "card-winner-rank";
   }
   if (kickerTokens.includes(token)) {
-    return "card-static card-winner-kicker";
+    return "card-winner-kicker";
   }
   if (dimCards) {
-    return "card-static card-dimmed";
+    return "card-dimmed";
   }
-  return "card-static";
+  return "";
 }

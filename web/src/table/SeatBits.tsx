@@ -3,6 +3,7 @@ import { cardPngUrl } from "../lib/cards";
 import type { TablePlayer } from "../api/table";
 import { LottieMount } from "./LottieMount";
 import type { ShowdownBadge } from "./showdown";
+import { layoutRegistry } from "./layoutRegistry";
 
 export function SeatAvatar({ url, name }: { url?: string; name: string }) {
   const letter = (name || "?").slice(0, 1).toUpperCase();
@@ -112,6 +113,7 @@ export function OccupiedSeatBody({
   emoteEmoji,
   emoteLottie,
   winnerPulse = false,
+  holeDealFrom = 99,
 }: {
   player: TablePlayer;
   cards: string[];
@@ -125,20 +127,26 @@ export function OccupiedSeatBody({
   emoteEmoji?: string;
   emoteLottie?: string;
   winnerPulse?: boolean;
+  holeDealFrom?: number;
 }) {
   const chips = chipsOverride ?? player.chips;
   const bet = Number(player.round_contribution || 0);
+  const userId = String(player.user_id);
   return (
     <>
       <div className={handClass}>
-        {cards.map((card, index) => (
-          <img
-            key={`${card}-${index}`}
-            src={cardPngUrl(card)}
-            className={`hand-card ${cardClassFor ? cardClassFor(card, index) : "card-static"}`}
-            alt=""
-          />
-        ))}
+        {cards.map((card, index) => {
+          const extras = cardClassFor ? cardClassFor(card, index) : "";
+          const animate = index >= holeDealFrom && !extras;
+          return (
+            <img
+              key={`${card}-${index}`}
+              src={cardPngUrl(card)}
+              className={`hand-card ${animate ? "" : "card-static"} ${extras}`.trim()}
+              alt=""
+            />
+          );
+        })}
       </div>
       {player.is_dealer ? <div className="dealer-button">D</div> : null}
       <div className="avatar-timer-wrap">
@@ -149,12 +157,22 @@ export function OccupiedSeatBody({
         <span className={`player-name${player.is_active_turn ? " active-turn" : ""}`}>
           {player.name}
         </span>
-        <span className="player-chips">
+        <span
+          className="player-chips"
+          ref={(el) => {
+            layoutRegistry.setChips(userId, el);
+          }}
+        >
           {chips} <span className="chip-icon" />
         </span>
       </div>
       {!hideBet && bet > 0 ? (
-        <div className="player-bet">
+        <div
+          className="player-bet"
+          ref={(el) => {
+            layoutRegistry.setBet(userId, el);
+          }}
+        >
           <div className="chip-icon" />
           {bet}
         </div>

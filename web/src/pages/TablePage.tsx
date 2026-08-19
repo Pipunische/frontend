@@ -39,7 +39,8 @@ export function TablePage() {
   const { tableId } = useParams();
   const navigate = useNavigate();
   const { user: sessionUser } = useAuth();
-  const snapshot = useTableStore((s) => s.snapshot);
+  const snapshot = useTableStore((s) => s.displayed);
+  const logical = useTableStore((s) => s.logical);
   const pingMs = useTableStore((s) => s.pingMs);
   const setSnapshot = useTableStore((s) => s.setSnapshot);
   const reset = useTableStore((s) => s.reset);
@@ -170,7 +171,13 @@ export function TablePage() {
         return;
       }
       leavingRef.current = true;
-      const userId = String(snapshot.user?.user_id || snapshot.my_player?.user_id || "");
+      const userId = String(
+        logical?.user?.user_id ||
+          snapshot.user?.user_id ||
+          logical?.my_player?.user_id ||
+          snapshot.my_player?.user_id ||
+          "",
+      );
       try {
         const result = await postTableLeave(tableId, userId);
         if (goFromCommand(result)) {
@@ -185,7 +192,7 @@ export function TablePage() {
         navigate("/lobby", { replace: true });
       }
     },
-    [goFromCommand, navigate, snapshot, tableId],
+    [goFromCommand, logical, navigate, snapshot, tableId],
   );
 
   const sendAction = useCallback(
@@ -199,8 +206,20 @@ export function TablePage() {
       setBusy(true);
       try {
         const result = await postTableAction(tableId, {
-          user_id: String(snapshot.user?.user_id || snapshot.my_player?.user_id || ""),
-          name: String(snapshot.user?.name || snapshot.my_player?.name || ""),
+          user_id: String(
+            logical?.user?.user_id ||
+              snapshot.user?.user_id ||
+              logical?.my_player?.user_id ||
+              snapshot.my_player?.user_id ||
+              "",
+          ),
+          name: String(
+            logical?.user?.name ||
+              snapshot.user?.name ||
+              logical?.my_player?.name ||
+              snapshot.my_player?.name ||
+              "",
+          ),
           type,
           amount,
         });
@@ -221,7 +240,7 @@ export function TablePage() {
         setBusy(false);
       }
     },
-    [goFromCommand, mockTable, showToast, snapshot, tableId],
+    [goFromCommand, logical, mockTable, showToast, snapshot, tableId],
   );
 
   const sendRebuy = useCallback(
@@ -289,8 +308,8 @@ export function TablePage() {
         </header>
         <PokerTableShell snapshot={snapshot} />
         <ActionPanel
-          myPlayer={snapshot.my_player}
-          currentTurnSeat={snapshot.game.current_turn_seat}
+          myPlayer={logical?.my_player ?? snapshot.my_player}
+          currentTurnSeat={logical?.game.current_turn_seat ?? snapshot.game.current_turn_seat}
           bigBlind={bigBlind}
           busy={busy}
           onAction={sendAction}
@@ -308,7 +327,7 @@ export function TablePage() {
         </div>
       </div>
       <RebuyModal
-        myPlayer={snapshot.my_player}
+        myPlayer={logical?.my_player ?? snapshot.my_player}
         bigBlind={bigBlind}
         busy={busy}
         onRebuy={sendRebuy}

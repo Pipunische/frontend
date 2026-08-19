@@ -10,12 +10,14 @@ import {
   clearHeroHoleCache,
   gameFromPayload,
   heroCardsFromPayload,
+  normalizeContributions,
+  unwrapTableEvent,
 } from "./layout";
+import { layoutRegistry } from "./layoutRegistry";
 import {
   aggregatePayouts,
   buildShowdownBadge,
   getPayoutTotalsByUser,
-  getShowdownDetails,
   getTotalPayoutAmount,
   isShowdownPhase,
   resolveShowdownHighlightCards,
@@ -28,6 +30,9 @@ import { useTableStore } from "./tableStore";
 const CHIP_COLLECT_DURATION_MS = 650;
 const CHIP_COLLECT_STAGGER_MS = 90;
 const CHIP_PAYOUT_STAGGER_MS = 80;
+const CARD_DEAL_MS = 400;
+const FLOP_EXTRA_MS = 800;
+const HOLE_DEAL_MS = 850;
 const STREET_ORDER = [
   "WAITING_FOR_PLAYERS",
   "PRE_FLOP",
@@ -45,12 +50,10 @@ let stompClient: Client | null = null;
 let tableId = "";
 let flySeq = 1;
 let emoteSeq = 1;
-let collectGen = 0;
-let pendingTableUpdate: Record<string, unknown> | null = null;
-let pendingPostShowdown: Record<string, unknown> | null = null;
+let fxGen = 0;
+let pumping = false;
+let skipVisualOnce = false;
 let showdownHighlightDone = false;
-let showdownSequenceLock = false;
-let showdownAbort = false;
 let holeCardsInflight: Promise<void> | null = null;
 
 export function setTableToastHandler(fn: ToastFn | null) {
@@ -62,14 +65,17 @@ export function setTableStompClient(client: Client | null, id: string) {
   tableId = id;
 }
 
+export function isTableFxBusy() {
+  return pumping || getFx().streetBusy || getFx().showdownRunning;
+}
+
 export function resetTablePipeline() {
-  collectGen += 1;
-  pendingTableUpdate = null;
-  pendingPostShowdown = null;
+  fxGen += 1;
+  pumping = false;
+  skipVisualOnce = false;
   showdownHighlightDone = false;
-  showdownSequenceLock = false;
-  showdownAbort = true;
   clearHeroHoleCache();
+  layoutRegistry.clear();
   patchFx({
     hideBets: false,
     flying: [],
@@ -83,6 +89,7 @@ export function resetTablePipeline() {
     badges: [],
     emotes: [],
     dealFrom: 99,
+    holeDealFrom: 99,
     streetBusy: false,
     showdownRunning: false,
   });
@@ -94,30 +101,40 @@ function sleep(ms: number) {
   });
 }
 
-function elementCenter(el: Element | null) {
-  if (!el) {
-    return null;
-  }
-  const rect = el.getBoundingClientRect();
-  return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+function afterPaint() {
+  return new Promise<void>((resolve) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => resolve());
+    });
+  });
 }
 
-function seatEl(userId: string) {
-  return document.querySelector(`.player-seat[data-userid="${userId}"]`);
+function logical() {
+  return useTableStore.getState().logical;
 }
 
-function snapshot() {
-  return useTableStore.getState().snapshot;
+function displayed() {
+  return useTableStore.getState().displayed;
 }
 
-function setSnapshot(next: TableSnapshot) {
-  useTableStore.getState().setSnapshot(next);
+function setLogical(next: TableSnapshot) {
+  useTableStore.getState().setLogical(next);
+}
+
+function setDisplayed(next: TableSnapshot) {
+  useTableStore.getState().setDisplayed(next);
 }
 
 function isStreetAdvanced(previousState: string | undefined, nextState: string | undefined) {
   const prevIdx = STREET_ORDER.indexOf(previousState || "");
   const nextIdx = STREET_ORDER.indexOf(nextState || "");
   return prevIdx >= 0 && nextIdx > prevIdx;
+}
+
+function boardOf(data: TableSnapshot | null) {
+  return data?.community_cards?.length
+    ? data.community_cards
+    : data?.game.community_cards || [];
 }
 
 function contributionsFromSnapshot(data: TableSnapshot | null) {
@@ -131,6 +148,64 @@ function contributionsFromSnapshot(data: TableSnapshot | null) {
   return list;
 }
 
+function withZeroBets(data: TableSnapshot): TableSnapshot {
+  const players = (data.game.players || []).map((p) => ({ ...p, round_contribution: 0 }));
+  return {
+    ...data,
+    game: { ...data.game, players },
+    my_player: data.my_player ? { ...data.my_player, round_contribution: 0 } : data.my_player,
+  };
+}
+
+function mergeBoard(data: TableSnapshot, board: string[]): TableSnapshot {
+  return {
+    ...data,
+    community_cards: board,
+    game: { ...data.game, community_cards: board },
+  };
+}
+
+function mergeHoles(from: TableSnapshot, to: TableSnapshot): TableSnapshot {
+  const byId = new Map((to.game.players || []).map((p) => [String(p.user_id), p] as const));
+  const players = (from.game.players || []).map((p) => {
+    const next = byId.get(String(p.user_id));
+    return next ? { ...p, cards: next.cards } : p;
+  });
+  const opponent_seats_by_pos = { ...from.opponent_seats_by_pos };
+  Object.keys(opponent_seats_by_pos).forEach((pos) => {
+    const seat = opponent_seats_by_pos[pos];
+    if (!seat) {
+      return;
+    }
+    const next = byId.get(String(seat.user_id));
+    if (next) {
+      opponent_seats_by_pos[pos] = { ...seat, cards: next.cards };
+    }
+  });
+  return {
+    ...from,
+    my_cards: to.my_cards,
+    game: { ...from.game, players },
+    opponent_seats_by_pos,
+  };
+}
+
+function snapshotsVisuallyEqual(a: TableSnapshot, b: TableSnapshot) {
+  return (
+    a.game.state === b.game.state &&
+    a.game.pot === b.game.pot &&
+    a.game.current_turn_seat === b.game.current_turn_seat &&
+    boardOf(a).join() === boardOf(b).join() &&
+    (a.my_cards || []).join() === (b.my_cards || []).join() &&
+    (a.game.players || [])
+      .map((p) => `${p.user_id}:${p.chips}:${p.round_contribution}:${p.status}:${(p.cards || []).join()}`)
+      .join("|") ===
+      (b.game.players || [])
+        .map((p) => `${p.user_id}:${p.chips}:${p.round_contribution}:${p.status}:${(p.cards || []).join()}`)
+        .join("|")
+  );
+}
+
 function clearShowdownFx() {
   patchFx({
     dimCards: false,
@@ -139,6 +214,25 @@ function clearShowdownFx() {
     badges: [],
     winnerPulseUserId: null,
   });
+}
+
+function jumpDisplayed(next: TableSnapshot, opts: { staticShowdown?: boolean } = {}) {
+  setDisplayed(next);
+  patchFx({
+    hideBets: false,
+    flying: [],
+    potPulse: null,
+    winnerPulseUserId: null,
+    displayedPot: next.game.pot ?? 0,
+    chipOverrides: {},
+    dealFrom: 99,
+    holeDealFrom: 99,
+  });
+  if (opts.staticShowdown && next.game.showdown_details?.payouts?.length) {
+    applyStaticShowdown(next.game.showdown_details);
+  } else if (!isShowdownPhase(next.game.state)) {
+    clearShowdownFx();
+  }
 }
 
 async function spawnFlyingChip(
@@ -160,7 +254,7 @@ async function spawnFlyingChip(
   };
   patchFx({ flying: [...getFx().flying, chip] });
   await sleep(CHIP_COLLECT_DURATION_MS + delayMs + 30);
-  if (gen !== collectGen) {
+  if (gen !== fxGen) {
     return;
   }
   patchFx({ flying: getFx().flying.filter((item) => item.id !== chip.id) });
@@ -169,31 +263,43 @@ async function spawnFlyingChip(
 async function collectBetsToPot(
   contributions: Array<{ user_id: string; amount: number }>,
   newPot: number | undefined,
+  gen: number,
 ) {
   const active = contributions.filter((c) => c.amount > 0);
   if (!active.length) {
     return;
   }
-  const gen = collectGen;
-  const potEl = document.querySelector(".table-pot");
-  const potCenter = elementCenter(potEl);
+  await afterPaint();
+  if (gen !== fxGen) {
+    return;
+  }
+  const potCenter = layoutRegistry.potCenter();
   if (!potCenter) {
+    const view = displayed();
+    if (view) {
+      setDisplayed(withZeroBets(view));
+    }
+    if (newPot != null) {
+      patchFx({ displayedPot: newPot, hideBets: false });
+    }
     return;
   }
   patchFx({ hideBets: true });
   await Promise.all(
     active.map((entry, index) => {
-      const seat = seatEl(String(entry.user_id));
-      const betEl = seat?.querySelector(".player-bet") || seat;
-      const from = elementCenter(betEl) || elementCenter(seat);
+      const from = layoutRegistry.betCenter(entry.user_id);
       if (!from) {
         return Promise.resolve();
       }
       return spawnFlyingChip(from, potCenter, entry.amount, index * CHIP_COLLECT_STAGGER_MS, gen);
     }),
   );
-  if (gen !== collectGen) {
+  if (gen !== fxGen) {
     return;
+  }
+  const view = displayed();
+  if (view) {
+    setDisplayed(withZeroBets(view));
   }
   patchFx({
     hideBets: false,
@@ -208,15 +314,16 @@ async function collectBetsToPot(
   }, 400);
 }
 
-async function payPotToWinner(userId: string, amount: number) {
+async function payPotToWinner(userId: string, amount: number, gen: number) {
   if (!amount || amount <= 0) {
     return;
   }
-  const gen = collectGen;
-  const potEl = document.querySelector(".table-pot");
-  const winnerSeat = seatEl(String(userId));
-  const potCenter = elementCenter(potEl);
-  const target = elementCenter(winnerSeat?.querySelector(".player-chips") || winnerSeat);
+  await afterPaint();
+  if (gen !== fxGen) {
+    return;
+  }
+  const potCenter = layoutRegistry.potCenter();
+  const target = layoutRegistry.chipCenter(userId);
   if (!potCenter || !target) {
     return;
   }
@@ -229,10 +336,10 @@ async function payPotToWinner(userId: string, amount: number) {
       return spawnFlyingChip(potCenter, target, chipAmount, i * CHIP_PAYOUT_STAGGER_MS, gen);
     }),
   );
-  if (gen !== collectGen) {
+  if (gen !== fxGen) {
     return;
   }
-  const currentPot = getFx().displayedPot ?? snapshot()?.game.pot ?? 0;
+  const currentPot = getFx().displayedPot ?? displayed()?.game.pot ?? 0;
   const chips = { ...getFx().chipOverrides };
   chips[String(userId)] = (chips[String(userId)] ?? 0) + amount;
   patchFx({
@@ -269,11 +376,12 @@ function requestHeroHoleCards(id: string) {
       if (!cards.length) {
         return;
       }
-      const prev = snapshot();
+      const prev = logical();
       if (!prev || prev.table_id !== id || !needsPrivateHeroCards(prev)) {
         return;
       }
-      setSnapshot({ ...prev, my_cards: cards });
+      setLogical({ ...prev, my_cards: cards });
+      requestFxPump();
     })
     .finally(() => {
       holeCardsInflight = null;
@@ -288,19 +396,19 @@ function resolveEventHeroCards(
   if (fromHint.length) {
     return fromHint;
   }
-  const prevSnap = snapshot();
+  const prevSnap = logical();
   const myId = String(prevSnap?.user?.user_id || prevSnap?.my_player?.user_id || "");
   const fromEvent = heroCardsFromPayload(state, myId);
   return fromEvent.length ? fromEvent : hinted;
 }
 
-function applySnapshotFromEvent(
+function applyLogicalFromEvent(
   event: Record<string, unknown>,
-  options: { myCards?: string[]; dealFrom?: number } = {},
-) {
-  const prev = snapshot();
+  options: { myCards?: string[] } = {},
+): TableSnapshot | null {
+  const prev = logical();
   if (!prev) {
-    return;
+    return null;
   }
   const nested =
     event.game && typeof event.game === "object"
@@ -314,90 +422,31 @@ function applySnapshotFromEvent(
     game.showdown_details = (event.showdown_details ||
       event.showdownDetails) as TableSnapshot["game"]["showdown_details"];
   }
-  const prevBoardLen = (prev.community_cards || prev.game.community_cards || []).length;
   const next = buildSnapshotFromGame(game, prev, options.myCards ?? prev.my_cards);
-  const nextBoardLen = (next.community_cards || []).length;
-  const dealFrom =
-    options.dealFrom ?? (nextBoardLen > prevBoardLen ? prevBoardLen : getFx().dealFrom);
-  if (nextBoardLen > prevBoardLen) {
-    for (let i = 0; i < nextBoardLen - prevBoardLen; i += 1) {
-      playSound("card");
-    }
-  }
-  setSnapshot(next);
-  patchFx({ dealFrom });
+  setLogical(next);
   if (needsPrivateHeroCards(next)) {
     requestHeroHoleCards(next.table_id);
   }
+  return next;
 }
 
-function applyStreetEndSnapshot(event: Record<string, unknown>) {
-  const prev = snapshot();
+function applyLogicalStreetEnd(event: Record<string, unknown>) {
+  const prev = logical();
   if (!prev) {
     return;
   }
-  const prevBoardLen = (prev.community_cards || []).length;
-  const withZeroBets: TableSnapshot = {
+  const withZero: TableSnapshot = {
     ...prev,
     game: {
       ...prev.game,
       players: (prev.game.players || []).map((p) => ({ ...p, round_contribution: 0 })),
     },
   };
-  const next = applyStreetEndEvent(withZeroBets, event);
-  const nextBoardLen = (next.community_cards || []).length;
-  setSnapshot(next);
-  if (nextBoardLen > prevBoardLen) {
-    patchFx({ dealFrom: prevBoardLen });
-    for (let i = 0; i < nextBoardLen - prevBoardLen; i += 1) {
-      playSound("card");
-    }
-  }
+  const next = applyStreetEndEvent(withZero, event);
+  setLogical(next);
   if (needsPrivateHeroCards(next)) {
     requestHeroHoleCards(next.table_id);
   }
-}
-
-function enqueueTableUpdate(state: Record<string, unknown>) {
-  const incomingHasShowdown = Boolean(
-    getShowdownDetails(state as { showdown_details?: ShowdownDetails })?.payouts?.length,
-  );
-  const pendingHasShowdown = Boolean(
-    pendingTableUpdate &&
-      getShowdownDetails(pendingTableUpdate as { showdown_details?: ShowdownDetails })?.payouts
-        ?.length,
-  );
-  if (pendingTableUpdate && pendingHasShowdown && !incomingHasShowdown) {
-    return;
-  }
-  pendingTableUpdate = state;
-}
-
-function flushPendingTableUpdate() {
-  if (!pendingTableUpdate) {
-    return;
-  }
-  const state = pendingTableUpdate;
-  pendingTableUpdate = null;
-  void applyFullTableState(state, { skipCollectAnimation: true, afterCollect: true });
-}
-
-async function handleStreetEnd(event: Record<string, unknown>) {
-  const contributions = Array.isArray(event.contributions)
-    ? (event.contributions as Array<{ user_id: string; amount: number }>)
-    : [];
-  const hasContributions = contributions.some((c) => c.amount > 0);
-  if (hasContributions) {
-    await collectBetsToPot(contributions, event.pot != null ? Number(event.pot) : undefined);
-  } else if (event.pot != null) {
-    patchFx({ displayedPot: Number(event.pot) });
-  }
-  const hadPending = Boolean(pendingTableUpdate);
-  flushPendingTableUpdate();
-  if (!hadPending) {
-    applyStreetEndSnapshot(event);
-  }
-  flushPendingTableUpdate();
 }
 
 function prepareShowdownChipOverrides(
@@ -413,54 +462,6 @@ function prepareShowdownChipOverrides(
     }
   });
   return overrides;
-}
-
-async function playShowdownSequence(details: ShowdownDetails) {
-  const raw = details.payouts || [];
-  if (!raw.length || showdownSequenceLock || getFx().showdownRunning) {
-    return;
-  }
-  showdownSequenceLock = true;
-  showdownAbort = false;
-  patchFx({ showdownRunning: true });
-  const unique = new Set(raw.map((p) => String(p.user_id)));
-  const payouts = aggregatePayouts(raw);
-  for (const payout of payouts) {
-    if (showdownAbort) {
-      break;
-    }
-    const { rankCards, kickerCards } = resolveShowdownHighlightCards(payout, details);
-    patchFx({
-      dimCards: true,
-      rankTokens: rankCards,
-      kickerTokens: kickerCards,
-      badges: [buildShowdownBadge(payout, true)],
-    });
-    await sleep(unique.size === 1 ? 4000 : 2500);
-    if (showdownAbort) {
-      break;
-    }
-    await payPotToWinner(String(payout.user_id), payout.amount);
-    await sleep(unique.size === 1 ? 1500 : 1000);
-  }
-  if (!showdownAbort) {
-    await sleep(800);
-    clearShowdownFx();
-    showdownHighlightDone = true;
-    showdownSequenceLock = false;
-    patchFx({ displayedPot: 0, chipOverrides: {}, showdownRunning: false });
-    if (pendingPostShowdown) {
-      const pending = pendingPostShowdown;
-      pendingPostShowdown = null;
-      void applyFullTableState(pending, {
-        skipShowdownAnimation: true,
-        skipShowdownHighlight: true,
-      });
-    }
-  } else {
-    showdownSequenceLock = false;
-    patchFx({ showdownRunning: false });
-  }
 }
 
 function applyStaticShowdown(details: ShowdownDetails) {
@@ -480,158 +481,248 @@ function applyStaticShowdown(details: ShowdownDetails) {
   });
 }
 
-function applyShowdownPhase(
-  state: Record<string, unknown>,
-  options: { skipShowdownAnimation?: boolean; skipShowdownHighlight?: boolean },
-) {
-  const gameState = String(state.state || snapshot()?.game.state || "");
-  if (!isShowdownPhase(gameState)) {
+async function playShowdownSequence(details: ShowdownDetails, gen: number) {
+  const raw = details.payouts || [];
+  if (!raw.length) {
     return;
   }
-  if (options.skipShowdownHighlight || showdownHighlightDone || showdownSequenceLock) {
-    return;
-  }
-  const details = getShowdownDetails(state as { showdown_details?: ShowdownDetails });
-  if (!details?.payouts?.length) {
-    return;
-  }
-  if (options.skipShowdownAnimation || state.skip_animations === true) {
-    applyStaticShowdown(details);
-    return;
-  }
-  void playShowdownSequence(details);
-}
-
-async function applyFullTableState(
-  state: Record<string, unknown>,
-  options: {
-    myCards?: string[];
-    skipShowdownAnimation?: boolean;
-    skipShowdownHighlight?: boolean;
-    skipCollectAnimation?: boolean;
-    afterCollect?: boolean;
-  } = {},
-) {
-  const skipCollect = Boolean(options.skipCollectAnimation || state.skip_animations === true);
-  const prev = snapshot();
-  if (getFx().showdownRunning && !options.skipShowdownHighlight) {
-    pendingPostShowdown = state;
-    return;
-  }
-  if (skipCollect && getFx().streetBusy) {
-    collectGen += 1;
-    pendingTableUpdate = null;
-    patchFx({ streetBusy: false, flying: [], hideBets: false });
-  }
-  if (getFx().streetBusy && !options.afterCollect) {
-    enqueueTableUpdate(state);
-    return;
-  }
-  const nextState = String(state.state || "");
-  const playersHaveBets =
-    Array.isArray(state.players) &&
-    (state.players as Array<{ round_contribution?: number }>).some(
-      (p) => Number(p.round_contribution) > 0,
-    );
-  if (
-    !options.afterCollect &&
-    !skipCollect &&
-    prev &&
-    isStreetAdvanced(prev.game.state, nextState) &&
-    contributionsFromSnapshot(prev).length > 0 &&
-    !playersHaveBets
-  ) {
-    patchFx({ streetBusy: true });
-    try {
-      await collectBetsToPot(
-        contributionsFromSnapshot(prev),
-        state.pot != null ? Number(state.pot) : undefined,
-      );
-      applySnapshotFromEvent(state, { myCards: resolveEventHeroCards(state, options.myCards) });
-      applyShowdownPhase(state, options);
-    } finally {
-      patchFx({ streetBusy: false });
-    }
-    return;
-  }
-
-  if (nextState === "WAITING_FOR_PLAYERS") {
-    showdownHighlightDone = false;
-    showdownSequenceLock = false;
-    clearShowdownFx();
-    patchFx({ displayedPot: null, chipOverrides: {}, dealFrom: 99 });
-  }
-
-  const details = getShowdownDetails(state as { showdown_details?: ShowdownDetails });
-  const willAnimate =
-    isShowdownPhase(nextState) &&
-    Boolean(details?.payouts?.length) &&
-    !options.skipShowdownAnimation &&
-    state.skip_animations !== true;
-
-  if (willAnimate && details) {
-    const players = (state.players as TableSnapshot["game"]["players"]) || prev?.game.players;
+  patchFx({ showdownRunning: true });
+  const unique = new Set(raw.map((p) => String(p.user_id)));
+  const payouts = aggregatePayouts(raw);
+  const view = displayed() || logical();
+  if (view) {
     patchFx({
-      chipOverrides: prepareShowdownChipOverrides(details, players),
+      chipOverrides: prepareShowdownChipOverrides(details, view.game.players),
       displayedPot: Math.max(
-        Number(state.pot ?? prev?.game.pot ?? 0),
+        Number(getFx().displayedPot ?? view.game.pot ?? 0),
         getTotalPayoutAmount(details.payouts as ShowdownPayout[]),
       ),
     });
-  } else if (state.pot != null) {
-    patchFx({ displayedPot: Number(state.pot) });
   }
+  for (const payout of payouts) {
+    if (gen !== fxGen) {
+      break;
+    }
+    const { rankCards, kickerCards } = resolveShowdownHighlightCards(payout, details);
+    patchFx({
+      dimCards: true,
+      rankTokens: rankCards,
+      kickerTokens: kickerCards,
+      badges: [buildShowdownBadge(payout, true)],
+    });
+    await sleep(unique.size === 1 ? 4000 : 2500);
+    if (gen !== fxGen) {
+      break;
+    }
+    await payPotToWinner(String(payout.user_id), payout.amount, gen);
+    await sleep(unique.size === 1 ? 1500 : 1000);
+  }
+  if (gen === fxGen) {
+    await sleep(800);
+    clearShowdownFx();
+    showdownHighlightDone = true;
+    patchFx({ displayedPot: 0, chipOverrides: {}, showdownRunning: false });
+  } else {
+    patchFx({ showdownRunning: false });
+  }
+}
 
-  applySnapshotFromEvent(state, {
-    myCards: resolveEventHeroCards(state, options.myCards),
-    dealFrom: skipCollect ? 99 : undefined,
-  });
-  applyShowdownPhase(state, options);
+function hiddenDocument() {
+  return typeof document !== "undefined" && document.hidden;
+}
+
+async function playDealBoard(fromLen: number, board: string[], gen: number) {
+  const view = displayed();
+  if (!view) {
+    return;
+  }
+  setDisplayed(mergeBoard(view, board));
+  patchFx({ dealFrom: fromLen });
+  const added = board.length - fromLen;
+  for (let i = 0; i < added; i += 1) {
+    playSound("card");
+  }
+  const waitMs = fromLen === 0 && board.length >= 3 ? CARD_DEAL_MS + FLOP_EXTRA_MS : CARD_DEAL_MS + 50;
+  await sleep(waitMs);
+  if (gen !== fxGen) {
+    return;
+  }
+  patchFx({ dealFrom: 99 });
+}
+
+async function playDealHoles(gen: number) {
+  const view = displayed();
+  const next = logical();
+  if (!view || !next) {
+    return;
+  }
+  setDisplayed(mergeHoles(view, next));
+  patchFx({ holeDealFrom: 0 });
+  playSound("card");
+  await sleep(HOLE_DEAL_MS);
+  if (gen !== fxGen) {
+    return;
+  }
+  patchFx({ holeDealFrom: 99 });
+}
+
+function commitDisplayed(next: TableSnapshot) {
+  if (next.game.state === "WAITING_FOR_PLAYERS") {
+    showdownHighlightDone = false;
+    clearShowdownFx();
+    patchFx({ displayedPot: null, chipOverrides: {}, dealFrom: 99, holeDealFrom: 99 });
+  } else if (!isShowdownPhase(next.game.state) && getFx().displayedPot == null) {
+    patchFx({ displayedPot: next.game.pot ?? 0 });
+  } else if (!isShowdownPhase(next.game.state) && !getFx().showdownRunning) {
+    patchFx({ displayedPot: next.game.pot ?? getFx().displayedPot });
+  }
+  setDisplayed(next);
+  if (needsPrivateHeroCards(next)) {
+    requestHeroHoleCards(next.table_id);
+  }
+}
+
+async function pumpFx() {
+  if (pumping) {
+    return;
+  }
+  pumping = true;
+  const gen = fxGen;
+  patchFx({ streetBusy: true });
+  try {
+    while (gen === fxGen) {
+      const from = displayed();
+      const to = logical();
+      if (!from || !to) {
+        break;
+      }
+      const skip = skipVisualOnce || to.game.skip_animations === true || hiddenDocument();
+      if (skip) {
+        skipVisualOnce = false;
+        jumpDisplayed(to, {
+          staticShowdown: Boolean(to.game.showdown_details?.payouts?.length),
+        });
+        if (isShowdownPhase(to.game.state) && to.game.showdown_details?.payouts?.length) {
+          showdownHighlightDone = true;
+        }
+        break;
+      }
+
+      const contrib = contributionsFromSnapshot(from);
+      const toHasBets = contributionsFromSnapshot(to).length > 0;
+      if (
+        contrib.length &&
+        !toHasBets &&
+        (isStreetAdvanced(from.game.state, to.game.state) ||
+          (from.game.state === to.game.state && Number(from.game.pot) !== Number(to.game.pot)))
+      ) {
+        await collectBetsToPot(contrib, to.game.pot, gen);
+        continue;
+      }
+
+      const fromBoard = boardOf(from);
+      const toBoard = boardOf(to);
+      if (toBoard.length > fromBoard.length) {
+        await playDealBoard(fromBoard.length, toBoard, gen);
+        continue;
+      }
+
+      const fromHoles = realHoleCards(from.my_cards).length;
+      const toHoles = realHoleCards(to.my_cards).length;
+      const fromHadBacks = (from.my_cards || []).length === 0 && from.game.state === "WAITING_FOR_PLAYERS";
+      const toHasBacks =
+        (to.my_player && (to.my_cards || []).length > 0) ||
+        (to.game.players || []).some((p) => (p.cards || []).length > 0);
+      if (
+        (fromHoles === 0 && toHoles > 0) ||
+        (fromHadBacks && toHasBacks && from.game.state === "WAITING_FOR_PLAYERS" && to.game.state === "PRE_FLOP")
+      ) {
+        await playDealHoles(gen);
+        continue;
+      }
+
+      if (
+        isShowdownPhase(to.game.state) &&
+        to.game.showdown_details?.payouts?.length &&
+        !showdownHighlightDone &&
+        !getFx().showdownRunning
+      ) {
+        commitDisplayed({
+          ...to,
+          community_cards: boardOf(to).length ? boardOf(to) : from.community_cards,
+        });
+        await playShowdownSequence(to.game.showdown_details, gen);
+        continue;
+      }
+
+      if (!snapshotsVisuallyEqual(from, to)) {
+        commitDisplayed(to);
+      }
+      break;
+    }
+  } finally {
+    if (gen === fxGen) {
+      pumping = false;
+      patchFx({ streetBusy: false });
+      const from = displayed();
+      const to = logical();
+      if (from && to && !snapshotsVisuallyEqual(from, to)) {
+        void pumpFx();
+      }
+    } else {
+      pumping = false;
+    }
+  }
+}
+
+export function requestFxPump() {
+  void pumpFx();
 }
 
 export async function applyHttpTableSnapshot(data: TableSnapshot, reason: string) {
   console.log(`🔄 HTTP resync стола (${reason})`);
-  const prev = snapshot();
-  const canPaintShowdown =
-    isShowdownPhase(data.game.state) &&
-    Boolean(data.game.showdown_details?.payouts?.length) &&
-    !showdownSequenceLock &&
-    !showdownHighlightDone &&
-    !getFx().showdownRunning;
+  const prevLogical = logical();
 
-  if (!prev) {
-    setSnapshot(data);
-    patchFx({ dealFrom: 99, displayedPot: data.game.pot ?? null });
-    if (canPaintShowdown && data.game.showdown_details) {
+  if (!prevLogical) {
+    useTableStore.getState().setSnapshot(data);
+    patchFx({ dealFrom: 99, holeDealFrom: 99, displayedPot: data.game.pot ?? null });
+    if (isShowdownPhase(data.game.state) && data.game.showdown_details) {
       applyStaticShowdown(data.game.showdown_details);
+      showdownHighlightDone = true;
     }
     if (needsPrivateHeroCards(data)) {
       requestHeroHoleCards(data.table_id);
     }
     return;
   }
-  if (prev.my_player && !data.my_player) {
+  if (prevLogical.my_player && !data.my_player) {
     const cards = realHoleCards(data.my_cards);
     if (cards.length) {
-      setSnapshot({ ...prev, my_cards: cards });
+      setLogical({ ...prevLogical, my_cards: cards });
+      requestFxPump();
     }
     return;
   }
   const next = {
-    ...buildSnapshotFromGame(data.game, { ...prev, ...data }, data.my_cards),
-    panel_emotes: data.panel_emotes || prev.panel_emotes,
-    emotes_dict: data.emotes_dict || prev.emotes_dict,
-    emotes_lottie_dict: data.emotes_lottie_dict || prev.emotes_lottie_dict,
-    is_dev_table: data.is_dev_table ?? prev.is_dev_table,
+    ...buildSnapshotFromGame(data.game, { ...prevLogical, ...data }, data.my_cards),
+    panel_emotes: data.panel_emotes || prevLogical.panel_emotes,
+    emotes_dict: data.emotes_dict || prevLogical.emotes_dict,
+    emotes_lottie_dict: data.emotes_lottie_dict || prevLogical.emotes_lottie_dict,
+    is_dev_table: data.is_dev_table ?? prevLogical.is_dev_table,
   };
-  setSnapshot(next);
-  patchFx({ dealFrom: 99, displayedPot: data.game.pot ?? getFx().displayedPot });
-  if (canPaintShowdown && data.game.showdown_details) {
-    applyStaticShowdown(data.game.showdown_details);
-  }
+  setLogical(next);
   if (needsPrivateHeroCards(next)) {
     requestHeroHoleCards(next.table_id);
   }
+
+  const reconnectLike = reason === "snapshot-fallback" || reason.startsWith("reconnect");
+  if (isTableFxBusy() && !reconnectLike) {
+    return;
+  }
+  if (reconnectLike || reason === "visibility") {
+    skipVisualOnce = true;
+  }
+  requestFxPump();
 }
 
 export function showPlayerEmote(userId: string, emoteId: string) {
@@ -659,54 +750,70 @@ export function sendTableEmote(emoteId: string, userId: string) {
     });
     return;
   }
-  const snap = snapshot();
+  const snap = logical();
   if (snap?.is_dev_table) {
     showPlayerEmote(userId, emoteId);
   }
 }
 
 export async function dispatchTableEvent(data: Record<string, unknown>) {
-  const type = String(data.event_type ?? data.eventType ?? "");
-  console.log("⚡ ИВЕНТ:", type, data);
+  const event = unwrapTableEvent(data);
+  const type = String(event.event_type ?? "");
+  console.log("⚡ ИВЕНТ:", type, event);
 
   switch (type) {
     case "TABLE_UPDATE":
-      if (getFx().streetBusy) {
-        enqueueTableUpdate(data);
-        break;
+      applyLogicalFromEvent(event, { myCards: resolveEventHeroCards(event) });
+      if (event.skip_animations === true) {
+        skipVisualOnce = true;
       }
-      await applyFullTableState(data);
+      requestFxPump();
       break;
-    case "STREET_END":
-      patchFx({ streetBusy: true });
-      try {
-        await handleStreetEnd(data);
-      } finally {
-        patchFx({ streetBusy: false });
-        flushPendingTableUpdate();
+    case "STREET_END": {
+      const view = displayed();
+      const fromEvent = normalizeContributions(event.contributions);
+      const contrib = fromEvent.length ? fromEvent : contributionsFromSnapshot(view);
+      applyLogicalStreetEnd(event);
+      if (contrib.length && view) {
+        const players = (view.game.players || []).map((p) => {
+          const hit = contrib.find((c) => c.user_id === String(p.user_id));
+          return hit ? { ...p, round_contribution: hit.amount } : p;
+        });
+        setDisplayed({
+          ...view,
+          game: { ...view.game, players },
+        });
       }
+      requestFxPump();
       break;
+    }
     case "PLAYER_ACTION": {
-      const prev = snapshot();
+      const prev = logical();
       if (prev) {
-        setSnapshot(applyPlayerActionEvent(prev, data));
-        const status = (data.player_state as { status?: string } | undefined)?.status;
-        playSound(status === "FOLDED" ? "fold" : "bet");
+        const next = applyPlayerActionEvent(prev, event);
+        setLogical(next);
+        if (!isTableFxBusy()) {
+          setDisplayed(next);
+          const status = (event.player_state as { status?: string } | undefined)?.status;
+          playSound(status === "FOLDED" ? "fold" : "bet");
+        } else {
+          requestFxPump();
+        }
       }
       break;
     }
     case "EMOTE":
-      showPlayerEmote(String(data.user_id ?? ""), String(data.emote_id ?? ""));
+      showPlayerEmote(String(event.user_id ?? ""), String(event.emote_id ?? ""));
       break;
     case "ERROR":
     case "EMOTE_REJECTED": {
-      const errorType = String(data.errorType || data.error_type || "");
-      const message = String(data.message || data.error_message || "Действие отклонено");
+      const errorType = String(event.errorType || event.error_type || "");
+      const message = String(event.message || event.error_message || "Действие отклонено");
       const isEmoteError =
         type === "EMOTE_REJECTED" ||
         /emote/i.test(errorType) ||
         /emote/i.test(message) ||
-        Boolean(data.emote_id);
+        Boolean(event.emote_id);
       if (isEmoteError) {
         toastFn?.("error", errorType || "EmoteRejected", message);
       }
@@ -721,23 +828,25 @@ export async function applyStompSnapshotPayload(
   data: Record<string, unknown>,
   isReconnect: boolean,
 ) {
-  await applyFullTableState(data, {
-    skipShowdownAnimation: isReconnect,
-    skipCollectAnimation: isReconnect,
-  });
+  const event = unwrapTableEvent(data);
   if (isReconnect) {
-    patchFx({ dealFrom: 99 });
+    skipVisualOnce = true;
   }
+  applyLogicalFromEvent(event, { myCards: resolveEventHeroCards(event) });
+  requestFxPump();
 }
 
 export function seedInitialTableFx(data: TableSnapshot) {
   resetTablePipeline();
+  useTableStore.getState().setSnapshot(data);
   patchFx({
     displayedPot: data.game.pot ?? 0,
     dealFrom: 99,
+    holeDealFrom: 99,
   });
   if (isShowdownPhase(data.game.state) && data.game.showdown_details?.payouts?.length) {
     applyStaticShowdown(data.game.showdown_details);
+    showdownHighlightDone = true;
   }
   if (needsPrivateHeroCards(data)) {
     requestHeroHoleCards(data.table_id);
@@ -746,10 +855,7 @@ export function seedInitialTableFx(data: TableSnapshot) {
 
 export function resetShowdownPipelineFlags() {
   showdownHighlightDone = false;
-  showdownSequenceLock = false;
-  showdownAbort = true;
-  pendingTableUpdate = null;
-  pendingPostShowdown = null;
-  collectGen += 1;
+  fxGen += 1;
+  pumping = false;
   patchFx({ streetBusy: false, showdownRunning: false, flying: [], hideBets: false });
 }

@@ -1,6 +1,7 @@
 import type { TablePlayer, TableSnapshot } from "../api/table";
 import {
   dispatchTableEvent,
+  isTableFxBusy,
   resetShowdownPipelineFlags,
 } from "./tablePipeline";
 import { useTableStore } from "./tableStore";
@@ -57,7 +58,7 @@ export function DevTableControls({
 }: {
   showToast: (type: "error" | "success" | "warning", errorType: string, message: string) => void;
 }) {
-  const snapshot = useTableStore((s) => s.snapshot);
+  const snapshot = useTableStore((s) => s.logical);
   const setSnapshot = useTableStore((s) => s.setSnapshot);
 
   if (!snapshot?.is_dev_table) {
@@ -109,23 +110,30 @@ export function DevTableControls({
         players,
       });
       window.setTimeout(() => {
-        const latest = useTableStore.getState().snapshot;
-        if (!latest) {
-          return;
-        }
-        setSnapshot({
-          ...latest,
-          game: { ...latest.game, players: addRoundBets(latest) },
-          my_player: latest.my_player
-            ? { ...latest.my_player, round_contribution: 100 }
-            : latest.my_player,
-        });
+        const applyBets = () => {
+          if (isTableFxBusy()) {
+            window.setTimeout(applyBets, 200);
+            return;
+          }
+          const latest = useTableStore.getState().logical;
+          if (!latest) {
+            return;
+          }
+          setSnapshot({
+            ...latest,
+            game: { ...latest.game, players: addRoundBets(latest) },
+            my_player: latest.my_player
+              ? { ...latest.my_player, round_contribution: 100 }
+              : latest.my_player,
+          });
+        };
+        applyBets();
       }, 800);
     }, 50);
   }
 
   function resetBets() {
-    const latest = useTableStore.getState().snapshot;
+    const latest = useTableStore.getState().logical;
     if (!latest) {
       return;
     }
@@ -145,7 +153,7 @@ export function DevTableControls({
   }
 
   function buildShowdownUpdate(payouts?: Record<string, unknown>[]) {
-    const latest = useTableStore.getState().snapshot;
+    const latest = useTableStore.getState().logical;
     if (!latest) {
       return null;
     }
@@ -205,7 +213,7 @@ export function DevTableControls({
   }
 
   function runShowdown(builder: () => Record<string, unknown> | null) {
-    const latest = useTableStore.getState().snapshot;
+    const latest = useTableStore.getState().logical;
     if (!latest) {
       return;
     }
@@ -253,7 +261,7 @@ export function DevTableControls({
         type="button"
         className="btn-dev-action btn-dev-secondary"
         onClick={() => {
-          const latest = useTableStore.getState().snapshot;
+          const latest = useTableStore.getState().logical;
           const heroId = String(latest?.user?.user_id || latest?.my_player?.user_id || "");
           const oppId = String(
             (latest?.game.players || []).find((p) => String(p.user_id) !== heroId)?.user_id ||

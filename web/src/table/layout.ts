@@ -331,6 +331,49 @@ export function applyPlayerActionEvent(
   );
 }
 
+export function normalizeContributions(raw: unknown): Array<{ user_id: string; amount: number }> {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw
+    .map((row) => {
+      if (!row || typeof row !== "object") {
+        return null;
+      }
+      const rec = row as Record<string, unknown>;
+      const user_id = String(rec.user_id ?? rec.userId ?? "");
+      const amount = Number(rec.amount ?? rec.value ?? 0);
+      if (!user_id || !Number.isFinite(amount) || amount <= 0) {
+        return null;
+      }
+      return { user_id, amount };
+    })
+    .filter((row): row is { user_id: string; amount: number } => Boolean(row));
+}
+
+export function unwrapTableEvent(data: Record<string, unknown>): Record<string, unknown> {
+  const nested =
+    data.game && typeof data.game === "object"
+      ? { ...data, ...(data.game as Record<string, unknown>) }
+      : { ...data };
+  nested.event_type = String(data.event_type ?? data.eventType ?? nested.event_type ?? "");
+  nested.user_id = data.user_id ?? data.userId ?? nested.user_id ?? nested.userId;
+  nested.emote_id = data.emote_id ?? data.emoteId ?? nested.emote_id ?? nested.emoteId;
+  nested.player_state = data.player_state ?? data.playerState ?? nested.player_state;
+  nested.skip_animations =
+    data.skip_animations === true ||
+    data.skipAnimations === true ||
+    nested.skip_animations === true ||
+    nested.skipAnimations === true;
+  nested.community_cards = nested.community_cards ?? nested.communityCards;
+  nested.showdown_details = nested.showdown_details ?? nested.showdownDetails;
+  nested.previous_state = nested.previous_state ?? nested.previousState;
+  nested.contributions = normalizeContributions(
+    nested.contributions ?? nested.streetContributions ?? nested.street_contributions,
+  );
+  return nested;
+}
+
 export function applyStreetEndEvent(
   prev: TableSnapshot,
   event: Record<string, unknown>,

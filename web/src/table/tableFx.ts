@@ -31,6 +31,7 @@ export type TableFx = {
   badges: ShowdownBadge[];
   emotes: SeatEmote[];
   dealFrom: number;
+  holeDealFrom: number;
   streetBusy: boolean;
   showdownRunning: boolean;
 };
@@ -48,6 +49,7 @@ const emptyFx = (): TableFx => ({
   badges: [],
   emotes: [],
   dealFrom: 99,
+  holeDealFrom: 99,
   streetBusy: false,
   showdownRunning: false,
 });

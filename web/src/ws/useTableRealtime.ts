@@ -78,7 +78,7 @@ export function useTableRealtime({
         })
         .catch((err: unknown) => {
           const message = err instanceof Error ? err.message : "";
-          if (message === "not_at_table" && !useTableStore.getState().snapshot?.my_player) {
+          if (message === "not_at_table" && !useTableStore.getState().logical?.my_player) {
             onNotAtTableRef.current();
             return;
           }
@@ -151,7 +151,7 @@ export function useTableRealtime({
         if (!client?.connected) {
           return;
         }
-        const state = useTableStore.getState().snapshot?.game.state;
+        const state = useTableStore.getState().logical?.game.state;
         if (!state || !ACTIVE_HAND_STATES.includes(state)) {
           return;
         }
