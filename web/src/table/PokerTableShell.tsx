@@ -115,6 +115,7 @@ export function PokerTableShell({ snapshot }: { snapshot: TableSnapshot }) {
           >
             {!isActive ? null : player ? (
               <OccupiedSeatBody
+                key={player.user_id}
                 player={player}
                 cards={player.cards || []}
                 handClass="opponent-hand"

@@ -63,6 +63,7 @@ export function useTableRealtime({
     let reconnectScheduled = false;
     let firstConnect = true;
     let lastPong = 0;
+    let subscribed = false;
 
     function setPing(ms: number) {
       useTableStore.getState().setPingMs(ms);
@@ -87,14 +88,6 @@ export function useTableRealtime({
     }
 
     function handleTableEvent(data: Record<string, unknown>) {
-      const type = String(data.event_type ?? data.eventType ?? "");
-      if (type === "PLAYER_STATUS") {
-        console.log("🔄 PLAYER_STATUS — HTTP resync рассадки");
-        void applyHttpSnapshot("PLAYER_STATUS").catch((err) => {
-          console.error("Ошибка обновления рассадки:", err);
-        });
-        return;
-      }
       void dispatchTableEvent(data);
     }
 
@@ -117,6 +110,7 @@ export function useTableRealtime({
       stopTimers();
       setPing(9999);
       setTableStompClient(null, "");
+      subscribed = false;
       if (!client) {
         return;
       }
@@ -162,6 +156,10 @@ export function useTableRealtime({
     }
 
     function subscribe(active: Client, isReconnect: boolean) {
+      if (subscribed) {
+        return;
+      }
+      subscribed = true;
       lastPong = Date.now();
       setTableStompClient(active, tableId);
       active.subscribe("/user/queue/pong", (message: IMessage) => {

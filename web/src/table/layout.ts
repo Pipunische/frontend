@@ -165,7 +165,6 @@ function patchPlayerFromAction(
   player: TablePlayer,
   event: Record<string, unknown>,
   playerState: TablePlayer | null,
-  turn: number | undefined,
   dealerSeat: number | undefined,
 ): TablePlayer {
   const eventSeat = event.seat_index ?? event.seatIndex;
@@ -182,15 +181,12 @@ function patchPlayerFromAction(
       round_contribution: playerState.round_contribution ?? next.round_contribution,
       amount_to_call: playerState.amount_to_call ?? next.amount_to_call,
       seat_index:
-        playerState.seat_index != null && Number(playerState.seat_index) >= 0
-          ? playerState.seat_index
-          : next.seat_index,
+        next.seat_index != null && Number(next.seat_index) >= 0
+          ? next.seat_index
+          : playerState.seat_index,
       name: playerState.name || next.name,
       avatar_url: playerState.avatar_url || next.avatar_url,
     };
-  }
-  if (turn != null) {
-    next.is_active_turn = Number(next.seat_index) === Number(turn);
   }
   if (dealerSeat != null) {
     next.is_dealer = Number(next.seat_index) === Number(dealerSeat);
@@ -249,43 +245,75 @@ export function mergePlayersList(
   return Array.from(byId.values());
 }
 
-function recoverOpponentSeats(
-  prev: TableSnapshot,
-  opponent_seats_by_pos: Record<string, TablePlayer | null>,
-  players: TablePlayer[] | undefined,
-): Record<string, TablePlayer | null> {
-  const next = { ...opponent_seats_by_pos };
-  const roster = players || [];
-  const myId = String(prev.user?.user_id || prev.my_player?.user_id || "");
+function mergeSeatPlayer(prevSeat: TablePlayer | null, fresh: TablePlayer): TablePlayer {
+  if (!prevSeat) {
+    return fresh;
+  }
+  return {
+    ...prevSeat,
+    ...fresh,
+    seat_index:
+      prevSeat.seat_index != null && Number(prevSeat.seat_index) >= 0
+        ? prevSeat.seat_index
+        : fresh.seat_index,
+    avatar_url: fresh.avatar_url || prevSeat.avatar_url,
+    name: fresh.name || prevSeat.name,
+    cards: fresh.cards?.length ? fresh.cards : prevSeat.cards,
+  };
+}
 
-  for (const [pos, prevSeat] of Object.entries(prev.opponent_seats_by_pos || {})) {
-    if (!prevSeat) {
+function buildOpponentSeats(
+  prev: TableSnapshot,
+  othersRaw: TablePlayer[],
+  myPlayer: TablePlayer | null,
+  maxPlayers: number,
+  layout: number[],
+): Record<string, TablePlayer | null> {
+  const byId = new Map(othersRaw.map((p) => [String(p.user_id), p]));
+  const next: Record<string, TablePlayer | null> = {};
+  layout.forEach((pos) => {
+    next[String(pos)] = null;
+  });
+  const usedIds = new Set<string>();
+
+  for (const [pos, seat] of Object.entries(prev.opponent_seats_by_pos || {})) {
+    if (!seat || !layout.includes(Number(pos))) {
       continue;
     }
-    const id = String(prevSeat.user_id);
-    if (sameUser(id, myId)) {
+    const fresh = byId.get(String(seat.user_id));
+    if (!fresh) {
       continue;
     }
-    const stillSeated = roster.some((p) => sameUser(p.user_id, id));
-    if (!stillSeated) {
+    next[pos] = mergeSeatPlayer(seat, fresh);
+    usedIds.add(String(seat.user_id));
+  }
+
+  const heroSeat = myPlayer?.seat_index ?? 0;
+  for (const player of othersRaw) {
+    const id = String(player.user_id);
+    if (usedIds.has(id)) {
       continue;
     }
-    const alreadyMapped = Object.values(next).some((seat) => seat && sameUser(seat.user_id, id));
-    if (alreadyMapped) {
-      continue;
-    }
-    const fresh = roster.find((p) => sameUser(p.user_id, id));
-    if (fresh) {
-      next[pos] = {
-        ...prevSeat,
-        ...fresh,
-        seat_index:
-          fresh.seat_index != null && Number(fresh.seat_index) >= 0
-            ? fresh.seat_index
-            : prevSeat.seat_index,
-      };
+    const relative = (((player.seat_index ?? 0) - heroSeat - 1 + maxPlayers) % maxPlayers);
+    const pos = layout[relative];
+    if (pos != null && !next[String(pos)]) {
+      next[String(pos)] = player;
+      usedIds.add(id);
     }
   }
+
+  for (const player of othersRaw) {
+    const id = String(player.user_id);
+    if (usedIds.has(id)) {
+      continue;
+    }
+    const emptyPos = layout.find((pos) => !next[String(pos)]);
+    if (emptyPos != null) {
+      next[String(emptyPos)] = player;
+      usedIds.add(id);
+    }
+  }
+
   return next;
 }
 
@@ -339,36 +367,14 @@ export function buildSnapshotFromGame(
     }
   }
 
-  const maxOpponents = Math.max(maxPlayers - 1, 0);
-  const orderedOthers: Array<TablePlayer | null> = Array.from(
-    { length: maxOpponents },
-    () => null,
-  );
   const layout = getOpponentPosLayout(maxPlayers);
 
-  if (myPlayer) {
-    const heroSeat = myPlayer.seat_index ?? 0;
-    for (const player of othersRaw) {
-      const relative =
-        (((player.seat_index ?? 0) - heroSeat - 1 + maxPlayers) % maxPlayers);
-      if (relative >= 0 && relative < maxOpponents) {
-        orderedOthers[relative] = player;
-      }
-    }
-  } else {
-    for (const player of othersRaw) {
-      const seat = player.seat_index ?? 0;
-      const idx = layout.indexOf(seat);
-      if (idx >= 0) {
-        orderedOthers[idx] = player;
-      }
-    }
-  }
-
-  const opponent_seats_by_pos: Record<string, TablePlayer | null> = recoverOpponentSeats(
+  const opponent_seats_by_pos = buildOpponentSeats(
     prev,
-    Object.fromEntries(layout.map((pos, rel) => [String(pos), orderedOthers[rel] ?? null])),
-    game.players,
+    othersRaw,
+    myPlayer,
+    maxPlayers,
+    layout,
   );
 
   const activePhases = ["PRE_FLOP", "FLOP", "TURN", "RIVER", "SHOWDOWN"];
@@ -420,18 +426,6 @@ export function applyPlayerActionEvent(
       : event.pot != null
         ? Number(event.pot)
         : prev.game.pot;
-  const turn =
-    event.current_turn_seat != null
-      ? Number(event.current_turn_seat)
-      : event.currentTurnSeat != null
-        ? Number(event.currentTurnSeat)
-        : prev.game.current_turn_seat;
-  const timeToAct =
-    event.time_to_act_ms != null
-      ? Number(event.time_to_act_ms)
-      : event.timeToActMs != null
-        ? Number(event.timeToActMs)
-        : prev.game.time_to_act_ms;
 
   const rawState = event.player_state ?? event.playerState;
   const playerState =
@@ -441,18 +435,18 @@ export function applyPlayerActionEvent(
   const dealerSeat = prev.game.dealer_seat;
 
   const nextPlayers = (prev.game.players || []).map((player) =>
-    patchPlayerFromAction(player, event, playerState, turn, dealerSeat),
+    patchPlayerFromAction(player, event, playerState, dealerSeat),
   );
 
   const opponent_seats_by_pos: Record<string, TablePlayer | null> = {};
   for (const [pos, seat] of Object.entries(prev.opponent_seats_by_pos || {})) {
     opponent_seats_by_pos[pos] = seat
-      ? patchPlayerFromAction(seat, event, playerState, turn, dealerSeat)
+      ? patchPlayerFromAction(seat, event, playerState, dealerSeat)
       : null;
   }
 
   const my_player = prev.my_player
-    ? patchPlayerFromAction(prev.my_player, event, playerState, turn, dealerSeat)
+    ? patchPlayerFromAction(prev.my_player, event, playerState, dealerSeat)
     : null;
 
   return {
@@ -462,8 +456,6 @@ export function applyPlayerActionEvent(
     game: {
       ...prev.game,
       pot,
-      current_turn_seat: turn,
-      time_to_act_ms: timeToAct,
       players: nextPlayers,
     },
   };

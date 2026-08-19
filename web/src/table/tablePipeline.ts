@@ -34,6 +34,8 @@ const CHIP_PAYOUT_STAGGER_MS = 80;
 const CARD_DEAL_MS = 400;
 const FLOP_EXTRA_MS = 800;
 const HOLE_DEAL_MS = 850;
+const TABLE_UPDATE_DEBOUNCE_MS = 50;
+const RECENT_WS_MS = 4000;
 const STREET_ORDER = [
   "WAITING_FOR_PLAYERS",
   "PRE_FLOP",
@@ -56,6 +58,9 @@ let pumping = false;
 let skipVisualOnce = false;
 let showdownHighlightDone = false;
 let holeCardsInflight: Promise<void> | null = null;
+let lastWsAt = 0;
+let tableUpdateTimer: number | null = null;
+let streetCoalesceUntil = 0;
 
 export function setTableToastHandler(fn: ToastFn | null) {
   toastFn = fn;
@@ -75,6 +80,12 @@ export function resetTablePipeline() {
   pumping = false;
   skipVisualOnce = false;
   showdownHighlightDone = false;
+  lastWsAt = 0;
+  streetCoalesceUntil = 0;
+  if (tableUpdateTimer != null) {
+    window.clearTimeout(tableUpdateTimer);
+    tableUpdateTimer = null;
+  }
   clearHeroHoleCache();
   layoutRegistry.clear();
   patchFx({
@@ -124,6 +135,29 @@ function setLogical(next: TableSnapshot) {
 
 function setDisplayed(next: TableSnapshot) {
   useTableStore.getState().setDisplayed(next);
+}
+
+function markWsEvent() {
+  lastWsAt = Date.now();
+}
+
+function eventTurnSeat(event: Record<string, unknown>): number | undefined {
+  if (event.current_turn_seat != null) {
+    return Number(event.current_turn_seat);
+  }
+  if (event.currentTurnSeat != null) {
+    return Number(event.currentTurnSeat);
+  }
+  return undefined;
+}
+
+function isTurnPlaceholderUpdate(from: TableSnapshot, to: TableSnapshot) {
+  return (
+    Number(to.game.current_turn_seat) === -1 &&
+    Number(from.game.current_turn_seat ?? -1) >= 0 &&
+    from.game.state === to.game.state &&
+    boardOf(from).join() === boardOf(to).join()
+  );
 }
 
 function isStreetAdvanced(previousState: string | undefined, nextState: string | undefined) {
@@ -619,6 +653,10 @@ async function playDealHoles(gen: number) {
 }
 
 function commitDisplayed(next: TableSnapshot) {
+  const view = displayed();
+  if (view && isTurnPlaceholderUpdate(view, next)) {
+    return;
+  }
   if (next.game.state === "WAITING_FOR_PLAYERS") {
     showdownHighlightDone = false;
     clearShowdownFx();
@@ -699,12 +737,20 @@ async function pumpFx() {
         !showdownHighlightDone &&
         !getFx().showdownRunning
       ) {
+        const payoutTotal = getTotalPayoutAmount(to.game.showdown_details.payouts as ShowdownPayout[]);
+        patchFx({
+          displayedPot: Math.max(Number(getFx().displayedPot ?? 0), payoutTotal),
+        });
         commitDisplayed({
           ...to,
           community_cards: boardOf(to).length ? boardOf(to) : from.community_cards,
         });
         await playShowdownSequence(to.game.showdown_details, gen);
         continue;
+      }
+
+      if (isTurnPlaceholderUpdate(from, to)) {
+        break;
       }
 
       if (!snapshotsVisuallyEqual(from, to)) {
@@ -751,7 +797,6 @@ export async function applyHttpTableSnapshot(data: TableSnapshot, reason: string
     const cards = realHoleCards(data.my_cards);
     if (cards.length) {
       setLogical({ ...prevLogical, my_cards: cards });
-      requestFxPump();
     }
     return;
   }
@@ -768,15 +813,14 @@ export async function applyHttpTableSnapshot(data: TableSnapshot, reason: string
   }
 
   const reconnectLike = reason === "snapshot-fallback" || reason.startsWith("reconnect");
+  const recentWs = lastWsAt > 0 && Date.now() - lastWsAt < RECENT_WS_MS;
+  if (!reconnectLike && recentWs) {
+    return;
+  }
   if (isTableFxBusy() && !reconnectLike) {
     return;
   }
-  if (reconnectLike || reason === "visibility") {
-    skipVisualOnce = true;
-  } else if (reason === "poll") {
-    // Keep seated opponents stable during active hands; logical merge handles drift.
-    skipVisualOnce = false;
-  }
+  skipVisualOnce = true;
   requestFxPump();
 }
 
@@ -815,20 +859,44 @@ export async function dispatchTableEvent(data: Record<string, unknown>) {
   const event = unwrapTableEvent(data);
   const type = String(event.event_type ?? "");
   console.log("⚡ ИВЕНТ:", type, event);
+  markWsEvent();
 
   switch (type) {
-    case "TABLE_UPDATE":
+    case "TABLE_UPDATE": {
       applyLogicalFromEvent(event, { myCards: resolveEventHeroCards(event) });
       if (event.skip_animations === true) {
         skipVisualOnce = true;
+        if (tableUpdateTimer != null) {
+          window.clearTimeout(tableUpdateTimer);
+          tableUpdateTimer = null;
+        }
+        requestFxPump();
+        break;
+      }
+      const turn = eventTurnSeat(event);
+      if (turn === -1 && Date.now() >= streetCoalesceUntil) {
+        if (tableUpdateTimer != null) {
+          window.clearTimeout(tableUpdateTimer);
+        }
+        tableUpdateTimer = window.setTimeout(() => {
+          tableUpdateTimer = null;
+          requestFxPump();
+        }, TABLE_UPDATE_DEBOUNCE_MS);
+        break;
+      }
+      if (tableUpdateTimer != null) {
+        window.clearTimeout(tableUpdateTimer);
+        tableUpdateTimer = null;
       }
       requestFxPump();
       break;
+    }
     case "STREET_END": {
       const view = displayed();
       const fromEvent = normalizeContributions(event.contributions);
       const contrib = fromEvent.length ? fromEvent : contributionsFromSnapshot(view);
       applyLogicalStreetEnd(event);
+      streetCoalesceUntil = Date.now() + TABLE_UPDATE_DEBOUNCE_MS + 30;
       if (contrib.length && view) {
         setDisplayed(patchDisplayedContributions(view, contrib));
       }
@@ -851,6 +919,8 @@ export async function dispatchTableEvent(data: Record<string, unknown>) {
       }
       break;
     }
+    case "PLAYER_STATUS":
+      break;
     case "EMOTE":
       showPlayerEmote(String(event.user_id ?? ""), String(event.emote_id ?? ""));
       break;
@@ -875,12 +945,11 @@ export async function dispatchTableEvent(data: Record<string, unknown>) {
 
 export async function applyStompSnapshotPayload(
   data: Record<string, unknown>,
-  isReconnect: boolean,
+  _isReconnect: boolean,
 ) {
   const event = unwrapTableEvent(data);
-  if (isReconnect) {
-    skipVisualOnce = true;
-  }
+  markWsEvent();
+  skipVisualOnce = true;
   applyLogicalFromEvent(event, { myCards: resolveEventHeroCards(event) });
   requestFxPump();
 }
