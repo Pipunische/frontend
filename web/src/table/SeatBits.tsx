@@ -131,6 +131,9 @@ export function OccupiedSeatBody({
 }) {
   const chips = chipsOverride ?? player.chips;
   const bet = Number(player.round_contribution || 0);
+  const status = (player.status || "").toUpperCase().replace(/\s+/g, "_");
+  const hideBetForStatus =
+    status === "SITTING_OUT" || status === "WAITING" || status === "FOLDED";
   const userId = String(player.user_id);
   return (
     <>
@@ -166,7 +169,7 @@ export function OccupiedSeatBody({
           {chips} <span className="chip-icon" />
         </span>
       </div>
-      {!hideBet && bet > 0 ? (
+      {!hideBet && !hideBetForStatus && bet > 0 ? (
         <div
           className="player-bet"
           ref={(el) => {

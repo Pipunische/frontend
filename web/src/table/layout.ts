@@ -83,17 +83,38 @@ function asPlayer(raw: Record<string, unknown>, extras: Partial<TablePlayer> = {
 }
 
 export function hydrateSnapshot(raw: TableSnapshot): TableSnapshot {
-  if (!raw.my_player) {
-    return raw;
+  const base = !raw.my_player
+    ? raw
+    : {
+        ...raw,
+        my_player: asPlayer(raw.my_player as unknown as Record<string, unknown>, {
+          is_dealer: raw.my_player.is_dealer,
+          is_active_turn: raw.my_player.is_active_turn,
+        }),
+      };
+  return ensureOpponentSeats(base);
+}
+
+/** Rebuild opponent_seats_by_pos from game.players when HTTP/WS payload omitted seat map. */
+export function ensureOpponentSeats(snapshot: TableSnapshot): TableSnapshot {
+  const myId = String(snapshot.user?.user_id || snapshot.my_player?.user_id || "");
+  const othersInGame = (snapshot.game.players || []).filter((p) => p.user_id && !sameUser(p.user_id, myId));
+  if (!othersInGame.length) {
+    return snapshot;
   }
-  const rec = raw.my_player as unknown as Record<string, unknown>;
-  return {
-    ...raw,
-    my_player: asPlayer(rec, {
-      is_dealer: raw.my_player.is_dealer,
-      is_active_turn: raw.my_player.is_active_turn,
-    }),
+  const seated = Object.values(snapshot.opponent_seats_by_pos || {}).filter(Boolean);
+  if (seated.length >= othersInGame.length) {
+    return snapshot;
+  }
+  const emptyPrev: TableSnapshot = {
+    ...snapshot,
+    opponent_seats_by_pos: {},
+    seat_layout_opponents:
+      snapshot.seat_layout_opponents?.length
+        ? snapshot.seat_layout_opponents
+        : getOpponentPosLayout(normalizeMaxPlayers(snapshot.max_players ?? snapshot.game.max_players)),
   };
+  return buildSnapshotFromGame(snapshot.game, emptyPrev, snapshot.my_cards);
 }
 
 export function gameFromPayload(data: Record<string, unknown>): TableGame {

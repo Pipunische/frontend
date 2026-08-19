@@ -26,10 +26,14 @@ export function ActionPanel({
 
   const [raiseAmount, setRaiseAmount] = useState(minRaise);
 
+  const status = (myPlayer?.status || "").toUpperCase().replace(/\s+/g, "_");
+  const outOfHand =
+    status === "SITTING_OUT" || status === "FOLDED" || status === "ALL_IN" || status === "ALLIN";
   const visible =
+    !busy &&
     Boolean(myPlayer) &&
-    myPlayer?.status !== "SITTING_OUT" &&
-    myPlayer?.status !== "FOLDED" &&
+    !outOfHand &&
+    (myPlayer?.chips ?? 0) > 0 &&
     myPlayer?.seat_index === currentTurnSeat;
 
   useEffect(() => {

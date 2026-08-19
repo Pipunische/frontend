@@ -78,7 +78,6 @@ export function TablePage() {
     void fetchTableState(tableId)
       .then((data) => {
         if (!cancelled) {
-          setSnapshot(data);
           seedInitialTableFx(data);
           setReady(true);
         }

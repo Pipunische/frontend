@@ -7,6 +7,7 @@ import {
   applyPlayerActionEvent,
   applyStreetEndEvent,
   buildSnapshotFromGame,
+  ensureOpponentSeats,
   clearHeroHoleCache,
   gameFromPayload,
   heroCardsFromPayload,
@@ -58,10 +59,12 @@ let fxGen = 0;
 let pumping = false;
 let skipVisualOnce = false;
 let showdownHighlightDone = false;
+let lastShowdownKey = "";
 let holeCardsInflight: Promise<void> | null = null;
 let lastWsAt = 0;
 let tableUpdateTimer: number | null = null;
 let streetCoalesceUntil = 0;
+let joinGraceUntil = 0;
 
 export function setTableToastHandler(fn: ToastFn | null) {
   toastFn = fn;
@@ -81,6 +84,7 @@ export function resetTablePipeline() {
   pumping = false;
   skipVisualOnce = false;
   showdownHighlightDone = false;
+  lastShowdownKey = "";
   lastWsAt = 0;
   streetCoalesceUntil = 0;
   if (tableUpdateTimer != null) {
@@ -182,6 +186,90 @@ function contributionsFromSnapshot(data: TableSnapshot | null) {
     }
   });
   return list;
+}
+
+function isOutOfHandStatus(status?: string) {
+  const s = (status || "").toUpperCase().replace(/\s+/g, "_");
+  return s === "SITTING_OUT" || s === "WAITING" || s === "FOLDED";
+}
+
+function canDisplayBlinds(data: TableSnapshot | null) {
+  if (!data) {
+    return false;
+  }
+  const contribs = contributionsFromSnapshot(data);
+  if (!contribs.length) {
+    return false;
+  }
+  const byId = new Map((data.game.players || []).map((p) => [String(p.user_id), p] as const));
+  return contribs.every(({ user_id }) => {
+    const player = byId.get(String(user_id));
+    return player != null && !isOutOfHandStatus(player.status);
+  });
+}
+
+function blindsSignature(data: TableSnapshot | null) {
+  return contributionsFromSnapshot(data)
+    .map((entry) => `${entry.user_id}:${entry.amount}`)
+    .sort()
+    .join("|");
+}
+
+function blindsAlreadyDisplayed(from: TableSnapshot, to: TableSnapshot) {
+  return blindsSignature(from) === blindsSignature(to) && Boolean(blindsSignature(to));
+}
+
+function showdownFingerprint(details: ShowdownDetails | null | undefined) {
+  if (!details?.payouts?.length) {
+    return "";
+  }
+  return details.payouts
+    .map((payout) => `${payout.user_id}:${payout.amount}:${payout.hand_name || ""}`)
+    .sort()
+    .join("|");
+}
+
+function syncDisplayedPlayers(view: TableSnapshot, next: TableSnapshot): TableSnapshot {
+  const byId = new Map((next.game.players || []).map((p) => [String(p.user_id), p] as const));
+  const players = (view.game.players || []).map((player) => {
+    const fresh = byId.get(String(player.user_id));
+    if (!fresh) {
+      return player;
+    }
+    return {
+      ...player,
+      ...fresh,
+      cards: player.cards?.length ? player.cards : fresh.cards,
+    };
+  });
+  const opponent_seats_by_pos = { ...view.opponent_seats_by_pos };
+  for (const [pos, seat] of Object.entries(opponent_seats_by_pos)) {
+    if (!seat) {
+      continue;
+    }
+    const fresh = byId.get(String(seat.user_id));
+    if (fresh) {
+      opponent_seats_by_pos[pos] = {
+        ...seat,
+        ...fresh,
+        cards: seat.cards?.length ? seat.cards : fresh.cards,
+      };
+    }
+  }
+  const heroFresh =
+    view.my_player != null ? byId.get(String(view.my_player.user_id)) : undefined;
+  return {
+    ...view,
+    opponent_seats_by_pos,
+    my_player: view.my_player
+      ? {
+          ...view.my_player,
+          ...(heroFresh || {}),
+          cards: view.my_cards?.length ? view.my_cards : heroFresh?.cards || view.my_player.cards,
+        }
+      : next.my_player,
+    game: { ...view.game, ...next.game, players },
+  };
 }
 
 function withZeroBets(data: TableSnapshot): TableSnapshot {
@@ -661,6 +749,11 @@ async function playShowdownSequence(details: ShowdownDetails, gen: number) {
   if (!raw.length) {
     return;
   }
+  const fingerprint = showdownFingerprint(details);
+  if (fingerprint && fingerprint === lastShowdownKey) {
+    showdownHighlightDone = true;
+    return;
+  }
   patchFx({ showdownRunning: true });
   const unique = new Set(raw.map((p) => String(p.user_id)));
   const payouts = aggregatePayouts(raw);
@@ -696,6 +789,9 @@ async function playShowdownSequence(details: ShowdownDetails, gen: number) {
     await sleep(800);
     clearShowdownFx();
     showdownHighlightDone = true;
+    if (fingerprint) {
+      lastShowdownKey = fingerprint;
+    }
     patchFx({ displayedPot: 0, chipOverrides: {}, showdownRunning: false });
   } else {
     patchFx({ showdownRunning: false });
@@ -744,7 +840,7 @@ async function playDealHoles(gen: number) {
 async function playPostBlinds(gen: number) {
   const view = displayed();
   const next = logical();
-  if (!view || !next) {
+  if (!view || !next || !canDisplayBlinds(next)) {
     return;
   }
   const contrib = contributionsFromSnapshot(next);
@@ -755,7 +851,8 @@ async function playPostBlinds(gen: number) {
   if (gen !== fxGen) {
     return;
   }
-  const patched = patchDisplayedContributions(view, contrib);
+  const synced = syncDisplayedPlayers(view, next);
+  const patched = patchDisplayedContributions(synced, contrib);
   setDisplayed({
     ...patched,
     game: {
@@ -785,10 +882,16 @@ function commitDisplayed(next: TableSnapshot) {
   if (view && isTurnPlaceholderUpdate(view, next)) {
     return;
   }
-  if (next.game.state === "WAITING_FOR_PLAYERS" || next.game.state === "CLEANUP") {
+  if (getFx().showdownRunning) {
+    return;
+  }
+  if (next.game.state === "WAITING_FOR_PLAYERS") {
     showdownHighlightDone = false;
+    lastShowdownKey = "";
     clearShowdownFx();
     patchFx({ displayedPot: null, chipOverrides: {}, dealFrom: 99, holeDealFrom: 99 });
+  } else if (next.game.state === "CLEANUP") {
+    patchFx({ displayedPot: next.game.pot ?? 0, chipOverrides: {} });
   } else if (!isShowdownPhase(next.game.state) && getFx().displayedPot == null) {
     patchFx({ displayedPot: next.game.pot ?? 0 });
   } else if (!isShowdownPhase(next.game.state) && !getFx().showdownRunning) {
@@ -821,7 +924,11 @@ async function pumpFx() {
           staticShowdown: Boolean(to.game.showdown_details?.payouts?.length),
         });
         if (isShowdownPhase(to.game.state) && to.game.showdown_details?.payouts?.length) {
+          const fingerprint = showdownFingerprint(to.game.showdown_details);
           showdownHighlightDone = true;
+          if (fingerprint) {
+            lastShowdownKey = fingerprint;
+          }
         }
         break;
       }
@@ -846,6 +953,10 @@ async function pumpFx() {
       }
 
       if (isNewHandStart(from, to)) {
+        if (Date.now() < joinGraceUntil) {
+          jumpDisplayed(to);
+          break;
+        }
         const stillPreviousHand =
           boardOf(from).length > 0 ||
           isShowdownPhase(from.game.state) ||
@@ -853,6 +964,7 @@ async function pumpFx() {
           contributionsFromSnapshot(from).length > 0;
         if (stillPreviousHand) {
           showdownHighlightDone = false;
+          lastShowdownKey = "";
           clearShowdownFx();
           setDisplayed(stripToLobbyFrame(from));
           patchFx({
@@ -871,10 +983,28 @@ async function pumpFx() {
         }
         if (
           contributionsFromSnapshot(from).length === 0 &&
-          contributionsFromSnapshot(to).length > 0
+          contributionsFromSnapshot(to).length > 0 &&
+          canDisplayBlinds(to)
         ) {
           await playPostBlinds(gen);
           continue;
+        }
+        if (
+          blindsAlreadyDisplayed(from, to) &&
+          canDisplayBlinds(to) &&
+          !canDisplayBlinds(from)
+        ) {
+          commitDisplayed(to);
+          break;
+        }
+        if (
+          blindsAlreadyDisplayed(from, to) &&
+          canDisplayBlinds(to) &&
+          (from.game.current_turn_seat !== to.game.current_turn_seat ||
+            from.game.time_to_act_ms !== to.game.time_to_act_ms)
+        ) {
+          commitDisplayed(to);
+          break;
         }
       } else if (
         to.game.state === "PRE_FLOP" &&
@@ -889,7 +1019,8 @@ async function pumpFx() {
         isShowdownPhase(to.game.state) &&
         to.game.showdown_details?.payouts?.length &&
         !showdownHighlightDone &&
-        !getFx().showdownRunning
+        !getFx().showdownRunning &&
+        showdownFingerprint(to.game.showdown_details) !== lastShowdownKey
       ) {
         const payoutTotal = getTotalPayoutAmount(to.game.showdown_details.payouts as ShowdownPayout[]);
         patchFx({
@@ -936,11 +1067,12 @@ export async function applyHttpTableSnapshot(data: TableSnapshot, reason: string
   const prevLogical = logical();
 
   if (!prevLogical) {
-    useTableStore.getState().setSnapshot(data);
+    useTableStore.getState().setSnapshot(ensureOpponentSeats(data));
     patchFx({ dealFrom: 99, holeDealFrom: 99, displayedPot: data.game.pot ?? null });
     if (isShowdownPhase(data.game.state) && data.game.showdown_details) {
       applyStaticShowdown(data.game.showdown_details);
       showdownHighlightDone = true;
+      lastShowdownKey = showdownFingerprint(data.game.showdown_details);
     }
     if (needsPrivateHeroCards(data)) {
       requestHeroHoleCards(data.table_id);
@@ -1110,23 +1242,27 @@ export async function applyStompSnapshotPayload(
 
 export function seedInitialTableFx(data: TableSnapshot) {
   resetTablePipeline();
-  useTableStore.getState().setSnapshot(data);
+  const snap = ensureOpponentSeats(data);
+  useTableStore.getState().setSnapshot(snap);
+  joinGraceUntil = Date.now() + 2500;
   patchFx({
-    displayedPot: data.game.pot ?? 0,
+    displayedPot: snap.game.pot ?? 0,
     dealFrom: 99,
     holeDealFrom: 99,
   });
-  if (isShowdownPhase(data.game.state) && data.game.showdown_details?.payouts?.length) {
-    applyStaticShowdown(data.game.showdown_details);
+  if (isShowdownPhase(snap.game.state) && snap.game.showdown_details?.payouts?.length) {
+    applyStaticShowdown(snap.game.showdown_details);
     showdownHighlightDone = true;
+    lastShowdownKey = showdownFingerprint(snap.game.showdown_details);
   }
-  if (needsPrivateHeroCards(data)) {
-    requestHeroHoleCards(data.table_id);
+  if (needsPrivateHeroCards(snap)) {
+    requestHeroHoleCards(snap.table_id);
   }
 }
 
 export function resetShowdownPipelineFlags() {
   showdownHighlightDone = false;
+  lastShowdownKey = "";
   fxGen += 1;
   pumping = false;
   patchFx({ streetBusy: false, showdownRunning: false, flying: [], hideBets: false });
