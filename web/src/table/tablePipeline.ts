@@ -34,6 +34,7 @@ const CHIP_PAYOUT_STAGGER_MS = 80;
 const CARD_DEAL_MS = 400;
 const FLOP_EXTRA_MS = 800;
 const HOLE_DEAL_MS = 850;
+const BLIND_POST_MS = 450;
 const TABLE_UPDATE_DEBOUNCE_MS = 50;
 const RECENT_WS_MS = 4000;
 const STREET_ORDER = [
@@ -249,10 +250,26 @@ function mergeBoard(data: TableSnapshot, board: string[]): TableSnapshot {
 }
 
 function mergeHoles(from: TableSnapshot, to: TableSnapshot): TableSnapshot {
+  const myId = String(from.user?.user_id || from.my_player?.user_id || "");
   const byId = new Map((to.game.players || []).map((p) => [String(p.user_id), p] as const));
   const players = (from.game.players || []).map((p) => {
     const next = byId.get(String(p.user_id));
-    return next ? { ...p, cards: next.cards } : p;
+    if (!next) {
+      return p;
+    }
+    const isHero = String(next.user_id) === myId;
+    const holeCards = next.cards?.length
+      ? next.cards
+      : isHero
+        ? to.my_cards || []
+        : ["card_back", "card_back"];
+    return {
+      ...p,
+      ...next,
+      cards: holeCards,
+      round_contribution: 0,
+      is_active_turn: false,
+    };
   });
   const opponent_seats_by_pos = { ...from.opponent_seats_by_pos };
   Object.keys(opponent_seats_by_pos).forEach((pos) => {
@@ -262,15 +279,87 @@ function mergeHoles(from: TableSnapshot, to: TableSnapshot): TableSnapshot {
     }
     const next = byId.get(String(seat.user_id));
     if (next) {
-      opponent_seats_by_pos[pos] = { ...seat, cards: next.cards };
+      opponent_seats_by_pos[pos] = {
+        ...seat,
+        ...next,
+        cards: next.cards?.length ? next.cards : ["card_back", "card_back"],
+        round_contribution: 0,
+        is_active_turn: false,
+      };
     }
   });
+  const hero = to.my_player
+    ? { ...to.my_player, round_contribution: 0, is_active_turn: false }
+    : from.my_player;
   return {
     ...from,
-    my_cards: to.my_cards,
-    game: { ...from.game, players },
+    my_player: hero,
+    my_cards: to.my_cards?.length ? to.my_cards : from.my_cards,
+    community_cards: [],
     opponent_seats_by_pos,
+    game: {
+      ...from.game,
+      ...to.game,
+      community_cards: [],
+      pot: 0,
+      current_turn_seat: -1,
+      time_to_act_ms: 0,
+      players,
+      state: "PRE_FLOP",
+    },
   };
+}
+
+function stripToLobbyFrame(data: TableSnapshot): TableSnapshot {
+  const players = (data.game.players || []).map((p) => ({
+    ...p,
+    cards: [],
+    round_contribution: 0,
+    is_active_turn: false,
+  }));
+  const byId = new Map(players.map((p) => [String(p.user_id), p] as const));
+  const opponent_seats_by_pos = { ...data.opponent_seats_by_pos };
+  for (const [pos, seat] of Object.entries(opponent_seats_by_pos)) {
+    if (!seat) {
+      continue;
+    }
+    opponent_seats_by_pos[pos] = {
+      ...(byId.get(String(seat.user_id)) || seat),
+      cards: [],
+      round_contribution: 0,
+      is_active_turn: false,
+    };
+  }
+  return {
+    ...data,
+    my_cards: [],
+    community_cards: [],
+    opponent_seats_by_pos,
+    my_player: data.my_player
+      ? { ...data.my_player, cards: [], round_contribution: 0, is_active_turn: false }
+      : null,
+    game: {
+      ...data.game,
+      state: "WAITING_FOR_PLAYERS",
+      pot: 0,
+      current_turn_seat: -1,
+      time_to_act_ms: 0,
+      community_cards: [],
+      players,
+      showdown_details: null,
+    },
+  };
+}
+
+function isNewHandStart(from: TableSnapshot, to: TableSnapshot) {
+  return to.game.state === "PRE_FLOP" && from.game.state !== "PRE_FLOP";
+}
+
+function hasHoleCards(data: TableSnapshot) {
+  if ((data.my_cards || []).length > 0) {
+    return true;
+  }
+  return (data.game.players || []).some((p) => (p.cards || []).length > 0);
 }
 
 function snapshotsVisuallyEqual(a: TableSnapshot, b: TableSnapshot) {
@@ -643,7 +732,7 @@ async function playDealHoles(gen: number) {
     return;
   }
   setDisplayed(mergeHoles(view, next));
-  patchFx({ holeDealFrom: 0 });
+  patchFx({ holeDealFrom: 0, displayedPot: 0, hideBets: false });
   playSound("card");
   await sleep(HOLE_DEAL_MS);
   if (gen !== fxGen) {
@@ -652,12 +741,51 @@ async function playDealHoles(gen: number) {
   patchFx({ holeDealFrom: 99 });
 }
 
+async function playPostBlinds(gen: number) {
+  const view = displayed();
+  const next = logical();
+  if (!view || !next) {
+    return;
+  }
+  const contrib = contributionsFromSnapshot(next);
+  if (!contrib.length) {
+    return;
+  }
+  await afterPaint();
+  if (gen !== fxGen) {
+    return;
+  }
+  const patched = patchDisplayedContributions(view, contrib);
+  setDisplayed({
+    ...patched,
+    game: {
+      ...patched.game,
+      current_turn_seat: -1,
+      time_to_act_ms: 0,
+      state: "PRE_FLOP",
+    },
+  });
+  patchFx({
+    displayedPot: Number(next.game.pot ?? 0),
+    potPulse: "collect",
+    hideBets: false,
+  });
+  playSound("bet");
+  await sleep(BLIND_POST_MS);
+  if (gen !== fxGen) {
+    return;
+  }
+  if (getFx().potPulse === "collect") {
+    patchFx({ potPulse: null });
+  }
+}
+
 function commitDisplayed(next: TableSnapshot) {
   const view = displayed();
   if (view && isTurnPlaceholderUpdate(view, next)) {
     return;
   }
-  if (next.game.state === "WAITING_FOR_PLAYERS") {
+  if (next.game.state === "WAITING_FOR_PLAYERS" || next.game.state === "CLEANUP") {
     showdownHighlightDone = false;
     clearShowdownFx();
     patchFx({ displayedPot: null, chipOverrides: {}, dealFrom: 99, holeDealFrom: 99 });
@@ -712,20 +840,46 @@ async function pumpFx() {
 
       const fromBoard = boardOf(from);
       const toBoard = boardOf(to);
-      if (toBoard.length > fromBoard.length) {
+      if (toBoard.length > fromBoard.length && to.game.state !== "PRE_FLOP") {
         await playDealBoard(fromBoard.length, toBoard, gen);
         continue;
       }
 
-      const fromHoles = realHoleCards(from.my_cards).length;
-      const toHoles = realHoleCards(to.my_cards).length;
-      const fromHadBacks = (from.my_cards || []).length === 0 && from.game.state === "WAITING_FOR_PLAYERS";
-      const toHasBacks =
-        (to.my_player && (to.my_cards || []).length > 0) ||
-        (to.game.players || []).some((p) => (p.cards || []).length > 0);
-      if (
-        (fromHoles === 0 && toHoles > 0) ||
-        (fromHadBacks && toHasBacks && from.game.state === "WAITING_FOR_PLAYERS" && to.game.state === "PRE_FLOP")
+      if (isNewHandStart(from, to)) {
+        const stillPreviousHand =
+          boardOf(from).length > 0 ||
+          isShowdownPhase(from.game.state) ||
+          from.game.state === "CLEANUP" ||
+          contributionsFromSnapshot(from).length > 0;
+        if (stillPreviousHand) {
+          showdownHighlightDone = false;
+          clearShowdownFx();
+          setDisplayed(stripToLobbyFrame(from));
+          patchFx({
+            displayedPot: 0,
+            chipOverrides: {},
+            dealFrom: 99,
+            holeDealFrom: 99,
+            hideBets: false,
+          });
+          await sleep(120);
+          continue;
+        }
+        if (!hasHoleCards(from)) {
+          await playDealHoles(gen);
+          continue;
+        }
+        if (
+          contributionsFromSnapshot(from).length === 0 &&
+          contributionsFromSnapshot(to).length > 0
+        ) {
+          await playPostBlinds(gen);
+          continue;
+        }
+      } else if (
+        to.game.state === "PRE_FLOP" &&
+        realHoleCards(from.my_cards).length === 0 &&
+        realHoleCards(to.my_cards).length > 0
       ) {
         await playDealHoles(gen);
         continue;

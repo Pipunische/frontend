@@ -308,8 +308,8 @@ export function TablePage() {
         </header>
         <PokerTableShell snapshot={snapshot} />
         <ActionPanel
-          myPlayer={logical?.my_player ?? snapshot.my_player}
-          currentTurnSeat={logical?.game.current_turn_seat ?? snapshot.game.current_turn_seat}
+          myPlayer={snapshot.my_player}
+          currentTurnSeat={snapshot.game.current_turn_seat}
           bigBlind={bigBlind}
           busy={busy}
           onAction={sendAction}
