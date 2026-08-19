@@ -161,6 +161,134 @@ export function heroCardsFromPayload(data: Record<string, unknown>, myId: string
   return [];
 }
 
+function patchPlayerFromAction(
+  player: TablePlayer,
+  event: Record<string, unknown>,
+  playerState: TablePlayer | null,
+  turn: number | undefined,
+  dealerSeat: number | undefined,
+): TablePlayer {
+  const eventSeat = event.seat_index ?? event.seatIndex;
+  const matches =
+    (playerState && sameUser(player.user_id, playerState.user_id)) ||
+    (eventSeat != null && Number(player.seat_index) === Number(eventSeat));
+
+  let next = { ...player };
+  if (matches && playerState) {
+    next = {
+      ...next,
+      chips: playerState.chips ?? next.chips,
+      status: playerState.status ?? next.status,
+      round_contribution: playerState.round_contribution ?? next.round_contribution,
+      amount_to_call: playerState.amount_to_call ?? next.amount_to_call,
+      seat_index:
+        playerState.seat_index != null && Number(playerState.seat_index) >= 0
+          ? playerState.seat_index
+          : next.seat_index,
+      name: playerState.name || next.name,
+      avatar_url: playerState.avatar_url || next.avatar_url,
+    };
+  }
+  if (turn != null) {
+    next.is_active_turn = Number(next.seat_index) === Number(turn);
+  }
+  if (dealerSeat != null) {
+    next.is_dealer = Number(next.seat_index) === Number(dealerSeat);
+  }
+  return next;
+}
+
+export function mergePlayersList(
+  prev: TablePlayer[] | undefined,
+  incoming: TablePlayer[] | undefined,
+): TablePlayer[] {
+  const prevList = prev || [];
+  const incomingValid = (incoming || []).filter((p) => String(p.user_id));
+  if (!incomingValid.length) {
+    return prevList;
+  }
+  if (!prevList.length) {
+    return incomingValid;
+  }
+
+  const byId = new Map(prevList.map((p) => [String(p.user_id), { ...p }]));
+  for (const p of incomingValid) {
+    const id = String(p.user_id);
+    const old = byId.get(id);
+    byId.set(id, {
+      ...(old || p),
+      ...p,
+      seat_index:
+        p.seat_index != null && Number(p.seat_index) >= 0
+          ? p.seat_index
+          : (old?.seat_index ?? p.seat_index),
+      cards: p.cards?.length ? p.cards : old?.cards,
+    });
+  }
+
+  const incomingIds = new Set(incomingValid.map((p) => String(p.user_id)));
+  const prevIds = new Set(prevList.map((p) => String(p.user_id)));
+  const isStrictSubset =
+    incomingValid.length < prevList.length &&
+    [...incomingIds].every((id) => prevIds.has(id)) &&
+    incomingIds.size < prevIds.size;
+
+  if (isStrictSubset) {
+    return incomingValid.map((p) => byId.get(String(p.user_id)) || p);
+  }
+
+  if (incomingValid.length < prevList.length) {
+    for (const p of prevList) {
+      const id = String(p.user_id);
+      if (!byId.has(id)) {
+        byId.set(id, p);
+      }
+    }
+  }
+
+  return Array.from(byId.values());
+}
+
+function recoverOpponentSeats(
+  prev: TableSnapshot,
+  opponent_seats_by_pos: Record<string, TablePlayer | null>,
+  players: TablePlayer[] | undefined,
+): Record<string, TablePlayer | null> {
+  const next = { ...opponent_seats_by_pos };
+  const roster = players || [];
+  const myId = String(prev.user?.user_id || prev.my_player?.user_id || "");
+
+  for (const [pos, prevSeat] of Object.entries(prev.opponent_seats_by_pos || {})) {
+    if (!prevSeat) {
+      continue;
+    }
+    const id = String(prevSeat.user_id);
+    if (sameUser(id, myId)) {
+      continue;
+    }
+    const stillSeated = roster.some((p) => sameUser(p.user_id, id));
+    if (!stillSeated) {
+      continue;
+    }
+    const alreadyMapped = Object.values(next).some((seat) => seat && sameUser(seat.user_id, id));
+    if (alreadyMapped) {
+      continue;
+    }
+    const fresh = roster.find((p) => sameUser(p.user_id, id));
+    if (fresh) {
+      next[pos] = {
+        ...prevSeat,
+        ...fresh,
+        seat_index:
+          fresh.seat_index != null && Number(fresh.seat_index) >= 0
+            ? fresh.seat_index
+            : prevSeat.seat_index,
+      };
+    }
+  }
+  return next;
+}
+
 export function buildSnapshotFromGame(
   game: TableGame,
   prev: TableSnapshot,
@@ -237,10 +365,11 @@ export function buildSnapshotFromGame(
     }
   }
 
-  const opponent_seats_by_pos: Record<string, TablePlayer | null> = {};
-  layout.forEach((pos, rel) => {
-    opponent_seats_by_pos[String(pos)] = orderedOthers[rel] ?? null;
-  });
+  const opponent_seats_by_pos: Record<string, TablePlayer | null> = recoverOpponentSeats(
+    prev,
+    Object.fromEntries(layout.map((pos, rel) => [String(pos), orderedOthers[rel] ?? null])),
+    game.players,
+  );
 
   const activePhases = ["PRE_FLOP", "FLOP", "TURN", "RIVER", "SHOWDOWN"];
   let heroCards = myCardsHint?.length ? myCardsHint : myCards;
@@ -297,38 +426,47 @@ export function applyPlayerActionEvent(
       : event.currentTurnSeat != null
         ? Number(event.currentTurnSeat)
         : prev.game.current_turn_seat;
+  const timeToAct =
+    event.time_to_act_ms != null
+      ? Number(event.time_to_act_ms)
+      : event.timeToActMs != null
+        ? Number(event.timeToActMs)
+        : prev.game.time_to_act_ms;
 
-  const rawState = event.player_state;
+  const rawState = event.player_state ?? event.playerState;
   const playerState =
     rawState && typeof rawState === "object"
       ? asPlayer(rawState as Record<string, unknown>)
       : null;
+  const dealerSeat = prev.game.dealer_seat;
 
-  const nextPlayers = (prev.game.players || []).map((player) => {
-    let next = { ...player };
-    if (playerState && String(player.user_id) === String(playerState.user_id)) {
-      next = {
-        ...next,
-        chips: playerState.chips,
-        status: playerState.status ?? next.status,
-        round_contribution: playerState.round_contribution ?? next.round_contribution,
-        amount_to_call: playerState.amount_to_call ?? next.amount_to_call,
-      };
-    }
-    next.is_active_turn = Number(next.seat_index) === Number(turn);
-    return next;
-  });
+  const nextPlayers = (prev.game.players || []).map((player) =>
+    patchPlayerFromAction(player, event, playerState, turn, dealerSeat),
+  );
 
-  return buildSnapshotFromGame(
-    {
+  const opponent_seats_by_pos: Record<string, TablePlayer | null> = {};
+  for (const [pos, seat] of Object.entries(prev.opponent_seats_by_pos || {})) {
+    opponent_seats_by_pos[pos] = seat
+      ? patchPlayerFromAction(seat, event, playerState, turn, dealerSeat)
+      : null;
+  }
+
+  const my_player = prev.my_player
+    ? patchPlayerFromAction(prev.my_player, event, playerState, turn, dealerSeat)
+    : null;
+
+  return {
+    ...prev,
+    my_player,
+    opponent_seats_by_pos,
+    game: {
       ...prev.game,
       pot,
       current_turn_seat: turn,
+      time_to_act_ms: timeToAct,
       players: nextPlayers,
     },
-    prev,
-    prev.my_cards,
-  );
+  };
 }
 
 export function normalizeContributions(raw: unknown): Array<{ user_id: string; amount: number }> {
@@ -379,9 +517,10 @@ export function applyStreetEndEvent(
   event: Record<string, unknown>,
 ): TableSnapshot {
   const game = gameFromPayload({ ...prev.game, ...event });
-  if (!event.players) {
-    game.players = prev.game.players;
-  }
+  const incomingPlayers = Array.isArray(event.players)
+    ? game.players
+    : undefined;
+  game.players = mergePlayersList(prev.game.players, incomingPlayers);
   if (event.pot != null) {
     game.pot = Number(event.pot);
   }

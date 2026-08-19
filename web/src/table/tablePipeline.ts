@@ -10,6 +10,7 @@ import {
   clearHeroHoleCache,
   gameFromPayload,
   heroCardsFromPayload,
+  mergePlayersList,
   normalizeContributions,
   unwrapTableEvent,
 } from "./layout";
@@ -150,10 +151,58 @@ function contributionsFromSnapshot(data: TableSnapshot | null) {
 
 function withZeroBets(data: TableSnapshot): TableSnapshot {
   const players = (data.game.players || []).map((p) => ({ ...p, round_contribution: 0 }));
+  const byId = new Map(players.map((p) => [String(p.user_id), p] as const));
+  const opponent_seats_by_pos = { ...data.opponent_seats_by_pos };
+  for (const [pos, seat] of Object.entries(opponent_seats_by_pos)) {
+    if (!seat) {
+      continue;
+    }
+    const patched = byId.get(String(seat.user_id));
+    opponent_seats_by_pos[pos] = patched
+      ? { ...seat, ...patched, round_contribution: 0 }
+      : { ...seat, round_contribution: 0 };
+  }
   return {
     ...data,
+    opponent_seats_by_pos,
     game: { ...data.game, players },
-    my_player: data.my_player ? { ...data.my_player, round_contribution: 0 } : data.my_player,
+    my_player: data.my_player
+      ? { ...(byId.get(String(data.my_player.user_id)) || data.my_player), round_contribution: 0 }
+      : data.my_player,
+  };
+}
+
+function patchDisplayedContributions(
+  view: TableSnapshot,
+  contributions: Array<{ user_id: string; amount: number }>,
+): TableSnapshot {
+  const byId = new Map(
+    contributions.map((entry) => [String(entry.user_id), Number(entry.amount)] as const),
+  );
+  const players = (view.game.players || []).map((p) => {
+    const amount = byId.get(String(p.user_id));
+    return amount != null ? { ...p, round_contribution: amount } : p;
+  });
+  const opponent_seats_by_pos = { ...view.opponent_seats_by_pos };
+  for (const [pos, seat] of Object.entries(opponent_seats_by_pos)) {
+    if (!seat) {
+      continue;
+    }
+    const amount = byId.get(String(seat.user_id));
+    if (amount != null) {
+      opponent_seats_by_pos[pos] = { ...seat, round_contribution: amount };
+    }
+  }
+  const heroAmount =
+    view.my_player != null ? byId.get(String(view.my_player.user_id)) : undefined;
+  return {
+    ...view,
+    opponent_seats_by_pos,
+    game: { ...view.game, players },
+    my_player:
+      view.my_player && heroAmount != null
+        ? { ...view.my_player, round_contribution: heroAmount }
+        : view.my_player,
   };
 }
 
@@ -415,9 +464,12 @@ function applyLogicalFromEvent(
       ? (event.game as Record<string, unknown>)
       : event;
   const game = gameFromPayload({ ...prev.game, ...nested });
-  if (!Array.isArray(nested.players) && !Array.isArray(event.players)) {
-    game.players = prev.game.players;
-  }
+  const incomingPlayers = Array.isArray(nested.players)
+    ? game.players
+    : Array.isArray(event.players)
+      ? gameFromPayload({ players: event.players }).players
+      : undefined;
+  game.players = mergePlayersList(prev.game.players, incomingPlayers);
   if (event.showdown_details || event.showdownDetails) {
     game.showdown_details = (event.showdown_details ||
       event.showdownDetails) as TableSnapshot["game"]["showdown_details"];
@@ -721,6 +773,9 @@ export async function applyHttpTableSnapshot(data: TableSnapshot, reason: string
   }
   if (reconnectLike || reason === "visibility") {
     skipVisualOnce = true;
+  } else if (reason === "poll") {
+    // Keep seated opponents stable during active hands; logical merge handles drift.
+    skipVisualOnce = false;
   }
   requestFxPump();
 }
@@ -775,14 +830,7 @@ export async function dispatchTableEvent(data: Record<string, unknown>) {
       const contrib = fromEvent.length ? fromEvent : contributionsFromSnapshot(view);
       applyLogicalStreetEnd(event);
       if (contrib.length && view) {
-        const players = (view.game.players || []).map((p) => {
-          const hit = contrib.find((c) => c.user_id === String(p.user_id));
-          return hit ? { ...p, round_contribution: hit.amount } : p;
-        });
-        setDisplayed({
-          ...view,
-          game: { ...view.game, players },
-        });
+        setDisplayed(patchDisplayedContributions(view, contrib));
       }
       requestFxPump();
       break;
@@ -792,13 +840,14 @@ export async function dispatchTableEvent(data: Record<string, unknown>) {
       if (prev) {
         const next = applyPlayerActionEvent(prev, event);
         setLogical(next);
-        if (!isTableFxBusy()) {
-          setDisplayed(next);
-          const status = (event.player_state as { status?: string } | undefined)?.status;
-          playSound(status === "FOLDED" ? "fold" : "bet");
+        const view = displayed();
+        if (view) {
+          setDisplayed(applyPlayerActionEvent(view, event));
         } else {
-          requestFxPump();
+          setDisplayed(next);
         }
+        const status = (event.player_state as { status?: string } | undefined)?.status;
+        playSound(status === "FOLDED" ? "fold" : "bet");
       }
       break;
     }
