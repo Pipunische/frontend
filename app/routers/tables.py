@@ -40,6 +40,52 @@ from app.spa import spa_enabled, spa_index_response
 router = APIRouter(tags=["Game Tables"])
 
 
+def _pick(data: dict, *keys, default=None):
+    for key in keys:
+        if key in data and data[key] is not None:
+            return data[key]
+    return default
+
+
+def _player_user_id(player: dict) -> str:
+    value = _pick(player, "user_id", "userId")
+    return "" if value is None else str(value)
+
+
+def _normalize_java_game(raw: dict) -> dict:
+    game = dict(raw or {})
+    if "dealer_seat" not in game:
+        game["dealer_seat"] = _pick(game, "dealerSeat", default=-1)
+    if "current_turn_seat" not in game:
+        game["current_turn_seat"] = _pick(game, "currentTurnSeat", default=-1)
+    if "community_cards" not in game:
+        game["community_cards"] = _pick(game, "communityCards", default=[]) or []
+    if "max_players" not in game:
+        game["max_players"] = _pick(game, "maxPlayers", default=10)
+    if "table_name" not in game:
+        game["table_name"] = _pick(game, "tableName")
+    if "min_buy_in" not in game and "minBuyIn" in game:
+        game["min_buy_in"] = game.get("minBuyIn")
+    if "showdown_details" not in game and "showdownDetails" in game:
+        game["showdown_details"] = game.get("showdownDetails")
+
+    players = []
+    for row in game.get("players") or []:
+        if not isinstance(row, dict):
+            continue
+        player = dict(row)
+        player["user_id"] = _player_user_id(player)
+        player["seat_index"] = int(_pick(player, "seat_index", "seatIndex", default=-1) or -1)
+        player["round_contribution"] = _pick(
+            player, "round_contribution", "roundContribution", default=0
+        ) or 0
+        player["avatar_url"] = _pick(player, "avatar_url", "avatarUrl", default="") or ""
+        player["cards"] = extract_cards(player)
+        players.append(player)
+    game["players"] = players
+    return game
+
+
 def _order_players(game_state: dict, my_id: str):
     dealer_idx = game_state.get("dealer_seat", -1)
     active_idx = game_state.get("current_turn_seat", -1)
@@ -57,7 +103,7 @@ def _order_players(game_state: dict, my_id: str):
 
         real_cards = extract_cards(p)
 
-        if str(p.get("user_id")) == my_id:
+        if str(p.get("user_id")) == str(my_id):
             my_player = p
             my_cards = real_cards
         else:
@@ -164,15 +210,18 @@ async def load_table_context(
         return {"redirect": "/login?error=session_expired"}
 
     if response.status_code != 200:
-        return {"redirect": "/lobby"}
+        logger.error(
+            f"Java GET {base_table_url} -> {response.status_code}: {(response.text or '')[:400]}"
+        )
+        return {"error": "core_unreachable"}
 
-    game_state = response.json()
+    game_state = _normalize_java_game(response.json())
     my_id = str(my_user.get("user_id"))
-    current_player_ids = [str(p.get("user_id")) for p in game_state.get("players", [])]
+    current_player_ids = [_player_user_id(p) for p in game_state.get("players", [])]
 
     if my_id not in current_player_ids:
         if allow_join and buy_in > 0:
-            min_required = int(game_state.get("min_buy_in", 0))
+            min_required = int(game_state.get("min_buy_in", 0) or 0)
             wallet = int(my_user.get("wallet_balance", 0))
 
             if wallet >= min_required:
@@ -195,7 +244,7 @@ async def load_table_context(
                     java_res = await java_request("GET", base_table_url, request)
                     if is_core_unreachable(java_res):
                         return {"error": "core_unreachable"}
-                    game_state = java_res.json()
+                    game_state = _normalize_java_game(java_res.json())
                 else:
                     try:
                         resp_json = join_res.json()
@@ -212,8 +261,12 @@ async def load_table_context(
             else:
                 logger.warning(f"⚠️ У игрока {my_user['name']} недостаточно средств для данного стола.")
                 return {"redirect": "/lobby?error=no_money"}
-        else:
+        elif allow_join:
             return {"redirect": "/lobby", "error": "not_at_table"}
+        else:
+            logger.warning(
+                f"SPA /state: игрок {my_id} не в списке {current_player_ids} за столом {table_id}"
+            )
 
     my_user = require_user(request)
     owned_emote_ids = await fetch_owned_emote_ids(request, my_user)
@@ -457,9 +510,9 @@ async def api_join_table(request: Request, table_id: str, data: JoinTableRequest
             content={"errorType": "JoinError", "message": "Стол не найден"},
         )
 
-    game_state = response.json()
+    game_state = _normalize_java_game(response.json())
     my_id = str(my_user.get("user_id"))
-    current_player_ids = [str(p.get("user_id")) for p in game_state.get("players", [])]
+    current_player_ids = [_player_user_id(p) for p in game_state.get("players", [])]
 
     if my_id in current_player_ids:
         return {"status": "success", "redirect": f"/table/{table_id}"}

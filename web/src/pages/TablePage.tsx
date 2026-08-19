@@ -24,6 +24,7 @@ import {
   setTableToastHandler,
 } from "../table/tablePipeline";
 import { useTableStore } from "../table/tableStore";
+import { getOpponentPosLayout } from "../table/layout";
 import { playSound } from "../lib/sounds";
 import { useTableRealtime } from "../ws/useTableRealtime";
 
@@ -85,6 +86,42 @@ export function TablePage() {
         if (cancelled) {
           return;
         }
+        const canPlayWithoutHttp =
+          Boolean(tableId) && Boolean(sessionUser?.java_host || sessionUser?.user_id);
+        if (
+          canPlayWithoutHttp &&
+          err instanceof ApiError &&
+          (err.status === 403 || err.status === 503 || err.message === "not_at_table")
+        ) {
+          const uid = String(sessionUser?.user_id || "");
+          const maxPlayers = 10;
+          const fallback = {
+            table_id: tableId,
+            max_players: maxPlayers,
+            seat_layout_opponents: getOpponentPosLayout(maxPlayers),
+            opponent_seats_by_pos: {},
+            my_player: {
+              user_id: uid,
+              name: sessionUser?.name || "",
+              seat_index: -1,
+              chips: Number(sessionUser?.wallet_balance || 0),
+              avatar_url: sessionUser?.avatar_url || "",
+            },
+            my_cards: [],
+            community_cards: [],
+            game: { state: "WAITING_FOR_PLAYERS", players: [], max_players: maxPlayers },
+            user: {
+              user_id: uid,
+              name: sessionUser?.name,
+              avatar_url: sessionUser?.avatar_url,
+            },
+            java_host: sessionUser?.java_host,
+          };
+          setSnapshot(fallback);
+          seedInitialTableFx(fallback);
+          setReady(true);
+          return;
+        }
         if (err instanceof ApiError && (err.status === 403 || err.message === "not_at_table")) {
           navigate("/lobby", { replace: true });
           return;
@@ -95,7 +132,7 @@ export function TablePage() {
     return () => {
       cancelled = true;
     };
-  }, [navigate, reset, setSnapshot, tableId]);
+  }, [navigate, reset, sessionUser, setSnapshot, tableId]);
 
   useEffect(() => {
     setTableToastHandler(showToast);

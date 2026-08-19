@@ -7,7 +7,9 @@ import {
   applyPlayerActionEvent,
   applyStreetEndEvent,
   buildSnapshotFromGame,
+  clearHeroHoleCache,
   gameFromPayload,
+  heroCardsFromPayload,
 } from "./layout";
 import {
   aggregatePayouts,
@@ -67,6 +69,7 @@ export function resetTablePipeline() {
   showdownHighlightDone = false;
   showdownSequenceLock = false;
   showdownAbort = true;
+  clearHeroHoleCache();
   patchFx({
     hideBets: false,
     flying: [],
@@ -275,6 +278,20 @@ function requestHeroHoleCards(id: string) {
     .finally(() => {
       holeCardsInflight = null;
     });
+}
+
+function resolveEventHeroCards(
+  state: Record<string, unknown>,
+  hinted?: string[],
+): string[] | undefined {
+  const fromHint = realHoleCards(hinted);
+  if (fromHint.length) {
+    return fromHint;
+  }
+  const prevSnap = snapshot();
+  const myId = String(prevSnap?.user?.user_id || prevSnap?.my_player?.user_id || "");
+  const fromEvent = heroCardsFromPayload(state, myId);
+  return fromEvent.length ? fromEvent : hinted;
 }
 
 function applySnapshotFromEvent(
@@ -530,7 +547,7 @@ async function applyFullTableState(
         contributionsFromSnapshot(prev),
         state.pot != null ? Number(state.pot) : undefined,
       );
-      applySnapshotFromEvent(state, { myCards: options.myCards });
+      applySnapshotFromEvent(state, { myCards: resolveEventHeroCards(state, options.myCards) });
       applyShowdownPhase(state, options);
     } finally {
       patchFx({ streetBusy: false });
@@ -566,7 +583,7 @@ async function applyFullTableState(
   }
 
   applySnapshotFromEvent(state, {
-    myCards: options.myCards,
+    myCards: resolveEventHeroCards(state, options.myCards),
     dealFrom: skipCollect ? 99 : undefined,
   });
   applyShowdownPhase(state, options);
@@ -590,6 +607,13 @@ export async function applyHttpTableSnapshot(data: TableSnapshot, reason: string
     }
     if (needsPrivateHeroCards(data)) {
       requestHeroHoleCards(data.table_id);
+    }
+    return;
+  }
+  if (prev.my_player && !data.my_player) {
+    const cards = realHoleCards(data.my_cards);
+    if (cards.length) {
+      setSnapshot({ ...prev, my_cards: cards });
     }
     return;
   }

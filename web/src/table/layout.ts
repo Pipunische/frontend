@@ -11,6 +11,19 @@ const SEAT_LAYOUTS: Record<number, number[]> = {
 
 const DEFAULT_MAX_PLAYERS = 10;
 
+let heroHoleCache: { tableId: string; cards: string[] } | null = null;
+
+export function clearHeroHoleCache() {
+  heroHoleCache = null;
+}
+
+function rememberHeroHole(tableId: string, cards: string[]) {
+  const real = realHoleCards(cards);
+  if (tableId && real.length) {
+    heroHoleCache = { tableId, cards: real };
+  }
+}
+
 export function normalizeMaxPlayers(value: unknown): number {
   const n = Number(value);
   if (n in SEAT_LAYOUTS) {
@@ -23,8 +36,26 @@ export function getOpponentPosLayout(maxPlayers: number): number[] {
   return SEAT_LAYOUTS[maxPlayers] ?? SEAT_LAYOUTS[DEFAULT_MAX_PLAYERS];
 }
 
+function cardsFromRaw(raw: Record<string, unknown> | TablePlayer): string[] {
+  const rec = raw as Record<string, unknown>;
+  for (const key of ["cards", "hole_cards", "holeCards", "my_cards", "myCards"]) {
+    const cards = rec[key];
+    if (Array.isArray(cards) && cards.length) {
+      return cards as string[];
+    }
+  }
+  return [];
+}
+
 function extractCards(player: TablePlayer): string[] {
-  return Array.isArray(player.cards) ? player.cards : [];
+  return cardsFromRaw(player);
+}
+
+function sameUser(a: unknown, b: unknown): boolean {
+  if (a == null || b == null || a === "" || b === "") {
+    return false;
+  }
+  return String(a) === String(b);
 }
 
 function optNum(value: unknown): number | undefined {
@@ -42,8 +73,8 @@ function asPlayer(raw: Record<string, unknown>, extras: Partial<TablePlayer> = {
     seat_index: Number(raw.seat_index ?? raw.seatIndex ?? -1),
     chips: Number(raw.chips ?? 0),
     status: raw.status != null ? String(raw.status) : undefined,
-    avatar_url: raw.avatar_url != null ? String(raw.avatar_url) : "",
-    cards: Array.isArray(raw.cards) ? (raw.cards as string[]) : undefined,
+    avatar_url: raw.avatar_url != null ? String(raw.avatar_url) : String(raw.avatarUrl ?? ""),
+    cards: cardsFromRaw(raw),
     round_contribution: optNum(raw.round_contribution ?? raw.roundContribution),
     amount_to_call: optNum(raw.amount_to_call ?? raw.amountToCall),
     sit_out_deadline: optNum(raw.sit_out_deadline ?? raw.sitOutDeadline),
@@ -106,6 +137,30 @@ export function gameFromPayload(data: Record<string, unknown>): TableGame {
   };
 }
 
+export function heroCardsFromPayload(data: Record<string, unknown>, myId: string): string[] {
+  const nested =
+    data.game && typeof data.game === "object"
+      ? { ...data, ...(data.game as Record<string, unknown>) }
+      : data;
+  const top = realHoleCards(
+    nested.my_cards ?? nested.myCards ?? nested.hole_cards ?? nested.holeCards,
+  );
+  if (top.length) {
+    return top;
+  }
+  const players = Array.isArray(nested.players) ? nested.players : [];
+  for (const row of players) {
+    if (!row || typeof row !== "object") {
+      continue;
+    }
+    const player = asPlayer(row as Record<string, unknown>);
+    if (sameUser(player.user_id, myId)) {
+      return realHoleCards(player.cards);
+    }
+  }
+  return [];
+}
+
 export function buildSnapshotFromGame(
   game: TableGame,
   prev: TableSnapshot,
@@ -131,7 +186,7 @@ export function buildSnapshotFromGame(
     };
     const realCards = extractCards(player);
 
-    if (String(player.user_id) === myId) {
+    if (sameUser(player.user_id, myId)) {
       myPlayer = player;
       myCards = realCards;
     } else {
@@ -143,6 +198,16 @@ export function buildSnapshotFromGame(
         player.cards = ["card_back", "card_back"];
       }
       othersRaw.push(player);
+    }
+  }
+
+  if (!myPlayer && prev.my_player && (sameUser(prev.my_player.user_id, myId) || !myId)) {
+    myPlayer = prev.my_player;
+    const hid = String(myPlayer.user_id);
+    const idx = othersRaw.findIndex((p) => sameUser(p.user_id, hid));
+    if (idx >= 0) {
+      myCards = extractCards(othersRaw[idx]);
+      othersRaw.splice(idx, 1);
     }
   }
 
@@ -179,12 +244,20 @@ export function buildSnapshotFromGame(
 
   const activePhases = ["PRE_FLOP", "FLOP", "TURN", "RIVER", "SHOWDOWN"];
   let heroCards = myCardsHint?.length ? myCardsHint : myCards;
-  if (state === "WAITING_FOR_PLAYERS" || state === "CLEANUP") {
+  if (state === "WAITING_FOR_PLAYERS") {
+    heroHoleCache = null;
     heroCards = [];
   } else if (activePhases.includes(state || "")) {
     const incoming = realHoleCards(heroCards);
     const kept = realHoleCards(prev.my_cards);
-    heroCards = incoming.length ? incoming : kept;
+    const cached =
+      heroHoleCache?.tableId === prev.table_id ? heroHoleCache.cards : [];
+    heroCards = incoming.length ? incoming : kept.length ? kept : cached;
+    if (incoming.length) {
+      rememberHeroHole(prev.table_id, incoming);
+    } else if (heroCards.length) {
+      rememberHeroHole(prev.table_id, heroCards);
+    }
   }
 
   const board = game.community_cards ?? prev.community_cards ?? [];

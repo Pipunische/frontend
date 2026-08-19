@@ -142,9 +142,10 @@ JAVA_RETRY_DELAYS = (0.3, 0.6, 1.2)
 
 
 def extract_cards(player: dict) -> list:
-    cards = player.get("cards")
-    if isinstance(cards, list):
-        return cards
+    for key in ("cards", "hole_cards", "holeCards", "my_cards", "myCards"):
+        cards = player.get(key)
+        if isinstance(cards, list) and cards:
+            return cards
     return []
 
 
