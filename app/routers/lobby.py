@@ -17,11 +17,13 @@ from app.services import (
     format_poker_amount,
 )
 from app.session_utils import (
+    is_dev_mock_user,
     require_user,
     respond_page_or_json,
     sync_user_wallet,
     unauthorized_json,
 )
+from app.spa import spa_enabled, spa_index_response
 
 router = APIRouter(tags=["Lobby"])
 
@@ -100,18 +102,25 @@ async def load_lobby_context(request: Request):
     }
 
 
+def _lobby_user_payload(user: dict) -> dict:
+    wallet = user.get("wallet_balance")
+    return {
+        "user_id": user.get("user_id"),
+        "name": user.get("name"),
+        "avatar_url": user.get("avatar_url") or "",
+        "wallet_balance": wallet,
+        "wallet_balance_formatted": user.get("wallet_balance_formatted")
+        or (format_poker_amount(wallet) if wallet is not None else None),
+    }
+
+
 def _lobby_state_payload(lobby_data: dict) -> dict:
     user = lobby_data["user"]
-    wallet = user.get("wallet_balance")
     return {
         "tables": lobby_data["tables"],
         "is_server_down": lobby_data["is_server_down"],
-        "user": {
-            "wallet_balance": wallet,
-            "wallet_balance_formatted": user.get("wallet_balance_formatted")
-            or (format_poker_amount(wallet) if wallet is not None else None),
-            "name": user.get("name"),
-        },
+        "java_host": lobby_data.get("java_host") or settings.FRONTEND_JAVA_HOST,
+        "user": _lobby_user_payload(user),
         "token": lobby_data["user_token"],
     }
 
@@ -126,6 +135,11 @@ def _respond_lobby_result(lobby_data, *, json_mode: bool = False):
 
 @router.get("/lobby", response_class=HTMLResponse)
 async def page_lobby(request: Request, error: str = None):
+    if spa_enabled():
+        if not require_user(request):
+            return RedirectResponse(url="/login", status_code=303)
+        return spa_index_response()
+
     lobby_data = await load_lobby_context(request)
     json_mode = request.headers.get("accept") == "application/json"
 
@@ -162,8 +176,61 @@ async def page_lobby(request: Request, error: str = None):
     return templates.TemplateResponse(request=request, name="lobby.html", context=context)
 
 
+def _dev_mock_tables() -> list:
+    return enrich_lobby_tables(
+        [
+            {
+                "table_id": "table_1",
+                "table_name": "Новички (Low Stake)",
+                "blinds": "10/20",
+                "min_buy_in": 200,
+                "current_players": 5,
+                "max_players": 10,
+            },
+            {
+                "table_id": "table_2",
+                "table_name": "Стандарт (Standard)",
+                "blinds": "50/100",
+                "min_buy_in": 1000,
+                "current_players": 9,
+                "max_players": 9,
+            },
+            {
+                "table_id": "table_3",
+                "table_name": "Хайроллеры (VIP Stake)",
+                "blinds": "500/1000",
+                "min_buy_in": 10000,
+                "current_players": 2,
+                "max_players": 6,
+            },
+            {
+                "table_id": "table_4",
+                "table_name": "Один на один (Heads Up)",
+                "blinds": "100/200",
+                "min_buy_in": 2000,
+                "current_players": 1,
+                "max_players": 2,
+                "is_private": True,
+            },
+        ]
+    )
+
+
 @router.get("/api/lobby/state")
 async def api_lobby_state(request: Request):
+    user = require_user(request)
+    if user and is_dev_mock_user(user):
+        mock_user = enrich_user_wallet_display(dict(user))
+        return _lobby_state_payload(
+            {
+                "tables": _dev_mock_tables(),
+                "is_server_down": False,
+                "user": mock_user,
+                "user_token": mock_user.get("token") or "",
+                "java_host": settings.FRONTEND_JAVA_HOST,
+            }
+        )
+
     lobby_data = await load_lobby_context(request)
     return _respond_lobby_result(lobby_data, json_mode=True)
 
@@ -176,6 +243,9 @@ async def create_table(request: Request, data: CreateTableRequest):
 
     user_id = user.get("user_id")
     target_url = settings.JAVA_TABLES_URL
+
+    if is_dev_mock_user(user):
+        return core_unreachable_json("Создание стола недоступно без игрового ядра")
 
     payload = {
         "name": data.name,
@@ -231,65 +301,7 @@ async def dev_page_lobby(request: Request):
         "avatar_url": "https://api.dicebear.com/7.x/avataaars/svg?seed=ShopTester"
     })
 
-    # 2. Фейковые столы всех возможных типов
-    mock_tables = enrich_lobby_tables([
-        {
-            "table_id": "table_1",
-            "table_name": "Новички (Low Stake)",
-            "blinds": "10/20",
-            "min_buy_in": 200, 
-            "current_players": 5,
-            "max_players": 10
-        },
-        {
-            "table_id": "table_2",
-            "table_name": "Стандарт (Standard)",
-            "blinds": "50/100",
-            "min_buy_in": 1000, 
-            "current_players": 9,
-            "max_players": 9 # Стол заполнен (МЕСТ НЕТ)
-        },
-        {
-            "table_id": "table_3",
-            "table_name": "Хайроллеры (VIP Stake)",
-            "blinds": "500/1000",
-            "min_buy_in": 10000, # У юзера нет таких денег (Блокировка)
-            "current_players": 2,
-            "max_players": 6
-        },
-        {
-            "table_id": "table_4",
-            "table_name": "ОДИН НА ОДИН",
-            "blinds": "100/200",
-            "min_buy_in": 2000, 
-            "current_players": 1,
-            "max_players": 2
-        },
-        {
-            "table_id": "table_4",
-            "table_name": "Один на один (Heads Up)",
-            "blinds": "100/200",
-            "min_buy_in": 2000, 
-            "current_players": 1,
-            "max_players": 2
-        },
-        {
-            "table_id": "table_4",
-            "table_name": "Один на один (Heads Up)",
-            "blinds": "100/200",
-            "min_buy_in": 2000, 
-            "current_players": 1,
-            "max_players": 2
-        },
-        {
-            "table_id": "table_4",
-            "table_name": "Один на один (Heads Up)",
-            "blinds": "100/200",
-            "min_buy_in": 2000, 
-            "current_players": 1,
-            "max_players": 2
-        }
-    ])
+    mock_tables = _dev_mock_tables()
 
     context = {
         "tables": mock_tables,

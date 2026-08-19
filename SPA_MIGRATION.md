@@ -67,10 +67,6 @@ web/          Новый Vite + React + TypeScript
 
 ## Cutover на сервере
 
-1. Собрать SPA: `cd web && npm run build`
-2. Поднять **отдельный** контейнер `polupoker-bff-spa` на порту `8001`
-3. Прогнать чеклист паритета со старым UI
-4. Переключить nginx с `8000` на новый контейнер
-5. PR `rewrite/spa` → `test`, только после проверки
+Docker-образ собирает `web/dist` (multi-stage) и ставит `SPA_SERVE=1`. Тот же контейнер `polupoker-bff` на `:8000` отдаёт React на `/`, `/login`, `/lobby`, `/profile`, `/table/{id}`. `/api` и `/static` не перехватываются. Jinja остаётся для `SPA_SERVE=0` (локальный легаси на `:8000`).
 
-**Не деплоить** эту ветку в текущий `polupoker-bff` на проде до cutover.
+Откат: предыдущий git SHA + `bash scripts/deploy-frontend.sh`.

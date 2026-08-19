@@ -29,10 +29,10 @@ if command -v docker >/dev/null 2>&1 && [ -f Dockerfile ]; then
   docker rm "$CONTAINER" 2>/dev/null || true
 
   if [ -f .env ]; then
-    docker run -d --name "$CONTAINER" --env-file .env -e "APP_VERSION=$GIT_SHA" -p 8000:8000 "$IMAGE"
+    docker run -d --name "$CONTAINER" --env-file .env -e "APP_VERSION=$GIT_SHA" -e "SPA_SERVE=1" -p 8000:8000 "$IMAGE"
   else
     echo "WARN: .env not found — pass env vars manually"
-    docker run -d --name "$CONTAINER" -e "APP_VERSION=$GIT_SHA" -p 8000:8000 "$IMAGE"
+    docker run -d --name "$CONTAINER" -e "APP_VERSION=$GIT_SHA" -e "SPA_SERVE=1" -p 8000:8000 "$IMAGE"
   fi
 else
   echo "==> No Docker — restart uvicorn/systemd manually with:"

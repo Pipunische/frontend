@@ -1,6 +1,8 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse
+from pathlib import Path
+
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
@@ -9,6 +11,7 @@ from app.config import settings
 from app.services import templates, java_request, is_core_unreachable
 from app.routers import auth, lobby, tables, emote_shop
 from app.session_utils import require_user, unauthorized_json
+from app.spa import mount_spa_assets, spa_enabled, spa_index_response
 
 app = FastAPI(title="PoluPoker BFF", version="2.0.0")
 
@@ -54,6 +57,7 @@ app.include_router(auth.router)
 app.include_router(lobby.router)
 app.include_router(tables.router)
 app.include_router(emote_shop.router)
+mount_spa_assets(app)
 
 
 @app.get("/api/health")
@@ -86,6 +90,9 @@ async def api_health_core(request: Request):
 
 @app.get("/", response_class=HTMLResponse)
 def page_home(request: Request):
+    if spa_enabled():
+        return spa_index_response()
+
     current_user = request.session.get("user")
 
     context = {
@@ -97,3 +104,22 @@ def page_home(request: Request):
     return templates.TemplateResponse(
         request=request, name="home.html", context=context
     )
+
+
+@app.get("/favicon.svg")
+def spa_favicon():
+    if spa_enabled():
+        icon = Path("web/dist/favicon.svg")
+        if icon.is_file():
+            return FileResponse(icon)
+    return JSONResponse(status_code=404, content={"detail": "Not Found"})
+
+
+@app.get("/{full_path:path}", response_class=HTMLResponse)
+def spa_fallback(full_path: str):
+    """Client routes that are not API/static/Jinja (e.g. future SPA paths)."""
+    if not spa_enabled():
+        return JSONResponse(status_code=404, content={"detail": "Not Found"})
+    if full_path.startswith("api/") or full_path.startswith("static/"):
+        return JSONResponse(status_code=404, content={"detail": "Not Found"})
+    return spa_index_response()

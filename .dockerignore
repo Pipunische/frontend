@@ -1,0 +1,14 @@
+.git
+.cursor
+.github
+venv
+__pycache__
+**/__pycache__
+*.pyc
+.env
+.env.*
+web/node_modules
+web/dist
+*.md
+.idea
+.vscode

@@ -19,6 +19,11 @@ class CreateTableRequest(BaseModel):
             raise ValueError(f"max_players_num must be one of: {allowed}")
         return value
 
+class JoinTableRequest(BaseModel):
+    chips: int
+    passcode: str | None = None
+
+
 class NicknameRequest(BaseModel):
     new_nickname: str
 

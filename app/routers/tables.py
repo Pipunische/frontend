@@ -15,7 +15,7 @@ from app.emote_shop import (
     panel_emotes_for_owned,
     premium_emote_ids,
 )
-from app.models import ActionRequest
+from app.models import ActionRequest, JoinTableRequest
 from app.table_layouts import (
     build_opponent_seats_by_pos,
     get_opponent_pos_layout,
@@ -29,11 +29,13 @@ from app.services import (
     is_core_unreachable,
 )
 from app.session_utils import (
+    is_dev_mock_user,
     require_user,
     respond_page_or_json,
     sync_user_wallet,
     unauthorized_json,
 )
+from app.spa import spa_enabled, spa_index_response
 
 router = APIRouter(tags=["Game Tables"])
 
@@ -246,6 +248,11 @@ async def dev_page_table(request: Request, size: int = 10, vip: int = 0):
     Купленные эмодзи берутся из session (после магазина в /dev-lobby).
     ?vip=1 — открыть все VIP-эмодзи для превью панели.
     """
+    if spa_enabled():
+        if not require_user(request):
+            return RedirectResponse(url="/login", status_code=303)
+        return spa_index_response()
+
     from app.table_layouts import SEAT_LAYOUTS
 
     max_players = size if size in SEAT_LAYOUTS else 10
@@ -333,9 +340,183 @@ async def dev_page_table(request: Request, size: int = 10, vip: int = 0):
     return templates.TemplateResponse(name="table.html", context=context, request=request)
 
 
+_MOCK_TABLE_META = {
+    "table_1": ("Новички (Low Stake)", 10),
+    "table_2": ("Стандарт (Standard)", 9),
+    "table_3": ("Хайроллеры (VIP Stake)", 6),
+    "table_4": ("Один на один (Heads Up)", 2),
+}
+
+
+def _spa_mock_table_context(request: Request, table_id: str) -> dict:
+    """HTTP snapshot for fake_token SPA sessions (after /dev-lobby join)."""
+    from app.table_layouts import SEAT_LAYOUTS
+
+    my_user = require_user(request) or {}
+    table_name, size = _MOCK_TABLE_META.get(table_id, ("Dev table", 6))
+    max_players = size if size in SEAT_LAYOUTS else 6
+    max_opponents = max(max_players - 1, 0)
+    avatar = my_user.get("avatar_url") or ""
+    hero_id = str(my_user.get("user_id") or "dev_shop_user")
+    hero_name = my_user.get("name") or "ShopTester"
+
+    mock_my_player = {
+        "user_id": hero_id,
+        "name": hero_name,
+        "seat_index": 0,
+        "chips": 1500,
+        "status": "ACTIVE",
+        "is_dealer": True,
+        "is_active_turn": True,
+        "round_contribution": 100,
+        "amount_to_call": 0,
+        "avatar_url": avatar,
+    }
+    bot_names = ["SiliVal", "Ivan99", "ProGamer", "Kicker", "Loser99", "Shark", "Fish", "Lucky", "Donk"]
+    mock_players = [mock_my_player]
+    for rel_idx in range(max_opponents):
+        if rel_idx >= len(bot_names):
+            break
+        mock_players.append(
+            {
+                "user_id": f"opp_{rel_idx}",
+                "name": bot_names[rel_idx],
+                "seat_index": rel_idx + 1,
+                "chips": 1000 + (rel_idx * 350),
+                "status": "ACTIVE",
+                "is_dealer": False,
+                "is_active_turn": False,
+                "round_contribution": 50,
+                "cards": ["card_back", "card_back"],
+                "avatar_url": f"https://api.dicebear.com/7.x/avataaars/svg?seed={bot_names[rel_idx]}"
+                if rel_idx % 2 == 0
+                else "",
+            }
+        )
+
+    mock_game = {
+        "state": "FLOP",
+        "pot": 150,
+        "big_blind": 100,
+        "max_players": max_players,
+        "community_cards": ["As", "Kh", "10d"],
+        "players": mock_players,
+        "dealer_seat": 0,
+        "current_turn_seat": 0,
+        "time_to_act_ms": 15000,
+        "table_name": table_name,
+    }
+    context = _build_table_context(
+        mock_game,
+        table_id,
+        my_user,
+        owned_emote_ids=[],
+        include_mock_emotes=True,
+    )
+    context["table_name"] = table_name
+    context["my_cards"] = ["Ah", "Ac"]
+    context["is_dev_table"] = True
+    return context
+
+
+@router.post("/api/tables/{table_id}/join")
+async def api_join_table(request: Request, table_id: str, data: JoinTableRequest):
+    """JSON join for the SPA. HTML join via GET /table/{id}?buy_in= stays unchanged."""
+    my_user = require_user(request)
+    if not my_user:
+        return unauthorized_json()
+
+    chips = int(data.chips)
+    passcode = (data.passcode or "").strip()
+
+    if chips <= 0:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "errorType": "ChipAmountException",
+                "message": "Введите корректную сумму входа.",
+            },
+        )
+
+    if is_dev_mock_user(my_user):
+        return {"status": "success", "redirect": f"/table/{table_id}"}
+
+    base_table_url = f"{settings.JAVA_TABLES_URL}/{table_id}"
+    response = await java_request("GET", base_table_url, request)
+
+    if is_core_unreachable(response):
+        return core_unreachable_json("Не удалось сесть за стол")
+
+    if response.status_code == 401:
+        request.session.clear()
+        return unauthorized_json()
+
+    if response.status_code != 200:
+        return JSONResponse(
+            status_code=404,
+            content={"errorType": "JoinError", "message": "Стол не найден"},
+        )
+
+    game_state = response.json()
+    my_id = str(my_user.get("user_id"))
+    current_player_ids = [str(p.get("user_id")) for p in game_state.get("players", [])]
+
+    if my_id in current_player_ids:
+        return {"status": "success", "redirect": f"/table/{table_id}"}
+
+    min_required = int(game_state.get("min_buy_in", 0))
+    wallet = int(my_user.get("wallet_balance", 0))
+
+    if wallet < min_required:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "errorType": "ChipAmountException",
+                "message": "Недостаточно средств для этого стола.",
+            },
+        )
+
+    final_buy_in = chips if chips >= min_required else min_required
+    join_data = {
+        "user_id": my_id,
+        "chips": final_buy_in,
+        "token": my_user.get("token"),
+        "passcode": passcode,
+    }
+
+    logger.info(f"🚀 Игрок {my_user['name']} садится за стол {table_id} с buy_in: {final_buy_in}")
+    join_res = await java_request("POST", f"{base_table_url}/join", request, json_data=join_data)
+
+    if is_core_unreachable(join_res):
+        return core_unreachable_json("Не удалось сесть за стол")
+
+    if join_res and join_res.status_code == 200:
+        logger.success("✅ Успешная посадка")
+        return {"status": "success", "redirect": f"/table/{table_id}"}
+
+    try:
+        resp_json = join_res.json()
+        error_message = resp_json.get("message", "Ошибка посадки")
+        error_type = resp_json.get("errorType", "JoinError")
+    except Exception:
+        error_message = "Сервер отклонил посадку"
+        error_type = "JoinError"
+
+    logger.error(f"❌ Ошибка посадки: {error_type} - {error_message}")
+    return JSONResponse(
+        status_code=400,
+        content={"errorType": error_type, "message": error_message},
+    )
+
+
 @router.get("/table/{table_id}", response_class=HTMLResponse)
 async def page_table(request: Request, table_id: str, buy_in: int = 0, passcode: str = ""):
     json_mode = request.headers.get("accept") == "application/json"
+
+    if spa_enabled() and not json_mode:
+        if not require_user(request):
+            return RedirectResponse(url="/login", status_code=303)
+        return spa_index_response()
 
     try:
         result = await load_table_context(
@@ -357,6 +538,10 @@ async def page_table(request: Request, table_id: str, buy_in: int = 0, passcode:
 @router.get("/api/table/{table_id}/state")
 async def api_table_state(request: Request, table_id: str):
     try:
+        user = require_user(request)
+        if user and is_dev_mock_user(user):
+            return JSONResponse(content=_table_state_json(_spa_mock_table_context(request, table_id)))
+
         result = await load_table_context(request, table_id, allow_join=False)
         return _respond_table_result(result, json_mode=True)
     except Exception as e:

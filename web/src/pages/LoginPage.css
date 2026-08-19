@@ -1,0 +1,32 @@
+.login-root {
+  position: relative;
+  z-index: 10;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.login-hint {
+  color: #bdc3c7;
+  font-size: 14px;
+  margin-bottom: 30px;
+  text-align: center;
+}
+
+.login-loading {
+  margin-top: 20px;
+  color: #f1c40f;
+  font-weight: bold;
+}
+
+.g_id_signin {
+  min-height: 40px;
+}
