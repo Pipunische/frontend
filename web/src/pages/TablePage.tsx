@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ApiError } from "../api/client";
+import { fetchEmotes } from "../api/emotes";
 import {
   fetchTableState,
   postTableAction,
@@ -18,6 +19,7 @@ import { DevTableControls } from "../table/DevTableControls";
 import { PingIndicator } from "../table/PingIndicator";
 import { PokerTableShell } from "../table/PokerTableShell";
 import { RebuyModal } from "../table/RebuyModal";
+import { applyOwnedEmotes } from "../table/tableEmotes";
 import {
   resetTablePipeline,
   seedInitialTableFx,
@@ -73,6 +75,7 @@ export function TablePage() {
 
     let cancelled = false;
     reset();
+    resetTablePipeline();
     setReady(false);
     setError(null);
     void fetchTableState(tableId)
@@ -141,6 +144,37 @@ export function TablePage() {
       resetTablePipeline();
     };
   }, [showToast]);
+
+  useEffect(() => {
+    if (!ready || mockTable) {
+      return;
+    }
+    let cancelled = false;
+    const refreshEmotes = () => {
+      void fetchEmotes()
+        .then((shop) => {
+          if (!cancelled) {
+            applyOwnedEmotes(shop);
+          }
+        })
+        .catch(() => {
+          /* keep current panel if shop is briefly unavailable */
+        });
+    };
+    refreshEmotes();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        refreshEmotes();
+      }
+    };
+    window.addEventListener("focus", onVisible);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", onVisible);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [mockTable, ready, tableId]);
 
   const goFromCommand = useCallback(
     (result: TableCommandResult) => {

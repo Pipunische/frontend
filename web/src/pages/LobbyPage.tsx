@@ -7,7 +7,7 @@ import { CreateTableModal } from "../components/lobby/CreateTableModal";
 import { EmoteShopModal } from "../components/lobby/EmoteShopModal";
 import { TableCard } from "../components/lobby/TableCard";
 import { ToastHost } from "../components/ToastHost";
-import { useStaticCss } from "../hooks/useStaticCss";
+import { prefetchStaticCss, useStaticCss } from "../hooks/useStaticCss";
 import { useToasts } from "../hooks/useToasts";
 import { formatPokerAmount } from "../lib/format";
 import { toastFromUnknown } from "../lib/toast";
@@ -18,6 +18,9 @@ const LOBBY_CSS = ["/static/css/lobby.css", "/static/css/modals.css"] as const;
 
 export function LobbyPage() {
   useStaticCss(LOBBY_CSS);
+  useEffect(() => {
+    prefetchStaticCss(["/static/css/profile.css"]);
+  }, []);
   const { user: sessionUser, logout, refresh } = useAuth();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
@@ -185,7 +188,11 @@ export function LobbyPage() {
             </div>
             <Link to="/profile" className="lobby-profile" title="Перейти в профиль">
               <div className="lobby-avatar">
-                {avatar ? <img src={avatar} alt="" /> : name.slice(0, 1).toUpperCase()}
+                {avatar ? (
+                  <img src={avatar} alt="" width={48} height={48} />
+                ) : (
+                  name.slice(0, 1).toUpperCase()
+                )}
               </div>
               <span className="lobby-username">{name}</span>
             </Link>

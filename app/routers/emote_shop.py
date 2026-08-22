@@ -136,7 +136,11 @@ async def api_purchase_emote(request: Request, body: EmotePurchaseRequest):
 
     if response.status_code == 200:
         try:
-            result = enrich_java_shop_payload(response.json(), user_id=user_id)
+            result = enrich_java_shop_payload(
+                response.json(),
+                user_id=user_id,
+                extra_owned=[body.emote_id],
+            )
         except Exception as exc:
             logger.error(f"Emote shop purchase: не удалось разобрать ответ Java: {exc}")
             return JSONResponse(status_code=502, content={"errorType": "InvalidResponse", "message": "Некорректный ответ сервера"})

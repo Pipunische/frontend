@@ -141,7 +141,7 @@ export function ProfilePage() {
             <div className="profile-avatar-ring" aria-hidden="true" />
             <div className="profile-avatar" id="avatar-container">
               {shownAvatar ? (
-                <img src={shownAvatar} alt="Avatar" />
+                <img src={shownAvatar} alt="Avatar" width={168} height={168} />
               ) : (
                 (name || "?").slice(0, 1).toUpperCase()
               )}

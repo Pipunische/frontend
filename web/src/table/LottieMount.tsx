@@ -5,10 +5,12 @@ export function LottieMount({
   url,
   className,
   loop = true,
+  fallback,
 }: {
   url: string;
   className?: string;
   loop?: boolean;
+  fallback?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
 
@@ -20,23 +22,43 @@ export function LottieMount({
     let cancelled = false;
     let anim: AnimationItem | null = null;
     el.innerHTML = "";
-    void import("lottie-web").then((mod) => {
-      if (cancelled || !ref.current) {
-        return;
-      }
-      anim = mod.default.loadAnimation({
-        container: ref.current,
-        renderer: "svg",
-        loop,
-        autoplay: true,
-        path: url,
+    el.removeAttribute("data-lottie-error");
+    void import("lottie-web")
+      .then((mod) => {
+        if (cancelled || !ref.current) {
+          return;
+        }
+        anim = mod.default.loadAnimation({
+          container: ref.current,
+          renderer: "svg",
+          loop,
+          autoplay: true,
+          path: url,
+        });
+        anim.addEventListener("data_failed", () => {
+          console.error("Lottie failed to load", url);
+          if (ref.current) {
+            ref.current.dataset.lottieError = "1";
+            if (fallback) {
+              ref.current.textContent = fallback;
+            }
+          }
+        });
+      })
+      .catch((error) => {
+        console.error("Lottie module failed to load", error);
+        if (!cancelled && ref.current) {
+          ref.current.dataset.lottieError = "1";
+          if (fallback) {
+            ref.current.textContent = fallback;
+          }
+        }
       });
-    });
     return () => {
       cancelled = true;
       anim?.destroy();
     };
-  }, [loop, url]);
+  }, [fallback, loop, url]);
 
   return <div ref={ref} className={className} />;
 }

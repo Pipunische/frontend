@@ -46,7 +46,7 @@ export function HomePage() {
               <div className="home-welcome">
                 <div className="home-avatar">
                   {user.avatar_url ? (
-                    <img src={user.avatar_url} alt="" />
+                    <img src={user.avatar_url} alt="" width={56} height={56} />
                   ) : (
                     (user.name || "?").slice(0, 1).toUpperCase()
                   )}

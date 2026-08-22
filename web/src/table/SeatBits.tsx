@@ -16,12 +16,20 @@ export function SeatAvatar({ url, name }: { url?: string; name: string }) {
       src={url}
       className="seat-avatar"
       alt=""
+      width={100}
+      height={100}
       onError={() => setFailed(true)}
     />
   );
 }
 
-export function TimerRing({ active, durationMs }: { active: boolean; durationMs: number }) {
+export function TimerRing({
+  active,
+  durationMs,
+}: {
+  active: boolean;
+  durationMs: number;
+}) {
   const svgRef = useRef<SVGSVGElement>(null);
   const circleRef = useRef<SVGCircleElement>(null);
 
@@ -95,7 +103,13 @@ export function TimerRing({ active, durationMs }: { active: boolean; durationMs:
   return (
     <svg ref={svgRef} className="timer-svg" viewBox="0 0 80 80">
       <circle className="timer-bg" cx="40" cy="40" r="36" />
-      <circle ref={circleRef} className="timer-progress" cx="40" cy="40" r="36" />
+      <circle
+        ref={circleRef}
+        className="timer-progress"
+        cx="40"
+        cy="40"
+        r="36"
+      />
     </svg>
   );
 }
@@ -153,11 +167,18 @@ export function OccupiedSeatBody({
       </div>
       {player.is_dealer ? <div className="dealer-button">D</div> : null}
       <div className="avatar-timer-wrap">
-        <TimerRing active={Boolean(player.is_active_turn)} durationMs={timeToActMs} />
+        <TimerRing
+          active={Boolean(player.is_active_turn)}
+          durationMs={timeToActMs}
+        />
         <SeatAvatar url={player.avatar_url} name={player.name} />
       </div>
-      <div className={`seat-info-badge${winnerPulse ? " winner-payout-pulse" : ""}`}>
-        <span className={`player-name${player.is_active_turn ? " active-turn" : ""}`}>
+      <div
+        className={`seat-info-badge${winnerPulse ? " winner-payout-pulse" : ""}`}
+      >
+        <span
+          className={`player-name${player.is_active_turn ? " active-turn" : ""}`}
+        >
           {player.name}
         </span>
         <span
@@ -196,7 +217,11 @@ export function OccupiedSeatBody({
       {emote ? (
         emoteLottie ? (
           <div className="player-emote player-emote--lottie">
-            <LottieMount url={emoteLottie} className="player-emote__lottie" />
+            <LottieMount
+              url={emoteLottie}
+              className="player-emote__lottie"
+              fallback={emoteEmoji}
+            />
           </div>
         ) : (
           <div className="player-emote">{emoteEmoji || "💬"}</div>

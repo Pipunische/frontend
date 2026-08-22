@@ -131,7 +131,7 @@ export function EmoteShopModal({
               <div className="emote-shop-loading">Загрузка магазина...</div>
             ) : (
               catalog.map((item) => {
-                const isOwned = Boolean(item.owned) || owned.has(item.emote_id);
+                const isOwned = owned.has(item.emote_id);
                 const isDefault = Boolean(item.is_default);
                 const canAfford = wallet >= item.price;
                 const iconClass = item.style_class
@@ -151,6 +151,7 @@ export function EmoteShopModal({
                       <LottieMount
                         url={item.lottie_url}
                         className={`${iconClass} emote-shop-card__icon--lottie`}
+                        fallback={item.emoji}
                       />
                     ) : (
                       <div className={iconClass}>{item.emoji}</div>

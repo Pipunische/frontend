@@ -1,5 +1,6 @@
 import { BrowserRouter, Route, Routes } from "react-router-dom";
-import { SHARED_APP_CSS, useStaticCss } from "./hooks/useStaticCss";
+import { SHARED_APP_CSS, initStaticCssVersion, useStaticCss } from "./hooks/useStaticCss";
+import "./styles/critical.css";
 import { AuthProvider } from "./auth/AuthProvider";
 import { RequireAuth } from "./auth/RequireAuth";
 import { HomePage } from "./pages/HomePage";
@@ -11,6 +12,7 @@ import { DevTablePage } from "./pages/DevTablePage";
 import "./App.css";
 
 function App() {
+  void initStaticCssVersion();
   useStaticCss(SHARED_APP_CSS);
   return (
     <BrowserRouter>

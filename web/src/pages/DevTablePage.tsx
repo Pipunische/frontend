@@ -23,14 +23,28 @@ function buildLocalDevSnapshot(
     avatar_url?: string;
     java_host?: string;
   },
-  shop?: { catalog?: Array<{ emote_id: string; emoji?: string; name?: string; owned?: boolean; is_default?: boolean; style_class?: string; lottie_url?: string }> },
+  shop?: {
+    owned_emote_ids?: string[];
+    catalog?: Array<{
+      emote_id: string;
+      emoji?: string;
+      name?: string;
+      owned?: boolean;
+      is_default?: boolean;
+      style_class?: string;
+      lottie_url?: string;
+    }>;
+  },
 ): TableSnapshot {
   const heroId = String(user.user_id || "17");
   const heroName = user.name || "DevHero";
   const avatar = user.avatar_url || "";
   const maxPlayers = 6;
   const layout = getOpponentPosLayout(maxPlayers);
-  const panelSource = (shop?.catalog || []).filter((item) => item.is_default || item.owned);
+  const ownedIds = new Set(shop?.owned_emote_ids ?? []);
+  const panelSource = (shop?.catalog || []).filter(
+    (item) => item.is_default || ownedIds.has(item.emote_id),
+  );
   const panel_emotes: Array<{
     emote_id: string;
     emoji?: string;

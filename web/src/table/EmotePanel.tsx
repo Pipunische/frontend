@@ -31,7 +31,11 @@ export function EmotePanel({
             }}
           >
             {emote.lottie_url ? (
-              <LottieMount url={emote.lottie_url} className="emote-lottie-thumb" />
+              <LottieMount
+                url={emote.lottie_url}
+                className="emote-lottie-thumb"
+                fallback={emote.emoji}
+              />
             ) : (
               emote.emoji
             )}

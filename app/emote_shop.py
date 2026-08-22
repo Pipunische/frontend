@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from loguru import logger
@@ -116,6 +117,39 @@ LOTTIE_STATIC_PREFIX = "/static/lottie"
 VIP_USER_IDS = {"17"}
 
 
+def canonicalize_emote_id(raw: Any) -> str:
+    """Map Java aliases (sadEmoji, Piggy) onto BFF catalog ids."""
+    if raw is None:
+        return ""
+    text = str(raw).strip()
+    if not text:
+        return ""
+    if text in CATALOG_BY_ID:
+        return text
+    lowered = text.lower().replace("-", "_")
+    if lowered in CATALOG_BY_ID:
+        return lowered
+    snake = re.sub(r"(?<!^)(?=[A-Z])", "_", text).lower()
+    if snake in CATALOG_BY_ID:
+        return snake
+    compact = lowered.replace("_", "")
+    for emote_id in CATALOG_BY_ID:
+        if emote_id.replace("_", "") == compact:
+            return emote_id
+    return text
+
+
+def _normalize_owned_ids(raw: Any) -> list[str]:
+    if not isinstance(raw, list):
+        return []
+    owned: list[str] = []
+    for item in raw:
+        emote_id = canonicalize_emote_id(item)
+        if emote_id and emote_id not in owned:
+            owned.append(emote_id)
+    return owned
+
+
 def lottie_static_url(filename: str) -> str:
     name = (filename or "").lstrip("/")
     return f"{LOTTIE_STATIC_PREFIX}/{name}"
@@ -220,6 +254,7 @@ def merge_owned_ids(*id_lists: list[str] | None, include_mock: bool = False) -> 
         if not ids:
             continue
         for emote_id in ids:
+            emote_id = canonicalize_emote_id(emote_id)
             if not emote_id or emote_id in merged:
                 continue
             item = CATALOG_BY_ID.get(emote_id)
@@ -286,26 +321,46 @@ def enrich_java_shop_payload(
     java_data: dict[str, Any],
     *,
     user_id: Any = None,
+    extra_owned: list[str] | None = None,
 ) -> dict[str, Any]:
     wallet_balance = int(_pick_field(java_data, "wallet_balance", "walletBalance") or 0)
     owned_raw = _pick_field(java_data, "owned_emote_ids", "ownedEmoteIds")
-    base_owned = owned_raw if isinstance(owned_raw, list) else default_owned_emote_ids()
-    owned_ids = owned_ids_for_user(user_id, base_owned)
+    if owned_raw is None:
+        base_owned = default_owned_emote_ids()
+    else:
+        base_owned = _normalize_owned_ids(owned_raw)
+    purchased = canonicalize_emote_id(_pick_field(java_data, "emote_id", "emoteId"))
+    owned_ids = owned_ids_for_user(
+        user_id,
+        merge_owned_ids(base_owned, [purchased] if purchased else None, extra_owned),
+    )
     owned_set = set(owned_ids)
 
     java_catalog = java_data.get("catalog")
     if isinstance(java_catalog, list) and java_catalog:
         catalog: list[dict[str, Any]] = []
+        seen: set[str] = set()
         for row in java_catalog:
-            emote_id = _pick_field(row, "emote_id", "emoteId")
-            if not emote_id:
+            if not isinstance(row, dict):
                 continue
+            emote_id = canonicalize_emote_id(_pick_field(row, "emote_id", "emoteId"))
+            if not emote_id or emote_id in seen:
+                continue
+            seen.add(emote_id)
             front = CATALOG_BY_ID.get(emote_id) or {}
             if front.get("mock_only"):
                 continue
-            merged = enrich_emote_entry({**front, **row, "emote_id": emote_id})
-            merged["owned"] = bool(_pick_field(row, "owned")) or emote_id in owned_set
+            merged_src = {**front, **row, "emote_id": emote_id}
+            if front.get("lottie"):
+                merged_src["lottie"] = front["lottie"]
+                merged_src["lottie_url"] = lottie_static_url(front["lottie"])
+            merged = enrich_emote_entry(merged_src)
+            if bool(_pick_field(row, "owned")) and emote_id not in owned_set:
+                owned_ids = merge_owned_ids(owned_ids, [emote_id])
+                owned_set.add(emote_id)
             catalog.append(merged)
+        for item in catalog:
+            item["owned"] = item["emote_id"] in owned_set
     else:
         catalog = build_client_catalog(owned_ids)
 

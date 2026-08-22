@@ -1088,9 +1088,9 @@ export async function applyHttpTableSnapshot(data: TableSnapshot, reason: string
   }
   const next = {
     ...buildSnapshotFromGame(data.game, { ...prevLogical, ...data }, data.my_cards),
-    panel_emotes: data.panel_emotes || prevLogical.panel_emotes,
-    emotes_dict: data.emotes_dict || prevLogical.emotes_dict,
-    emotes_lottie_dict: data.emotes_lottie_dict || prevLogical.emotes_lottie_dict,
+    panel_emotes: data.panel_emotes ?? prevLogical.panel_emotes,
+    emotes_dict: data.emotes_dict ?? prevLogical.emotes_dict,
+    emotes_lottie_dict: data.emotes_lottie_dict ?? prevLogical.emotes_lottie_dict,
     is_dev_table: data.is_dev_table ?? prevLogical.is_dev_table,
   };
   setLogical(next);
