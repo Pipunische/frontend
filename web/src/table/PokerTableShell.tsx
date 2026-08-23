@@ -1,5 +1,6 @@
 import { cardPngUrl } from "../lib/cards";
 import type { TablePlayer, TableSnapshot } from "../api/table";
+import { DEFAULT_TURN_MS } from "./layout";
 import { ChipFlyLayer } from "./ChipFlyLayer";
 import { EmotePanel } from "./EmotePanel";
 import { OccupiedSeatBody } from "./SeatBits";
@@ -16,7 +17,15 @@ function opponentAtPos(
   return byPos[String(posNum)] ?? null;
 }
 
-export function PokerTableShell({ snapshot }: { snapshot: TableSnapshot }) {
+export function PokerTableShell({
+  snapshot,
+  turnSeat,
+  timeToActMs: timeToActProp,
+}: {
+  snapshot: TableSnapshot;
+  turnSeat?: number;
+  timeToActMs?: number;
+}) {
   const fx = useTableFxStore((s) => s.fx);
   const layout = snapshot.seat_layout_opponents || [];
   const game = snapshot.game || {};
@@ -27,8 +36,14 @@ export function PokerTableShell({ snapshot }: { snapshot: TableSnapshot }) {
     : game.community_cards || [];
   const hero = snapshot.my_player;
   const user = snapshot.user || {};
-  const timeToActMs = game.time_to_act_ms ?? 0;
-  const heroPlayer: TablePlayer = {
+  const activeTurn = Number(turnSeat ?? game.current_turn_seat ?? -1);
+  const timeToActMs =
+    activeTurn >= 0 ? (timeToActProp ?? game.time_to_act_ms ?? DEFAULT_TURN_MS) : 0;
+  const withTurn = (player: TablePlayer): TablePlayer => ({
+    ...player,
+    is_active_turn: Number(player.seat_index) === activeTurn,
+  });
+  const heroPlayer: TablePlayer = withTurn({
     user_id: String(hero?.user_id || user.user_id || ""),
     name: hero?.name || user.name || "",
     seat_index: hero?.seat_index ?? -1,
@@ -38,7 +53,7 @@ export function PokerTableShell({ snapshot }: { snapshot: TableSnapshot }) {
     is_active_turn: hero?.is_active_turn,
     avatar_url: hero?.avatar_url || user.avatar_url,
     round_contribution: hero?.round_contribution,
-  };
+  });
 
   const potClass =
     fx.potPulse === "collect"
@@ -98,7 +113,12 @@ export function PokerTableShell({ snapshot }: { snapshot: TableSnapshot }) {
 
       {Array.from({ length: 9 }, (_, i) => i + 1).map((posNum) => {
         const isActive = layout.includes(posNum);
-        const player = isActive ? opponentAtPos(snapshot, posNum) : null;
+        const player = isActive
+          ? (() => {
+              const raw = opponentAtPos(snapshot, posNum);
+              return raw ? withTurn(raw) : null;
+            })()
+          : null;
         const status = player ? (player.status || "active").toLowerCase() : "empty";
         const extras = player ? seatExtras(player.user_id) : null;
         return (

@@ -39,6 +39,28 @@ function parseRedirect(payload: unknown): string {
   return SESSION_EXPIRED_PATH;
 }
 
+function firstString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function errorMessageFromPayload(payload: unknown, status: number): string {
+  if (isRecord(payload)) {
+    const fromBody = firstString(payload.message, payload.detail, payload.error);
+    if (fromBody) {
+      return fromBody;
+    }
+  }
+  if (typeof payload === "string" && payload.trim()) {
+    return payload;
+  }
+  return `Request failed: ${status}`;
+}
+
 export async function apiFetch<T = unknown>(
   path: string,
   options: ApiOptions = {},
@@ -75,13 +97,7 @@ export async function apiFetch<T = unknown>(
   }
 
   if (!response.ok) {
-    const message =
-      isRecord(payload) && typeof payload.error === "string"
-        ? payload.error
-        : typeof payload === "string" && payload
-          ? payload
-          : `Request failed: ${response.status}`;
-    throw new ApiError(message, response.status, payload);
+    throw new ApiError(errorMessageFromPayload(payload, response.status), response.status, payload);
   }
 
   return payload as T;

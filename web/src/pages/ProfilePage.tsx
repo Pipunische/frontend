@@ -111,6 +111,7 @@ export function ProfilePage() {
     }
     setSavingAvatar(true);
     setError(null);
+    setMessage(null);
     try {
       const result = await uploadAvatar(file);
       if (result.avatar_url) {

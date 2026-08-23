@@ -10,6 +10,36 @@ const SEAT_LAYOUTS: Record<number, number[]> = {
 };
 
 const DEFAULT_MAX_PLAYERS = 10;
+export const DEFAULT_TURN_MS = 15000;
+
+export function resolveTimeToActMs(
+  source: Record<string, unknown>,
+  prevTurn: number | undefined,
+  nextTurn: number | undefined,
+  prevTime?: number,
+): number {
+  const raw = source.time_to_act_ms ?? source.timeToActMs;
+  if (raw != null && raw !== "") {
+    const n = Number(raw);
+    if (Number.isFinite(n)) {
+      return n;
+    }
+  }
+  if (nextTurn != null && Number(nextTurn) >= 0 && Number(nextTurn) !== Number(prevTurn ?? -2)) {
+    return DEFAULT_TURN_MS;
+  }
+  if (prevTime != null && Number.isFinite(Number(prevTime))) {
+    return Number(prevTime);
+  }
+  return nextTurn != null && Number(nextTurn) >= 0 ? DEFAULT_TURN_MS : 0;
+}
+
+function withActiveTurn<T extends { seat_index?: number; is_active_turn?: boolean }>(
+  player: T,
+  activeIdx: number,
+): T {
+  return { ...player, is_active_turn: Number(player.seat_index) === activeIdx };
+}
 
 let heroHoleCache: { tableId: string; cards: string[] } | null = null;
 
@@ -470,14 +500,32 @@ export function applyPlayerActionEvent(
     ? patchPlayerFromAction(prev.my_player, event, playerState, dealerSeat)
     : null;
 
+  const rawTurn = event.current_turn_seat ?? event.currentTurnSeat;
+  const current_turn_seat =
+    rawTurn != null ? Number(rawTurn) : prev.game.current_turn_seat;
+  const time_to_act_ms = resolveTimeToActMs(
+    event,
+    prev.game.current_turn_seat,
+    current_turn_seat,
+    prev.game.time_to_act_ms,
+  );
+  const activeIdx = Number(current_turn_seat ?? -1);
+
   return {
     ...prev,
-    my_player,
-    opponent_seats_by_pos,
+    my_player: my_player ? withActiveTurn(my_player, activeIdx) : null,
+    opponent_seats_by_pos: Object.fromEntries(
+      Object.entries(opponent_seats_by_pos).map(([pos, seat]) => [
+        pos,
+        seat ? withActiveTurn(seat, activeIdx) : null,
+      ]),
+    ),
     game: {
       ...prev.game,
       pot,
-      players: nextPlayers,
+      current_turn_seat,
+      time_to_act_ms,
+      players: nextPlayers.map((player) => withActiveTurn(player, activeIdx)),
     },
   };
 }
@@ -537,5 +585,11 @@ export function applyStreetEndEvent(
   if (event.pot != null) {
     game.pot = Number(event.pot);
   }
+  game.time_to_act_ms = resolveTimeToActMs(
+    event,
+    prev.game.current_turn_seat,
+    game.current_turn_seat,
+    prev.game.time_to_act_ms,
+  );
   return buildSnapshotFromGame(game, prev, prev.my_cards);
 }

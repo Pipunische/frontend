@@ -185,14 +185,27 @@ async def upload_avatar(request: Request, avatar: UploadFile = File(...)):
                         )
                     return RedirectResponse(url="/profile?error=beckend_error", status_code=303)
             else:
-                logger.error(f"❌ Ядро отклонило файл. Статус: {response.status_code}")
+                body_text = (response.text or "")[:500]
+                error_type = "UploadRejected"
+                message = "Ядро отклонило файл"
+                try:
+                    err = response.json()
+                    if isinstance(err, dict):
+                        message = str(err.get("message") or err.get("error") or message)
+                        error_type = str(err.get("errorType") or err.get("error_type") or error_type)
+                except Exception:
+                    if body_text:
+                        message = body_text
+                logger.error(
+                    f"❌ Ядро отклонило файл. Статус: {response.status_code} | Body: {body_text}"
+                )
                 if json_mode:
                     return JSONResponse(
                         status_code=response.status_code,
                         content={
                             "error": True,
-                            "errorType": "UploadRejected",
-                            "message": "Ядро отклонило файл",
+                            "errorType": error_type,
+                            "message": message,
                         },
                     )
                 return RedirectResponse(url="/profile?error=upload_rejected", status_code=303)

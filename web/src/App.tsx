@@ -3,6 +3,7 @@ import { SHARED_APP_CSS, initStaticCssVersion, useStaticCss } from "./hooks/useS
 import "./styles/critical.css";
 import { AuthProvider } from "./auth/AuthProvider";
 import { RequireAuth } from "./auth/RequireAuth";
+import { PokerWsProvider } from "./ws/PokerWsProvider";
 import { HomePage } from "./pages/HomePage";
 import { LobbyPage } from "./pages/LobbyPage";
 import { LoginPage } from "./pages/LoginPage";
@@ -17,7 +18,8 @@ function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <Routes>
+        <PokerWsProvider>
+          <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route
@@ -52,7 +54,8 @@ function App() {
               </RequireAuth>
             }
           />
-        </Routes>
+          </Routes>
+        </PokerWsProvider>
       </AuthProvider>
     </BrowserRouter>
   );

@@ -168,6 +168,7 @@ export function OccupiedSeatBody({
       {player.is_dealer ? <div className="dealer-button">D</div> : null}
       <div className="avatar-timer-wrap">
         <TimerRing
+          key={`${player.seat_index}-${player.is_active_turn ? "on" : "off"}-${timeToActMs}`}
           active={Boolean(player.is_active_turn)}
           durationMs={timeToActMs}
         />

@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react";
-import type { Client, IFrame, IMessage } from "@stomp/stompjs";
+import type { IMessage } from "@stomp/stompjs";
 import { fetchTableState } from "../api/table";
-import { fetchSessionToken, logoutSession } from "../api/session";
 import { useTableStore } from "../table/tableStore";
 import {
   applyHttpTableSnapshot,
@@ -10,13 +9,8 @@ import {
   setTableStompClient,
 } from "../table/tablePipeline";
 import { parseStompJson } from "./lobbyMessages";
-import {
-  createPokerStompClient,
-  reconnectDelayMs,
-} from "./stompFactory";
+import { usePokerWs } from "./PokerWsProvider";
 
-const PING_INTERVAL_MS = 3000;
-const PONG_TIMEOUT_MS = PING_INTERVAL_MS * 2;
 const SNAPSHOT_POLL_INTERVAL_MS = 30_000;
 const SNAPSHOT_FALLBACK_MS = 3000;
 const ACTIVE_HAND_STATES = [
@@ -39,37 +33,26 @@ type Options = {
 export function useTableRealtime({
   enabled,
   tableId,
-  javaHost,
-  onAuthLost,
   onNotAtTable,
 }: Options) {
-  const onAuthLostRef = useRef(onAuthLost);
+  const { client, connected, subscribe } = usePokerWs();
   const onNotAtTableRef = useRef(onNotAtTable);
-  onAuthLostRef.current = onAuthLost;
   onNotAtTableRef.current = onNotAtTable;
 
   useEffect(() => {
-    if (!enabled || !javaHost || !tableId) {
+    if (!enabled || !tableId || !connected || !client) {
       return;
     }
 
     let disposed = false;
-    let client: Client | null = null;
-    let pingTimer: number | null = null;
     let pollTimer: number | null = null;
-    let reconnectTimer: number | null = null;
     let snapshotFallbackTimer: number | null = null;
-    let reconnectAttempt = 0;
-    let reconnectScheduled = false;
-    let firstConnect = true;
-    let lastPong = 0;
-    let subscribed = false;
-
-    function setPing(ms: number) {
-      useTableStore.getState().setPingMs(ms);
-    }
+    let firstSnapshot = true;
 
     function applyHttpSnapshot(reason: string) {
+      if (disposed) {
+        return Promise.resolve();
+      }
       return fetchTableState(tableId)
         .then(async (data) => {
           if (disposed) {
@@ -78,267 +61,86 @@ export function useTableRealtime({
           await applyHttpTableSnapshot(data, reason);
         })
         .catch((err: unknown) => {
+          if (disposed) {
+            return;
+          }
           const message = err instanceof Error ? err.message : "";
           if (message === "not_at_table" && !useTableStore.getState().logical?.my_player) {
             onNotAtTableRef.current();
-            return;
           }
-          throw err;
         });
     }
 
-    function handleTableEvent(data: Record<string, unknown>) {
-      void dispatchTableEvent(data);
-    }
+    setTableStompClient(client, tableId);
 
-    function stopTimers() {
-      if (pingTimer) {
-        window.clearInterval(pingTimer);
-        pingTimer = null;
-      }
-      if (pollTimer) {
-        window.clearInterval(pollTimer);
-        pollTimer = null;
-      }
+    const unsubPong = subscribe("/user/queue/pong", (message: IMessage) => {
+      const data = parseStompJson(message.body);
+      const sent = data && typeof data.clientTime === "number" ? data.clientTime : Date.now();
+      useTableStore.getState().setPingMs(Math.max(0, Date.now() - sent));
+    });
+
+    const unsubSnap = subscribe("/user/queue/table_snapshot", (message: IMessage) => {
       if (snapshotFallbackTimer) {
         window.clearTimeout(snapshotFallbackTimer);
         snapshotFallbackTimer = null;
       }
-    }
-
-    function deactivateClient() {
-      stopTimers();
-      setPing(9999);
-      setTableStompClient(null, "");
-      subscribed = false;
-      if (!client) {
+      const data = parseStompJson(message.body);
+      if (!data || disposed) {
         return;
       }
-      const current = client;
-      client = null;
-      current.onWebSocketClose = () => {};
-      current.onStompError = () => {};
-      void current.deactivate();
-    }
+      console.log("📸 TABLE_SNAPSHOT от Java");
+      void applyStompSnapshotPayload(data, !firstSnapshot);
+      firstSnapshot = false;
+    });
 
-    function scheduleSnapshotFallback() {
-      if (snapshotFallbackTimer) {
-        window.clearTimeout(snapshotFallbackTimer);
+    const unsubTopic = subscribe(`/topic/table/${tableId}`, (message: IMessage) => {
+      const data = parseStompJson(message.body);
+      if (data && !disposed) {
+        void dispatchTableEvent(data);
       }
-      snapshotFallbackTimer = window.setTimeout(() => {
-        snapshotFallbackTimer = null;
+    });
+
+    snapshotFallbackTimer = window.setTimeout(() => {
+      snapshotFallbackTimer = null;
+      if (!disposed) {
         console.warn("📸 Snapshot не пришёл за 3 сек — HTTP fallback");
-        void applyHttpSnapshot("snapshot-fallback").catch((err) => {
-          console.error("HTTP fallback resync не удался:", err);
-        });
-      }, SNAPSHOT_FALLBACK_MS);
-    }
-
-    function startPolling() {
-      if (pollTimer) {
-        window.clearInterval(pollTimer);
+        void applyHttpSnapshot("snapshot-fallback");
       }
-      pollTimer = window.setInterval(() => {
-        if (disposed || document.hidden) {
-          return;
-        }
-        if (!client?.connected) {
-          return;
-        }
-        const state = useTableStore.getState().logical?.game.state;
-        if (!state || !ACTIVE_HAND_STATES.includes(state)) {
-          return;
-        }
-        void applyHttpSnapshot("poll").catch((err) => {
-          console.warn("Periodic snapshot failed:", err);
-        });
-      }, SNAPSHOT_POLL_INTERVAL_MS);
-    }
+    }, SNAPSHOT_FALLBACK_MS);
 
-    function subscribe(active: Client, isReconnect: boolean) {
-      if (subscribed) {
+    pollTimer = window.setInterval(() => {
+      if (disposed || document.hidden) {
         return;
       }
-      subscribed = true;
-      lastPong = Date.now();
-      setTableStompClient(active, tableId);
-      active.subscribe("/user/queue/pong", (message: IMessage) => {
-        lastPong = Date.now();
-        const data = parseStompJson(message.body);
-        const sent = data && typeof data.clientTime === "number" ? data.clientTime : lastPong;
-        setPing(Math.max(0, Date.now() - sent));
-      });
-
-      active.subscribe("/user/queue/table_snapshot", (message: IMessage) => {
-        if (snapshotFallbackTimer) {
-          window.clearTimeout(snapshotFallbackTimer);
-          snapshotFallbackTimer = null;
-        }
-        const data = parseStompJson(message.body);
-        if (!data) {
-          return;
-        }
-        console.log("📸 TABLE_SNAPSHOT от Java");
-        void applyStompSnapshotPayload(data, isReconnect);
-      });
-
-      active.subscribe(`/topic/table/${tableId}`, (message: IMessage) => {
-        const data = parseStompJson(message.body);
-        if (data) {
-          handleTableEvent(data);
-        }
-      });
-
-      pingTimer = window.setInterval(() => {
-        if (!active.connected) {
-          return;
-        }
-        if (Date.now() - lastPong > PONG_TIMEOUT_MS) {
-          console.warn("🛜 Pong timeout — принудительный реконнект стола");
-          scheduleReconnect("Соединение не отвечает (pong timeout)", true);
-          return;
-        }
-        const sendTime = Date.now();
-        active.publish({
-          destination: "/app/ping",
-          body: JSON.stringify({ clientTime: sendTime }),
-        });
-      }, PING_INTERVAL_MS);
-
-      if (isReconnect) {
-        scheduleSnapshotFallback();
-      }
-    }
-
-    function scheduleReconnect(reason: string, fast = false) {
-      if (disposed || reconnectScheduled) {
+      const state = useTableStore.getState().logical?.game.state;
+      if (!state || !ACTIVE_HAND_STATES.includes(state)) {
         return;
       }
-      deactivateClient();
-      const delay = reconnectDelayMs(reconnectAttempt, fast);
-      reconnectAttempt += 1;
-      reconnectScheduled = true;
-      console.log(
-        `⏳ ${reason}. Переподключение стола через ${delay} мс (попытка ${reconnectAttempt})...`,
-      );
-      reconnectTimer = window.setTimeout(() => {
-        reconnectTimer = null;
-        reconnectScheduled = false;
-        void connect();
-      }, delay);
-    }
-
-    async function onAuthFailure() {
-      deactivateClient();
-      try {
-        await logoutSession();
-      } finally {
-        onAuthLostRef.current();
-      }
-    }
-
-    function isAuthError(error: IFrame | string) {
-      const text =
-        typeof error === "string"
-          ? error
-          : `${error.headers["message"] ?? ""} ${error.body ?? ""}`;
-      const lower = text.toLowerCase();
-      return (
-        lower.includes("unauthorized") ||
-        lower.includes("401") ||
-        lower.includes("access denied")
-      );
-    }
-
-    async function connect() {
-      if (disposed) {
-        return;
-      }
-      try {
-        const session = await fetchSessionToken();
-        if (disposed) {
-          return;
-        }
-        if (!session.token || session.token === "fake_token") {
-          console.log("Без токена сокеты стола не подключаем.");
-          return;
-        }
-
-        deactivateClient();
-        const next = createPokerStompClient(javaHost, session.token, {
-          onConnect: (active) => {
-            if (disposed) {
-              return;
-            }
-            console.log("🔗 WebSocket стол подключен.");
-            reconnectAttempt = 0;
-            reconnectScheduled = false;
-            const isReconnect = !firstConnect;
-            firstConnect = false;
-            subscribe(active, isReconnect);
-            startPolling();
-          },
-          onStompError: (error) => {
-            console.error("Ошибка связи стола:", error);
-            if (isAuthError(error)) {
-              void onAuthFailure();
-              return;
-            }
-            scheduleReconnect("Ошибка WebSocket");
-          },
-          onWebSocketClose: () => {
-            if (disposed || reconnectScheduled) {
-              return;
-            }
-            scheduleReconnect("Сокет стола закрыт");
-          },
-        });
-        client = next;
-        next.activate();
-      } catch (err) {
-        console.error("Не удалось получить токен стола:", err);
-        scheduleReconnect("Нет токена для STOMP");
-      }
-    }
-
-    function onOnline() {
-      if (disposed) {
-        return;
-      }
-      if (!client?.connected) {
-        console.log("🌐 Сеть восстановлена — быстрый реконнект стола");
-        scheduleReconnect("Сеть восстановлена (online)", true);
-      }
-    }
+      void applyHttpSnapshot("poll");
+    }, SNAPSHOT_POLL_INTERVAL_MS);
 
     function onVisibility() {
       if (disposed || document.hidden) {
         return;
       }
-      if (!client?.connected) {
-        console.log("👁️ Вкладка активна — reconnect стола");
-        scheduleReconnect("Вкладка снова активна", true);
-        return;
-      }
-      if (!firstConnect) {
-        void applyHttpSnapshot("visibility").catch((err) => {
-          console.warn("Soft resync при возврате на вкладку:", err);
-        });
-      }
+      void applyHttpSnapshot("visibility");
     }
-
-    void connect();
-    window.addEventListener("online", onOnline);
     document.addEventListener("visibilitychange", onVisibility);
 
     return () => {
       disposed = true;
-      window.removeEventListener("online", onOnline);
       document.removeEventListener("visibilitychange", onVisibility);
-      if (reconnectTimer) {
-        window.clearTimeout(reconnectTimer);
+      if (pollTimer) {
+        window.clearInterval(pollTimer);
       }
-      deactivateClient();
+      if (snapshotFallbackTimer) {
+        window.clearTimeout(snapshotFallbackTimer);
+      }
+      unsubPong();
+      unsubSnap();
+      unsubTopic();
+      setTableStompClient(null, "");
+      useTableStore.getState().setPingMs(9999);
     };
-  }, [enabled, javaHost, tableId]);
+  }, [client, connected, enabled, subscribe, tableId]);
 }

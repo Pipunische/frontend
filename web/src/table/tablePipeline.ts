@@ -7,6 +7,7 @@ import {
   applyPlayerActionEvent,
   applyStreetEndEvent,
   buildSnapshotFromGame,
+  resolveTimeToActMs,
   ensureOpponentSeats,
   clearHeroHoleCache,
   gameFromPayload,
@@ -81,6 +82,7 @@ export function isTableFxBusy() {
 
 export function resetTablePipeline() {
   fxGen += 1;
+  holeCardsInflight = null;
   pumping = false;
   skipVisualOnce = false;
   showdownHighlightDone = false;
@@ -156,13 +158,24 @@ function eventTurnSeat(event: Record<string, unknown>): number | undefined {
   return undefined;
 }
 
-function isTurnPlaceholderUpdate(from: TableSnapshot, to: TableSnapshot) {
-  return (
-    Number(to.game.current_turn_seat) === -1 &&
-    Number(from.game.current_turn_seat ?? -1) >= 0 &&
-    from.game.state === to.game.state &&
-    boardOf(from).join() === boardOf(to).join()
-  );
+function clearDisplayedTurn(view: TableSnapshot): TableSnapshot {
+  const clear = <T extends { is_active_turn?: boolean } | null>(player: T): T =>
+    player ? ({ ...player, is_active_turn: false } as T) : player;
+  const seats: Record<string, TableSnapshot["opponent_seats_by_pos"][string]> = {};
+  for (const [pos, seat] of Object.entries(view.opponent_seats_by_pos || {})) {
+    seats[pos] = clear(seat);
+  }
+  return {
+    ...view,
+    my_player: clear(view.my_player),
+    opponent_seats_by_pos: seats,
+    game: {
+      ...view.game,
+      current_turn_seat: -1,
+      time_to_act_ms: 0,
+      players: (view.game.players || []).map((player) => clear(player)),
+    },
+  };
 }
 
 function isStreetAdvanced(previousState: string | undefined, nextState: string | undefined) {
@@ -631,9 +644,10 @@ function requestHeroHoleCards(id: string) {
   if (!id || holeCardsInflight) {
     return;
   }
+  const gen = fxGen;
   holeCardsInflight = fetchHeroHoleCards(id)
     .then((cards) => {
-      if (!cards.length) {
+      if (!cards.length || gen !== fxGen) {
         return;
       }
       const prev = logical();
@@ -675,6 +689,12 @@ function applyLogicalFromEvent(
       ? (event.game as Record<string, unknown>)
       : event;
   const game = gameFromPayload({ ...prev.game, ...nested });
+  game.time_to_act_ms = resolveTimeToActMs(
+    nested,
+    prev.game.current_turn_seat,
+    game.current_turn_seat,
+    prev.game.time_to_act_ms,
+  );
   const incomingPlayers = Array.isArray(nested.players)
     ? game.players
     : Array.isArray(event.players)
@@ -878,10 +898,6 @@ async function playPostBlinds(gen: number) {
 }
 
 function commitDisplayed(next: TableSnapshot) {
-  const view = displayed();
-  if (view && isTurnPlaceholderUpdate(view, next)) {
-    return;
-  }
   if (getFx().showdownRunning) {
     return;
   }
@@ -1034,10 +1050,6 @@ async function pumpFx() {
         continue;
       }
 
-      if (isTurnPlaceholderUpdate(from, to)) {
-        break;
-      }
-
       if (!snapshotsVisuallyEqual(from, to)) {
         commitDisplayed(to);
       }
@@ -1183,8 +1195,9 @@ export async function dispatchTableEvent(data: Record<string, unknown>) {
       const contrib = fromEvent.length ? fromEvent : contributionsFromSnapshot(view);
       applyLogicalStreetEnd(event);
       streetCoalesceUntil = Date.now() + TABLE_UPDATE_DEBOUNCE_MS + 30;
-      if (contrib.length && view) {
-        setDisplayed(patchDisplayedContributions(view, contrib));
+      if (view) {
+        const frozen = contrib.length ? patchDisplayedContributions(view, contrib) : view;
+        setDisplayed(clearDisplayedTurn(frozen));
       }
       requestFxPump();
       break;

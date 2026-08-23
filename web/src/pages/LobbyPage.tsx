@@ -41,7 +41,7 @@ export function LobbyPage() {
     onState: setState,
     onOnlineCount: setOnlineCount,
     onAuthLost: () => {
-      window.location.assign("/login?error=session_expired");
+      navigate("/login?error=session_expired", { replace: true });
     },
   });
 

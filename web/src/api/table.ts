@@ -111,7 +111,7 @@ export async function fetchTableState(tableId: string): Promise<TableSnapshot> {
     return hydrateSnapshot(
       await apiFetch<TableSnapshot>(
         `/api/table/${encodeURIComponent(tableId)}/state`,
-        { redirectOn401: true },
+        { redirectOn401: false },
       ),
     );
   } catch (error) {

@@ -25,6 +25,7 @@ import {
   seedInitialTableFx,
   setTableToastHandler,
 } from "../table/tablePipeline";
+import { useTableFxStore } from "../table/tableFx";
 import { useTableStore } from "../table/tableStore";
 import { getOpponentPosLayout } from "../table/layout";
 import { playSound } from "../lib/sounds";
@@ -50,20 +51,24 @@ export function TablePage() {
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [leaving, setLeaving] = useState(false);
   const leavingRef = useRef(false);
+  const fxBusy = useTableFxStore((s) => s.fx.streetBusy || s.fx.showdownRunning);
 
-  const javaHost = snapshot?.java_host || sessionUser?.java_host || "";
+  const javaHost = sessionUser?.java_host || snapshot?.java_host || "";
   const mockTable = Boolean(snapshot?.is_dev_table);
 
   useTableRealtime({
-    enabled: ready && !mockTable && Boolean(javaHost) && Boolean(tableId),
+    enabled: !leaving && !mockTable && Boolean(javaHost) && Boolean(tableId),
     tableId: tableId || "",
     javaHost,
     onAuthLost: () => {
-      window.location.assign("/login?error=session_expired");
+      navigate("/login?error=session_expired", { replace: true });
     },
     onNotAtTable: () => {
-      navigate("/lobby", { replace: true });
+      if (!leavingRef.current) {
+        navigate("/lobby", { replace: true });
+      }
     },
   });
 
@@ -125,6 +130,10 @@ export function TablePage() {
           setReady(true);
           return;
         }
+        if (err instanceof ApiError && err.status === 401) {
+          navigate("/login?error=session_expired", { replace: true });
+          return;
+        }
         if (err instanceof ApiError && (err.status === 403 || err.message === "not_at_table")) {
           navigate("/lobby", { replace: true });
           return;
@@ -134,6 +143,8 @@ export function TablePage() {
 
     return () => {
       cancelled = true;
+      reset();
+      resetTablePipeline();
     };
   }, [navigate, reset, sessionUser, setSnapshot, tableId]);
 
@@ -162,17 +173,8 @@ export function TablePage() {
         });
     };
     refreshEmotes();
-    const onVisible = () => {
-      if (document.visibilityState === "visible") {
-        refreshEmotes();
-      }
-    };
-    window.addEventListener("focus", onVisible);
-    document.addEventListener("visibilitychange", onVisible);
     return () => {
       cancelled = true;
-      window.removeEventListener("focus", onVisible);
-      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [mockTable, ready, tableId]);
 
@@ -183,7 +185,7 @@ export function TablePage() {
         return false;
       }
       if (redirect.includes("session_expired")) {
-        window.location.assign(redirect);
+        navigate(redirect.startsWith("/") ? redirect : `/${redirect}`, { replace: true });
         return true;
       }
       navigate(redirect.startsWith("/") ? redirect : `/${redirect}`, { replace: true });
@@ -204,6 +206,8 @@ export function TablePage() {
         return;
       }
       leavingRef.current = true;
+      setLeaving(true);
+      resetTablePipeline();
       const userId = String(
         logical?.user?.user_id ||
           snapshot.user?.user_id ||
@@ -213,19 +217,21 @@ export function TablePage() {
       );
       try {
         const result = await postTableLeave(tableId, userId);
+        reset();
         if (goFromCommand(result)) {
           return;
         }
         navigate("/lobby", { replace: true });
       } catch (err) {
+        reset();
         if (err instanceof ApiError && err.status === 401) {
-          window.location.assign(err.redirect || "/login?error=session_expired");
+          navigate(err.redirect || "/login?error=session_expired", { replace: true });
           return;
         }
         navigate("/lobby", { replace: true });
       }
     },
-    [goFromCommand, logical, navigate, snapshot, tableId],
+    [goFromCommand, logical, navigate, reset, snapshot, tableId],
   );
 
   const sendAction = useCallback(
@@ -339,12 +345,17 @@ export function TablePage() {
           </div>
           <PingIndicator pingMs={pingMs} />
         </header>
-        <PokerTableShell snapshot={snapshot} />
+        <PokerTableShell
+          snapshot={snapshot}
+          turnSeat={logical?.game.current_turn_seat ?? snapshot.game.current_turn_seat}
+          timeToActMs={logical?.game.time_to_act_ms ?? snapshot.game.time_to_act_ms}
+        />
         <ActionPanel
-          myPlayer={snapshot.my_player}
-          currentTurnSeat={snapshot.game.current_turn_seat}
+          myPlayer={logical?.my_player ?? snapshot.my_player}
+          currentTurnSeat={logical?.game.current_turn_seat ?? snapshot.game.current_turn_seat}
           bigBlind={bigBlind}
           busy={busy}
+          fxBusy={fxBusy}
           onAction={sendAction}
         />
         <div className="system-panel table-system-panel">

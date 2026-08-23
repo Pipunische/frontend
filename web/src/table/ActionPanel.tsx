@@ -6,6 +6,7 @@ type Props = {
   currentTurnSeat?: number;
   bigBlind: number;
   busy: boolean;
+  fxBusy?: boolean;
   onAction: (type: string, amount: number) => void;
 };
 
@@ -14,6 +15,7 @@ export function ActionPanel({
   currentTurnSeat,
   bigBlind,
   busy,
+  fxBusy = false,
   onAction,
 }: Props) {
   const toCall = myPlayer?.amount_to_call || 0;
@@ -31,9 +33,11 @@ export function ActionPanel({
     status === "SITTING_OUT" || status === "FOLDED" || status === "ALL_IN" || status === "ALLIN";
   const visible =
     !busy &&
+    !fxBusy &&
     Boolean(myPlayer) &&
     !outOfHand &&
     (myPlayer?.chips ?? 0) > 0 &&
+    Number(currentTurnSeat) >= 0 &&
     myPlayer?.seat_index === currentTurnSeat;
 
   useEffect(() => {

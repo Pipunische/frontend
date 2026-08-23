@@ -25,5 +25,5 @@ export type SessionToken = {
 };
 
 export function fetchSessionToken() {
-  return apiFetch<SessionToken>("/api/session/token");
+  return apiFetch<SessionToken>("/api/session/token", { redirectOn401: false });
 }
