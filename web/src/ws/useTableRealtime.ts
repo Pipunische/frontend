@@ -116,6 +116,9 @@ export function useTableRealtime({
       if (!state || !ACTIVE_HAND_STATES.includes(state)) {
         return;
       }
+      if (client.connected) {
+        return;
+      }
       void applyHttpSnapshot("poll");
     }, SNAPSHOT_POLL_INTERVAL_MS);
 

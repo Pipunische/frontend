@@ -34,6 +34,68 @@ export function resolveTimeToActMs(
   return nextTurn != null && Number(nextTurn) >= 0 ? DEFAULT_TURN_MS : 0;
 }
 
+function markActiveTurn<T extends { seat_index?: number; is_active_turn?: boolean } | null>(
+  player: T,
+  activeIdx: number,
+): T {
+  return player
+    ? ({ ...player, is_active_turn: Number(player.seat_index) === activeIdx } as T)
+    : player;
+}
+
+export function withTurnFields(
+  snap: TableSnapshot,
+  turnSeat: number,
+  timeToActMs: number,
+): TableSnapshot {
+  const activeIdx = Number(turnSeat);
+  const seats: Record<string, TablePlayer | null> = {};
+  for (const [pos, seat] of Object.entries(snap.opponent_seats_by_pos || {})) {
+    seats[pos] = markActiveTurn(seat, activeIdx);
+  }
+  return {
+    ...snap,
+    my_player: markActiveTurn(snap.my_player, activeIdx),
+    opponent_seats_by_pos: seats,
+    game: {
+      ...snap.game,
+      current_turn_seat: activeIdx,
+      time_to_act_ms: timeToActMs,
+      players: (snap.game.players || []).map((player) => markActiveTurn(player, activeIdx)),
+    },
+  };
+}
+
+/** HTTP GET is coarser than live WS: never let a stale -1/0 wipe the acting seat. */
+export function mergeHttpTurn(
+  prev: TableSnapshot,
+  next: TableSnapshot,
+  mode: "soft" | "hard",
+): TableSnapshot {
+  if (mode === "soft") {
+    return withTurnFields(
+      next,
+      Number(prev.game.current_turn_seat ?? -1),
+      Number(prev.game.time_to_act_ms ?? 0),
+    );
+  }
+  const httpTurn =
+    next.game.current_turn_seat == null ? undefined : Number(next.game.current_turn_seat);
+  const prevTurn = Number(prev.game.current_turn_seat ?? -1);
+  const turn =
+    httpTurn != null && httpTurn >= 0 ? httpTurn : prevTurn >= 0 ? prevTurn : (httpTurn ?? -1);
+  const httpTime = next.game.time_to_act_ms;
+  const time = resolveTimeToActMs(
+    httpTime != null && Number(httpTime) > 0
+      ? { time_to_act_ms: httpTime }
+      : {},
+    prevTurn,
+    turn,
+    prev.game.time_to_act_ms,
+  );
+  return withTurnFields(next, turn, time);
+}
+
 function withActiveTurn<T extends { seat_index?: number; is_active_turn?: boolean }>(
   player: T,
   activeIdx: number,
@@ -375,8 +437,8 @@ export function buildSnapshotFromGame(
 ): TableSnapshot {
   const myId = String(prev.user?.user_id || prev.my_player?.user_id || "");
   const maxPlayers = normalizeMaxPlayers(game.max_players ?? prev.max_players);
-  const dealerIdx = game.dealer_seat ?? -1;
-  const activeIdx = game.current_turn_seat ?? -1;
+  const dealerIdx = game.dealer_seat ?? prev.game.dealer_seat ?? -1;
+  const activeIdx = game.current_turn_seat ?? prev.game.current_turn_seat ?? -1;
   const state = game.state || prev.game.state;
 
   let myPlayer: TablePlayer | null = null;
@@ -462,6 +524,8 @@ export function buildSnapshotFromGame(
       ...game,
       max_players: maxPlayers,
       community_cards: board,
+      current_turn_seat: game.current_turn_seat ?? prev.game.current_turn_seat,
+      time_to_act_ms: game.time_to_act_ms ?? prev.game.time_to_act_ms,
       players: game.players || prev.game.players,
     },
   };

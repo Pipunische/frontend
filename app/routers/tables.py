@@ -56,8 +56,15 @@ def _normalize_java_game(raw: dict) -> dict:
     game = dict(raw or {})
     if "dealer_seat" not in game:
         game["dealer_seat"] = _pick(game, "dealerSeat", default=-1)
+    # Do not invent -1: REST often omits the live actor; SPA keeps the WS turn.
     if "current_turn_seat" not in game:
-        game["current_turn_seat"] = _pick(game, "currentTurnSeat", default=-1)
+        turn = _pick(game, "currentTurnSeat")
+        if turn is not None:
+            game["current_turn_seat"] = turn
+    if "time_to_act_ms" not in game:
+        time_to_act = _pick(game, "timeToActMs")
+        if time_to_act is not None:
+            game["time_to_act_ms"] = time_to_act
     if "community_cards" not in game:
         game["community_cards"] = _pick(game, "communityCards", default=[]) or []
     if "max_players" not in game:
